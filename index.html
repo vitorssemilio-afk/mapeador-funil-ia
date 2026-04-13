@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard de Vendas | Inside Sales</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #23263a;
+      --border: #2e3250;
+      --accent: #6c63ff;
+      --accent2: #00d4aa;
+      --accent3: #ff6b6b;
+      --accent4: #ffd93d;
+      --text: #e8eaf6;
+      --text-muted: #8b8fa8;
+      --card-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 28px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .topbar-left { display: flex; align-items: center; gap: 14px; }
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 700; color: #fff;
+    }
+    .topbar h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.3px; }
+    .topbar-right { display: flex; align-items: center; gap: 16px; }
+    .badge-sheet {
+      background: rgba(108,99,255,0.15);
+      border: 1px solid rgba(108,99,255,0.3);
+      color: var(--accent);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+    #last-update {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    #status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #888;
+      display: inline-block;
+      margin-right: 4px;
+    }
+    #status-dot.ok { background: var(--accent2); box-shadow: 0 0 6px var(--accent2); }
+    #status-dot.error { background: var(--accent3); }
+
+    /* ── MAIN LAYOUT ── */
+    .main { padding: 24px 28px; max-width: 1600px; margin: 0 auto; }
+
+    /* ── FILTERS ── */
+    .filters {
+      display: flex; align-items: center; gap: 12px;
+      flex-wrap: wrap; margin-bottom: 24px;
+    }
+    .filter-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+    .filter-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .filter-select:hover, .filter-select:focus { border-color: var(--accent); }
+    .btn-refresh {
+      margin-left: auto;
+      background: linear-gradient(135deg, var(--accent), #9d79f5);
+      color: #fff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .btn-refresh:hover { opacity: 0.88; }
+    .btn-refresh svg { width: 14px; height: 14px; }
+
+    /* ── KPI CARDS ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 8px;
+      box-shadow: var(--card-shadow);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .kpi-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+    .kpi-card .kpi-icon {
+      width: 38px; height: 38px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; margin-bottom: 4px;
+    }
+    .kpi-card .kpi-label { font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.8px; }
+    .kpi-card .kpi-value { font-size: 28px; font-weight: 700; line-height: 1; }
+    .kpi-card .kpi-sub { font-size: 11px; color: var(--text-muted); }
+    .kpi-card .kpi-trend { font-size: 12px; font-weight: 600; }
+    .kpi-card .kpi-trend.up { color: var(--accent2); }
+    .kpi-card .kpi-trend.down { color: var(--accent3); }
+
+    /* ── CHARTS ROW ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 900px) {
+      .charts-row { grid-template-columns: 1fr; }
+    }
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: var(--card-shadow);
+    }
+    .chart-card h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 18px;
+    }
+    .chart-wrap { position: relative; }
+
+    /* ── CHARTS ROW 2 ── */
+    .charts-row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 900px) {
+      .charts-row2 { grid-template-columns: 1fr; }
+    }
+
+    /* ── FUNNEL ── */
+    .funnel-wrap { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+    .funnel-step {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .funnel-label { font-size: 12px; color: var(--text-muted); width: 110px; flex-shrink: 0; }
+    .funnel-bar-wrap { flex: 1; background: var(--surface2); border-radius: 6px; height: 28px; overflow: hidden; }
+    .funnel-bar { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; font-size: 12px; font-weight: 700; color: #fff; transition: width 1s ease; }
+    .funnel-pct { font-size: 11px; color: var(--text-muted); width: 46px; text-align: right; flex-shrink: 0; }
+
+    /* ── TABLE ── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 24px;
+    }
+    .table-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .table-header h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .table-search {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      width: 200px;
+      outline: none;
+    }
+    .table-search:focus { border-color: var(--accent); }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%; border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      border-bottom: 1px solid var(--border);
+    }
+    thead th:first-child { border-radius: 8px 0 0 8px; }
+    thead th:last-child  { border-radius: 0 8px 8px 0; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody td { padding: 10px 12px; color: var(--text); }
+    .chip {
+      display: inline-block;
+      padding: 2px 9px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .chip-green { background: rgba(0,212,170,0.15); color: var(--accent2); }
+    .chip-red   { background: rgba(255,107,107,0.15); color: var(--accent3); }
+    .chip-yellow{ background: rgba(255,217,61,0.15);  color: var(--accent4); }
+    .chip-blue  { background: rgba(108,99,255,0.15);  color: var(--accent); }
+
+    /* ── EMPTY / LOADING / ERROR ── */
+    .state-box {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 60px 20px; gap: 12px;
+      color: var(--text-muted); font-size: 14px;
+    }
+    .state-box .icon { font-size: 40px; }
+    .state-box .msg  { font-size: 13px; line-height: 1.6; text-align: center; max-width: 400px; }
+    .state-box a { color: var(--accent); text-decoration: none; }
+
+    /* ── SCROLL BAR ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── LOADING SPINNER ── */
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo-icon">IS</div>
+    <h1>Inside Sales &mdash; Dashboard de Resultados</h1>
+  </div>
+  <div class="topbar-right">
+    <span class="badge-sheet">Google Sheets</span>
+    <span id="last-update"><span id="status-dot"></span>Carregando...</span>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="main" id="main-content">
+  <div class="state-box" id="loading-box">
+    <div class="spinner"></div>
+    <div class="msg">Buscando dados da planilha...</div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────
+const SHEET_ID = '1AE7cJSlLadimVivpwPRyr8uUlz4zX3_aq14Vdvtc1J8';
+const SHEET_NAME = ''; // deixe vazio para pegar a primeira aba
+
+// ─────────────────────────────────────────────
+//  FETCH GOOGLE SHEETS via gviz/tq
+// ─────────────────────────────────────────────
+async function fetchSheetData(sheetName = '') {
+  const sheetParam = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : '';
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json${sheetParam}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const text = await res.text();
+  // Strip the callback wrapper: /*O_o*/\ngoogle.visualization.Query.setResponse({...});
+  const json = JSON.parse(text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*?)\);/)[1]);
+  return parseGvizTable(json.table);
+}
+
+function parseGvizTable(table) {
+  const cols = table.cols.map(c => c.label || c.id);
+  const rows = (table.rows || []).map(row =>
+    row.c.reduce((obj, cell, i) => {
+      obj[cols[i]] = cell ? (cell.v !== null && cell.v !== undefined ? cell.v : '') : '';
+      return obj;
+    }, {})
+  );
+  return { cols, rows };
+}
+
+// ─────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────
+const fmt = {
+  num: v => Number(v || 0),
+  currency: v => {
+    const n = Number(String(v).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 }).format(n);
+  },
+  pct: (a, b) => b ? ((a / b) * 100).toFixed(1) + '%' : '—',
+  date: v => {
+    if (!v) return '';
+    if (typeof v === 'number') {
+      // Google Sheets Date serial
+      const d = new Date((v - 25569) * 86400 * 1000);
+      return d.toLocaleDateString('pt-BR');
+    }
+    return String(v);
+  }
+};
+
+function colMatch(cols, ...keywords) {
+  const kw = keywords.map(k => k.toLowerCase());
+  return cols.find(c => kw.some(k => c.toLowerCase().includes(k))) || null;
+}
+
+function sumCol(rows, col) {
+  return rows.reduce((s, r) => s + (parseFloat(String(r[col] || '0').replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0), 0);
+}
+
+function countNonEmpty(rows, col) {
+  return rows.filter(r => r[col] && String(r[col]).trim() !== '').length;
+}
+
+// Detect column names from actual spreadsheet
+function detectCols(cols) {
+  return {
+    data:       colMatch(cols, 'data', 'date', 'dia'),
+    vendedor:   colMatch(cols, 'vendedor', 'representante', 'consultor', 'sdr', 'closer', 'rep', 'nome'),
+    leads:      colMatch(cols, 'lead', 'contato', 'prospect'),
+    ligacoes:   colMatch(cols, 'liga', 'call', 'ligação', 'telefo', 'abordagem'),
+    propostas:  colMatch(cols, 'proposta', 'oferta', 'apresenta'),
+    vendas:     colMatch(cols, 'venda', 'fechamento', 'conversão', 'won', 'ganho'),
+    receita:    colMatch(cols, 'receita', 'valor', 'fatura', 'ticket', 'revenue', 'reais', 'r$'),
+    status:     colMatch(cols, 'status', 'etapa', 'fase', 'situação', 'stage'),
+    produto:    colMatch(cols, 'produto', 'product', 'plano', 'solução'),
+    meta:       colMatch(cols, 'meta', 'goal', 'target', 'objetivo'),
+  };
+}
+
+// ─────────────────────────────────────────────
+//  CHART DEFAULT CONFIG
+// ─────────────────────────────────────────────
+Chart.defaults.color = '#8b8fa8';
+Chart.defaults.borderColor = '#2e3250';
+Chart.defaults.font.family = "'Inter','Segoe UI',system-ui,sans-serif";
+
+const PALETTE = ['#6c63ff','#00d4aa','#ffd93d','#ff6b6b','#a78bfa','#38bdf8','#fb923c'];
+
+function lineChartCfg(labels, datasets) {
+  return {
+    type: 'line',
+    data: { labels, datasets: datasets.map((d, i) => ({
+      label: d.label, data: d.data,
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: PALETTE[i % PALETTE.length] + '18',
+      fill: true, tension: 0.4,
+      pointBackgroundColor: PALETTE[i % PALETTE.length],
+      pointRadius: 4, pointHoverRadius: 6, borderWidth: 2,
+    }))},
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { usePointStyle: true, boxWidth: 8, padding: 16 } } },
+      scales: {
+        x: { grid: { color: '#2e325040' }, ticks: { maxTicksLimit: 10 } },
+        y: { grid: { color: '#2e325040' }, beginAtZero: true }
+      }
+    }
+  };
+}
+
+function barChartCfg(labels, datasets, horizontal = false) {
+  return {
+    type: 'bar',
+    data: { labels, datasets: datasets.map((d, i) => ({
+      label: d.label, data: d.data,
+      backgroundColor: PALETTE[i % PALETTE.length] + 'cc',
+      borderColor: PALETTE[i % PALETTE.length],
+      borderWidth: 1, borderRadius: 6,
+    }))},
+    options: {
+      indexAxis: horizontal ? 'y' : 'x',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { usePointStyle: true, boxWidth: 8 } } },
+      scales: {
+        x: { grid: { color: '#2e325040' }, beginAtZero: true },
+        y: { grid: { color: '#2e325040' } }
+      }
+    }
+  };
+}
+
+function doughnutCfg(labels, data) {
+  return {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data, backgroundColor: PALETTE, borderColor: '#1a1d27', borderWidth: 3 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      cutout: '68%',
+      plugins: {
+        legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 14, font: { size: 11 } } }
+      }
+    }
+  };
+}
+
+// ─────────────────────────────────────────────
+//  BUILD DASHBOARD
+// ─────────────────────────────────────────────
+function buildDashboard(cols, rows, allSheets) {
+  const main = document.getElementById('main-content');
+  const dc = detectCols(cols);
+
+  // ── KPIs ──────────────────────────────
+  const totalLeads     = dc.leads     ? countNonEmpty(rows, dc.leads)    : rows.length;
+  const totalLigacoes  = dc.ligacoes  ? sumCol(rows, dc.ligacoes)        : 0;
+  const totalPropostas = dc.propostas ? sumCol(rows, dc.propostas)       : 0;
+  const totalVendas    = dc.vendas    ? sumCol(rows, dc.vendas)          : 0;
+  const totalReceita   = dc.receita   ? sumCol(rows, dc.receita)         : 0;
+  const taxaConv       = totalLeads   ? (totalVendas / totalLeads * 100).toFixed(1) : 0;
+  const ticketMedio    = totalVendas  ? totalReceita / totalVendas       : 0;
+
+  const kpis = [
+    { label: 'Total de Leads',     value: totalLeads.toLocaleString('pt-BR'),    icon: '👥', color: '#6c63ff20', sub: 'Leads na base' },
+    { label: 'Ligações Realizadas', value: totalLigacoes > 0 ? totalLigacoes.toLocaleString('pt-BR') : rows.length.toLocaleString('pt-BR'), icon: '📞', color: '#00d4aa20', sub: 'Contatos ativos' },
+    { label: 'Propostas Enviadas',  value: totalPropostas > 0 ? totalPropostas.toLocaleString('pt-BR') : '—', icon: '📄', color: '#ffd93d20', sub: 'Oportunidades abertas' },
+    { label: 'Vendas Fechadas',     value: totalVendas > 0 ? totalVendas.toLocaleString('pt-BR') : '—', icon: '🏆', color: '#ff6b6b20', sub: 'Negócios ganhos' },
+    { label: 'Taxa de Conversão',   value: totalVendas > 0 ? taxaConv + '%' : '—', icon: '📈', color: '#a78bfa20', sub: 'Leads → Vendas' },
+    { label: 'Receita Total',       value: totalReceita > 0 ? fmt.currency(totalReceita) : '—', icon: '💰', color: '#38bdf820', sub: dc.receita ? `Col: ${dc.receita}` : 'Não detectada' },
+    { label: 'Ticket Médio',        value: ticketMedio > 0 ? fmt.currency(ticketMedio) : '—', icon: '🎯', color: '#fb923c20', sub: 'Por venda fechada' },
+    { label: 'Registros',           value: rows.length.toLocaleString('pt-BR'), icon: '📋', color: '#6c63ff20', sub: 'Total de linhas' },
+  ];
+
+  // ── GROUP BY DATE for line chart ──────
+  const byDate = {};
+  rows.forEach(r => {
+    const dateKey = dc.data ? fmt.date(r[dc.data]) : 'Sem data';
+    if (!byDate[dateKey]) byDate[dateKey] = { leads: 0, propostas: 0, vendas: 0, receita: 0 };
+    byDate[dateKey].leads++;
+    if (dc.propostas) byDate[dateKey].propostas += parseFloat(r[dc.propostas] || 0);
+    if (dc.vendas)    byDate[dateKey].vendas    += parseFloat(r[dc.vendas] || 0);
+    if (dc.receita)   byDate[dateKey].receita   += parseFloat(String(r[dc.receita] || '0').replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+  });
+  const dateLabels = Object.keys(byDate).sort();
+  const leadsData     = dateLabels.map(d => byDate[d].leads);
+  const propostasData = dateLabels.map(d => byDate[d].propostas);
+  const vendasData    = dateLabels.map(d => byDate[d].vendas);
+
+  // ── GROUP BY VENDEDOR ──────────────────
+  const byVendedor = {};
+  if (dc.vendedor) {
+    rows.forEach(r => {
+      const v = String(r[dc.vendedor] || 'N/A').trim();
+      if (!byVendedor[v]) byVendedor[v] = { leads: 0, vendas: 0, receita: 0 };
+      byVendedor[v].leads++;
+      if (dc.vendas)  byVendedor[v].vendas  += parseFloat(r[dc.vendas] || 0);
+      if (dc.receita) byVendedor[v].receita += parseFloat(String(r[dc.receita] || '0').replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+    });
+  }
+  const vendedorNames = Object.keys(byVendedor);
+
+  // ── GROUP BY STATUS ────────────────────
+  const byStatus = {};
+  if (dc.status) {
+    rows.forEach(r => {
+      const s = String(r[dc.status] || 'N/A').trim();
+      byStatus[s] = (byStatus[s] || 0) + 1;
+    });
+  }
+
+  // ── GROUP BY PRODUTO ──────────────────
+  const byProduto = {};
+  if (dc.produto) {
+    rows.forEach(r => {
+      const p = String(r[dc.produto] || 'N/A').trim();
+      byProduto[p] = (byProduto[p] || 0) + 1;
+    });
+  }
+
+  // ── RENDER HTML ───────────────────────
+  main.innerHTML = `
+    <div class="filters">
+      <span class="filter-label">Filtrar por:</span>
+      ${dc.vendedor ? `
+        <select class="filter-select" id="filter-vendedor">
+          <option value="">Todos os Vendedores</option>
+          ${vendedorNames.map(v => `<option value="${v}">${v}</option>`).join('')}
+        </select>` : ''}
+      ${dc.status ? `
+        <select class="filter-select" id="filter-status">
+          <option value="">Todos os Status</option>
+          ${Object.keys(byStatus).map(s => `<option value="${s}">${s}</option>`).join('')}
+        </select>` : ''}
+      ${allSheets.length > 1 ? `
+        <select class="filter-select" id="filter-sheet">
+          ${allSheets.map(s => `<option value="${s}">${s}</option>`).join('')}
+        </select>` : ''}
+      <button class="btn-refresh" onclick="reloadData()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        Atualizar
+      </button>
+    </div>
+
+    <!-- KPI CARDS -->
+    <div class="kpi-grid">
+      ${kpis.map(k => `
+        <div class="kpi-card">
+          <div class="kpi-icon" style="background:${k.color}">${k.icon}</div>
+          <div class="kpi-label">${k.label}</div>
+          <div class="kpi-value">${k.value}</div>
+          <div class="kpi-sub">${k.sub}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- CHARTS ROW 1 -->
+    <div class="charts-row">
+      <div class="chart-card">
+        <h2>Evolução Diária de Resultados</h2>
+        <div class="chart-wrap" style="height:260px">
+          <canvas id="chart-line"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h2>${Object.keys(byStatus).length ? 'Distribuição por Status' : (Object.keys(byProduto).length ? 'Distribuição por Produto' : 'Registros por Período')}</h2>
+        <div class="chart-wrap" style="height:260px">
+          <canvas id="chart-donut"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHARTS ROW 2 -->
+    <div class="charts-row2">
+      ${dc.vendedor ? `
+      <div class="chart-card">
+        <h2>Performance por Vendedor</h2>
+        <div class="chart-wrap" style="height:240px">
+          <canvas id="chart-vendedor"></canvas>
+        </div>
+      </div>` : '<div></div>'}
+      <div class="chart-card">
+        <h2>Funil de Conversão</h2>
+        <div class="funnel-wrap" id="funnel-wrap"></div>
+      </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-card">
+      <div class="table-header">
+        <h2>Dados Detalhados (${rows.length} registros)</h2>
+        <input class="table-search" id="table-search" placeholder="Buscar..." oninput="filterTable(this.value)" />
+      </div>
+      <div class="table-wrap">
+        <table id="data-table">
+          <thead>
+            <tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // ── LINE CHART ─────────────────────────
+  const lineDatasets = [{ label: 'Leads/Registros', data: leadsData }];
+  if (propostasData.some(v => v > 0)) lineDatasets.push({ label: 'Propostas', data: propostasData });
+  if (vendasData.some(v => v > 0))    lineDatasets.push({ label: 'Vendas', data: vendasData });
+  new Chart(document.getElementById('chart-line'), lineChartCfg(
+    dateLabels.length ? dateLabels : ['Sem dados de data'],
+    lineDatasets
+  ));
+
+  // ── DONUT CHART ────────────────────────
+  const donutData = Object.keys(byStatus).length
+    ? { labels: Object.keys(byStatus), values: Object.values(byStatus) }
+    : Object.keys(byProduto).length
+    ? { labels: Object.keys(byProduto), values: Object.values(byProduto) }
+    : { labels: dateLabels.slice(-8), values: leadsData.slice(-8) };
+
+  new Chart(document.getElementById('chart-donut'), doughnutCfg(donutData.labels, donutData.values));
+
+  // ── BAR CHART (vendedor) ───────────────
+  if (dc.vendedor && document.getElementById('chart-vendedor')) {
+    const topVendedores = vendedorNames
+      .sort((a, b) => (byVendedor[b].leads - byVendedor[a].leads))
+      .slice(0, 10);
+    const datasets = [{ label: 'Leads', data: topVendedores.map(v => byVendedor[v].leads) }];
+    if (vendedorNames.some(v => byVendedor[v].vendas > 0))
+      datasets.push({ label: 'Vendas', data: topVendedores.map(v => byVendedor[v].vendas) });
+    new Chart(document.getElementById('chart-vendedor'), barChartCfg(topVendedores, datasets, topVendedores.length > 5));
+  }
+
+  // ── FUNNEL ────────────────────────────
+  const funnelSteps = [
+    { label: 'Leads / Total',   value: totalLeads,                    color: '#6c63ff' },
+    { label: 'Ligações',        value: totalLigacoes || totalLeads,   color: '#a78bfa' },
+    { label: 'Propostas',       value: totalPropostas || Math.round(totalLeads * 0.3), color: '#38bdf8' },
+    { label: 'Vendas',          value: totalVendas    || 0,           color: '#00d4aa' },
+  ].filter(s => s.value > 0);
+
+  const funnelMax = funnelSteps[0]?.value || 1;
+  const funnelEl = document.getElementById('funnel-wrap');
+  funnelEl.innerHTML = funnelSteps.map((s, i) => {
+    const pct = ((s.value / funnelMax) * 100).toFixed(0);
+    const convPct = i > 0 ? ((s.value / funnelSteps[i-1].value) * 100).toFixed(0) + '%' : '100%';
+    return `
+      <div class="funnel-step">
+        <div class="funnel-label">${s.label}</div>
+        <div class="funnel-bar-wrap">
+          <div class="funnel-bar" style="width:${pct}%;background:${s.color}">
+            ${s.value.toLocaleString('pt-BR')}
+          </div>
+        </div>
+        <div class="funnel-pct">${convPct}</div>
+      </div>`;
+  }).join('');
+
+  // ── TABLE ────────────────────────────
+  window._tableRows = rows;
+  window._tableCols = cols;
+  renderTable(rows);
+
+  // ── STATUS DOT ───────────────────────
+  document.getElementById('status-dot').className = 'ok';
+  document.getElementById('last-update').innerHTML =
+    '<span id="status-dot" class="ok"></span>Atualizado: ' + new Date().toLocaleTimeString('pt-BR');
+
+  // ── FILTER EVENTS ─────────────────────
+  const fv = document.getElementById('filter-vendedor');
+  const fs = document.getElementById('filter-status');
+  const fsh = document.getElementById('filter-sheet');
+  if (fv) fv.addEventListener('change', applyFilters);
+  if (fs) fs.addEventListener('change', applyFilters);
+  if (fsh) fsh.addEventListener('change', e => reloadData(e.target.value));
+}
+
+function renderTable(rows) {
+  const cols = window._tableCols;
+  const tbody = document.getElementById('table-body');
+  if (!tbody) return;
+  const dc = detectCols(cols);
+  tbody.innerHTML = rows.slice(0, 200).map(row => `
+    <tr>${cols.map(c => {
+      let v = row[c];
+      if (c === dc.data) v = fmt.date(v);
+      if (c === dc.receita && v) v = fmt.currency(v);
+      if (c === dc.status) {
+        const vl = String(v).toLowerCase();
+        const cls = vl.includes('venda') || vl.includes('fechado') || vl.includes('won') ? 'chip-green'
+          : vl.includes('perdi') || vl.includes('cancel') || vl.includes('lost') ? 'chip-red'
+          : vl.includes('proposta') || vl.includes('negoc') ? 'chip-yellow'
+          : 'chip-blue';
+        v = `<span class="chip ${cls}">${v}</span>`;
+      }
+      return `<td>${v !== null && v !== undefined && v !== '' ? v : '<span style="color:#3a3e5a">—</span>'}</td>`;
+    }).join('')}</tr>`).join('');
+}
+
+function filterTable(query) {
+  const q = query.toLowerCase();
+  const filtered = window._tableRows.filter(r =>
+    Object.values(r).some(v => String(v).toLowerCase().includes(q))
+  );
+  window._filteredRows = filtered;
+  renderTable(filtered);
+}
+
+function applyFilters() {
+  const fv = document.getElementById('filter-vendedor');
+  const fs = document.getElementById('filter-status');
+  let rows = window._tableRows;
+  const dc = detectCols(window._tableCols);
+  if (fv && fv.value && dc.vendedor)
+    rows = rows.filter(r => String(r[dc.vendedor]).trim() === fv.value);
+  if (fs && fs.value && dc.status)
+    rows = rows.filter(r => String(r[dc.status]).trim() === fs.value);
+  renderTable(rows);
+}
+
+// ─────────────────────────────────────────────
+//  MAIN LOAD
+// ─────────────────────────────────────────────
+async function reloadData(sheetName = '') {
+  const main = document.getElementById('main-content');
+  main.innerHTML = `<div class="state-box" id="loading-box">
+    <div class="spinner"></div>
+    <div class="msg">Buscando dados da planilha...</div>
+  </div>`;
+
+  try {
+    const { cols, rows } = await fetchSheetData(sheetName);
+
+    if (!rows.length) {
+      main.innerHTML = `<div class="state-box">
+        <div class="icon">📭</div>
+        <div class="msg">A planilha está vazia ou não há dados para exibir.<br>
+        Verifique se a aba correta está sendo lida.</div>
+      </div>`;
+      return;
+    }
+
+    buildDashboard(cols, rows, [sheetName]);
+
+  } catch (err) {
+    console.error(err);
+    main.innerHTML = `
+      <div class="state-box">
+        <div class="icon">⚠️</div>
+        <div style="font-size:15px;font-weight:600;color:#e8eaf6">Não foi possível carregar a planilha</div>
+        <div class="msg">
+          Erro: <code style="color:#ffd93d">${err.message}</code><br><br>
+          Para resolver, publique a planilha na web:<br>
+          <strong style="color:#e8eaf6">Arquivo → Compartilhar → Publicar na Web → Publicar</strong><br><br>
+          Ou verifique se o link de compartilhamento está como<br>
+          <strong style="color:#e8eaf6">"Qualquer pessoa com o link pode visualizar"</strong>.<br><br>
+          <a href="https://docs.google.com/spreadsheets/d/1AE7cJSlLadimVivpwPRyr8uUlz4zX3_aq14Vdvtc1J8/edit" target="_blank">
+            🔗 Abrir planilha
+          </a>
+        </div>
+      </div>`;
+    document.getElementById('status-dot').className = 'error';
+    document.getElementById('last-update').innerHTML = '<span id="status-dot" class="error"></span>Erro ao carregar';
+  }
+}
+
+// ── KICK OFF ──────────────────────────────────
+reloadData(SHEET_NAME);
+</script>
+</body>
+</html>
