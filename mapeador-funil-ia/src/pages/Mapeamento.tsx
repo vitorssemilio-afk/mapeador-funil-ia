@@ -68,6 +68,21 @@ export function Mapeamento() {
     };
   }, [id]);
 
+  async function handleStatusChange(atualizado: MapeamentoType) {
+    setMapeamento(atualizado);
+
+    if (atualizado.status === 'concluido') {
+      const { data: funisData, error: funisError } = await supabase
+        .from('funis_gerados')
+        .select('*')
+        .eq('mapeamento_id', atualizado.id)
+        .order('ordem', { ascending: true });
+
+      if (funisError) setError(funisError.message);
+      else setFunis(funisData ?? []);
+    }
+  }
+
   function handleEtapasChange(funilId: string, novasEtapas: EtapaFunil[]) {
     setFunis((prev) =>
       prev.map((funil) => (funil.id === funilId ? { ...funil, etapas: novasEtapas } : funil)),
@@ -167,7 +182,7 @@ export function Mapeamento() {
       )}
 
       {podeRetomar && retomando && (
-        <MapeamentoWizard mapeamento={mapeamento} onStatusChange={setMapeamento} />
+        <MapeamentoWizard mapeamento={mapeamento} onStatusChange={handleStatusChange} />
       )}
 
       {mapeamento.status === 'processando_ia' && (
