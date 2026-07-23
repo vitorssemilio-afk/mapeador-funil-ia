@@ -22,7 +22,7 @@ async function chamarGroq(messages: ChatMessage[]): Promise<string> {
     throw new Error('GROQ_API_KEY não configurada nas secrets da função.');
   }
 
-  const model = Deno.env.get('GROQ_MODEL') || 'openai/gpt-oss-120b';
+  const model = Deno.env.get('GROQ_MODEL') || 'llama-3.3-70b-versatile';
 
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
@@ -34,7 +34,7 @@ async function chamarGroq(messages: ChatMessage[]): Promise<string> {
       model,
       messages,
       temperature: 0.4,
-      max_tokens: 8000,
+      max_tokens: 4096,
       response_format: { type: 'json_object' },
     }),
   });
