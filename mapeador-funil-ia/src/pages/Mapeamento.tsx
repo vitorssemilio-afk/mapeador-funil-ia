@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
 import { StatusBadge } from '../components/StatusBadge';
 import { supabase } from '../lib/supabaseClient';
 import type { FunilGerado, Mapeamento as MapeamentoType } from '../types/database';
@@ -62,7 +63,7 @@ export function Mapeamento() {
   if (error) return <p className="form-error">{error}</p>;
   if (!mapeamento) return <p className="form-error">Mapeamento não encontrado.</p>;
 
-  const respostasPreenchidas = Object.keys(mapeamento.respostas ?? {}).length > 0;
+  const emEdicao = mapeamento.status === 'em_preenchimento' || mapeamento.status === 'erro';
 
   return (
     <div className="page">
@@ -73,16 +74,19 @@ export function Mapeamento() {
         </div>
       </div>
 
-      <section className="card">
-        <h2>Respostas do mapeamento</h2>
-        {respostasPreenchidas ? (
-          <pre className="respostas-preview">{JSON.stringify(mapeamento.respostas, null, 2)}</pre>
-        ) : (
+      {emEdicao && (
+        <MapeamentoWizard mapeamento={mapeamento} onStatusChange={setMapeamento} />
+      )}
+
+      {mapeamento.status === 'processando_ia' && (
+        <section className="card">
+          <h2>Gerando seu funil</h2>
           <p className="field-hint">
-            O formulário de mapeamento ainda não foi preenchido nesta versão.
+            Suas respostas foram enviadas. A geração automática do funil pela IA será concluída em
+            uma próxima fase.
           </p>
-        )}
-      </section>
+        </section>
+      )}
 
       {mapeamento.status === 'concluido' && (
         <section className="card">
@@ -101,17 +105,6 @@ export function Mapeamento() {
               ))}
             </div>
           )}
-        </section>
-      )}
-
-      {mapeamento.status !== 'concluido' && (
-        <section className="card">
-          <button type="button" className="btn btn-primary" disabled>
-            Gerar funil (IA)
-          </button>
-          <p className="field-hint">
-            A geração automática de funis pela IA será habilitada em uma próxima fase.
-          </p>
         </section>
       )}
     </div>

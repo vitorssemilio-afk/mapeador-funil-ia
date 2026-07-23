@@ -229,9 +229,11 @@ button {
   color: var(--color-text);
 }
 
-.field input {
+.field input,
+.field textarea {
   font-size: 14px;
   font-weight: 400;
+  font-family: inherit;
   padding: 9px 12px;
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
@@ -239,7 +241,100 @@ button {
   color: var(--color-text);
 }
 
-.field input:focus {
+.field textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.field {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.field legend {
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.input-prefix-group {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.input-prefix-group:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.input-prefix {
+  padding: 9px 10px;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+  border-right: 1px solid var(--color-border);
+}
+
+.input-prefix-group input {
+  border: none;
+  box-shadow: none !important;
+  flex: 1;
+}
+
+.options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.option-radio,
+.option-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.option-radio input,
+.option-checkbox input {
+  accent-color: var(--color-accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.option-checkbox-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.option-livre-input {
+  margin-left: 24px;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  max-width: 260px;
+}
+
+.option-livre-input:focus {
   outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px var(--color-accent-soft);
@@ -421,4 +516,102 @@ button {
   background: var(--color-accent-soft);
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+/* ── Wizard ── */
+.wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wizard-progress-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.wizard-progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.wizard-progress-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.save-status {
+  font-style: italic;
+}
+
+.wizard-card {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wizard-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wizard-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+}
+
+/* ── Resumo ── */
+.wizard-resumo {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.resumo-bloco {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.resumo-bloco:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.resumo-lista {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resumo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.resumo-item dt {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.resumo-item dd {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text);
+  white-space: pre-wrap;
 }
