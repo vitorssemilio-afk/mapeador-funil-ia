@@ -109,29 +109,43 @@ export function MapeamentoWizard({ mapeamento, onStatusChange }: Props) {
   }
 
   async function handleGerarFunil() {
-    flushSave();
+    if (saveTimeout.current) {
+      clearTimeout(saveTimeout.current);
+      saveTimeout.current = null;
+    }
     setSubmitting(true);
     setSubmitError(null);
 
-    const nomeQ0 = respostasRef.current.q0_nome_negocio;
-    const nomeNegocio =
-      typeof nomeQ0 === 'string' && nomeQ0.trim() ? nomeQ0.trim() : mapeamento.nome_negocio;
+    await persist(respostasRef.current);
 
-    const { data, error } = await supabase
+    const { error: fnError } = await supabase.functions.invoke('gerar-funil', {
+      body: { mapeamento_id: mapeamento.id },
+    });
+
+    if (fnError) {
+      setSubmitting(false);
+      setSubmitError('Não foi possível gerar o funil. Tente novamente em instantes.');
+      return;
+    }
+
+    const { data: atualizado, error: refetchError } = await supabase
       .from('mapeamentos')
-      .update({ status: 'processando_ia', respostas: respostasRef.current, nome_negocio: nomeNegocio })
+      .select('*')
       .eq('id', mapeamento.id)
-      .select()
       .single();
 
     setSubmitting(false);
 
-    if (error) {
-      setSubmitError(error.message);
+    if (refetchError || !atualizado) {
+      setSubmitError('O funil foi gerado, mas não foi possível atualizar a tela. Recarregue a página.');
       return;
     }
 
-    onStatusChange(data);
+    if (atualizado.status === 'erro') {
+      setSubmitError('A IA não conseguiu gerar o funil. Tente novamente.');
+    }
+
+    onStatusChange(atualizado);
   }
 
   const isResumo = step === RESUMO_STEP;
@@ -166,6 +180,9 @@ export function MapeamentoWizard({ mapeamento, onStatusChange }: Props) {
           </>
         )}
 
+        {isResumo && submitting && (
+          <p className="field-hint">Gerando seu funil com IA, isso pode levar até 1 minuto…</p>
+        )}
         {submitError && <p className="form-error">{submitError}</p>}
 
         <div className="wizard-actions">

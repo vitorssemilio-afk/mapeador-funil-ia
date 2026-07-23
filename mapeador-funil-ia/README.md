@@ -1,7 +1,5 @@
 # Mapeador de Funil IA
 
-Fase 1 — fundação do app: schema Supabase, autenticação e estrutura de rotas.
-
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
@@ -19,7 +17,7 @@ npm run dev
 - `/login` — autenticação (login/cadastro)
 - `/` — dashboard com lista de mapeamentos
 - `/novo` — criação de um novo mapeamento
-- `/mapeamento/:id` — respostas do mapeamento + funil gerado pela IA
+- `/mapeamento/:id` — wizard de mapeamento (rascunho), status de processamento ou funis gerados
 
 ## Tabelas (Supabase)
 
@@ -28,3 +26,22 @@ npm run dev
 - `campos_padrao` — biblioteca reutilizável de campos (LEAD/CONTATO)
 
 Todas as tabelas têm RLS habilitado: cada usuário só acessa seus próprios registros.
+
+## Edge Function `gerar-funil`
+
+Recebe `mapeamento_id`, monta as respostas em texto, chama a Anthropic API e grava os funis
+gerados em `funis_gerados`, atualizando `mapeamentos.status` para `concluido` ou `erro`.
+
+Deploy e configuração via [Supabase CLI](https://supabase.com/docs/guides/cli):
+
+```bash
+supabase functions deploy gerar-funil
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+# opcional — sobrescreve o modelo padrão (claude-sonnet-4-6)
+supabase secrets set ANTHROPIC_MODEL=claude-sonnet-4-6
+```
+
+`SUPABASE_URL` e `SUPABASE_ANON_KEY` já ficam disponíveis automaticamente no runtime da função.
+A função usa o JWT do usuário autenticado (repassado pelo front via `supabase.functions.invoke`)
+para ler/gravar os dados, então o RLS garante que cada usuário só gera funil para os próprios
+mapeamentos.

@@ -24,7 +24,8 @@ export type TipoFunil =
 export type EtapaFunil = {
   nome: string;
   objetivo: string;
-  gatilhos: string[];
+  gatilho_entrada: string;
+  gatilho_saida: string;
   tarefas: string[];
   campos_obrigatorios: string[];
   campos_desejaveis: string[];
@@ -33,7 +34,7 @@ export type EtapaFunil = {
   regras_perda: string[];
   responsavel: string;
   automacao: string[];
-  script_sugerido: string;
+  script_sugerido: string | null;
 };
 
 export type FunilGerado = {
