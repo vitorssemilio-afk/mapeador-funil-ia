@@ -1,21 +1,30 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
+import { useNavigate, useParams } from 'react-router-dom';
+import { FunilDetalhado } from '../components/funil/FunilDetalhado';
 import { StatusBadge } from '../components/StatusBadge';
+import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
+import { useAuth } from '../contexts/AuthContext';
+import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { supabase } from '../lib/supabaseClient';
-import type { FunilGerado, Mapeamento as MapeamentoType } from '../types/database';
+import type { EtapaFunil, FunilGerado, Mapeamento as MapeamentoType } from '../types/database';
 
 export function Mapeamento() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [mapeamento, setMapeamento] = useState<MapeamentoType | null>(null);
   const [funis, setFunis] = useState<FunilGerado[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retomando, setRetomando] = useState(false);
+  const [duplicando, setDuplicando] = useState(false);
+  const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
     if (!id) return;
     const mapeamentoId = id;
     let cancelled = false;
+    setRetomando(false);
 
     async function load() {
       setLoading(true);
@@ -59,11 +68,52 @@ export function Mapeamento() {
     };
   }, [id]);
 
+  function handleEtapasChange(funilId: string, novasEtapas: EtapaFunil[]) {
+    setFunis((prev) =>
+      prev.map((funil) => (funil.id === funilId ? { ...funil, etapas: novasEtapas } : funil)),
+    );
+  }
+
+  async function handleExportar() {
+    if (!mapeamento) return;
+    setExportando(true);
+    try {
+      await exportarFunisParaExcel(mapeamento.nome_negocio, funis);
+    } finally {
+      setExportando(false);
+    }
+  }
+
+  async function handleDuplicar() {
+    if (!mapeamento || !user) return;
+    setDuplicando(true);
+
+    const { data, error: dupError } = await supabase
+      .from('mapeamentos')
+      .insert({
+        user_id: user.id,
+        nome_negocio: `${mapeamento.nome_negocio} (cópia)`,
+        status: 'em_preenchimento',
+        respostas: mapeamento.respostas,
+      })
+      .select()
+      .single();
+
+    setDuplicando(false);
+
+    if (dupError) {
+      setError(dupError.message);
+      return;
+    }
+
+    navigate(`/mapeamento/${data.id}`);
+  }
+
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error) return <p className="form-error">{error}</p>;
   if (!mapeamento) return <p className="form-error">Mapeamento não encontrado.</p>;
 
-  const emEdicao = mapeamento.status === 'em_preenchimento' || mapeamento.status === 'erro';
+  const podeRetomar = mapeamento.status === 'em_preenchimento' || mapeamento.status === 'erro';
 
   return (
     <div className="page">
@@ -72,41 +122,71 @@ export function Mapeamento() {
           <h1>{mapeamento.nome_negocio}</h1>
           <StatusBadge status={mapeamento.status} />
         </div>
+        <div className="page-header-actions">
+          {mapeamento.status === 'concluido' && funis.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleExportar}
+              disabled={exportando}
+            >
+              {exportando ? 'Exportando…' : 'Exportar para Excel'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleDuplicar}
+            disabled={duplicando}
+          >
+            {duplicando ? 'Duplicando…' : 'Duplicar como novo mapeamento'}
+          </button>
+        </div>
       </div>
 
-      {emEdicao && (
+      {mapeamento.status === 'em_preenchimento' && !retomando && (
+        <section className="card">
+          <h2>Continue seu mapeamento</h2>
+          <p className="field-hint">
+            Você já começou a responder o formulário. Retome de onde parou para gerar o funil.
+          </p>
+          <button type="button" className="btn btn-primary" onClick={() => setRetomando(true)}>
+            Retomar formulário
+          </button>
+        </section>
+      )}
+
+      {mapeamento.status === 'erro' && !retomando && (
+        <section className="card">
+          <h2>Não foi possível gerar o funil</h2>
+          <p className="field-hint">Revise as respostas e tente novamente.</p>
+          <button type="button" className="btn btn-primary" onClick={() => setRetomando(true)}>
+            Revisar e tentar novamente
+          </button>
+        </section>
+      )}
+
+      {podeRetomar && retomando && (
         <MapeamentoWizard mapeamento={mapeamento} onStatusChange={setMapeamento} />
       )}
 
       {mapeamento.status === 'processando_ia' && (
-        <section className="card">
-          <h2>Gerando seu funil</h2>
-          <p className="field-hint">
-            Suas respostas foram enviadas. A geração automática do funil pela IA será concluída em
-            uma próxima fase.
-          </p>
+        <section className="card processando-card">
+          <div className="spinner" aria-hidden="true" />
+          <p>Analisando as respostas e montando seu funil...</p>
         </section>
       )}
 
-      {mapeamento.status === 'concluido' && (
-        <section className="card">
-          <h2>Funis gerados</h2>
-          {funis.length === 0 ? (
+      {mapeamento.status === 'concluido' &&
+        (funis.length === 0 ? (
+          <section className="card">
             <p className="field-hint">Nenhum funil encontrado para este mapeamento.</p>
-          ) : (
-            <div className="funis-grid">
-              {funis.map((funil) => (
-                <div key={funil.id} className="funil-card">
-                  <h3>{funil.nome_funil}</h3>
-                  <span className="tipo-funil-badge">{funil.tipo_funil}</span>
-                  {funil.justificativa && <p className="field-hint">{funil.justificativa}</p>}
-                  <p className="field-hint">{funil.etapas.length} etapa(s)</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+          </section>
+        ) : (
+          funis.map((funil) => (
+            <FunilDetalhado key={funil.id} funil={funil} onChange={handleEtapasChange} />
+          ))
+        ))}
     </div>
   );
 }

@@ -483,31 +483,6 @@ button {
   color: var(--color-text-muted);
 }
 
-/* ── Mapeamento detail ── */
-.respostas-preview {
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 12px;
-  font-size: 12px;
-  overflow-x: auto;
-}
-
-.funis-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.funil-card {
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .tipo-funil-badge {
   align-self: flex-start;
   font-size: 11px;
@@ -516,6 +491,139 @@ button {
   background: var(--color-accent-soft);
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Processando ── */
+.processando-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Funil detalhado ── */
+.funil-detalhado {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.funil-detalhado-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.funil-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.funil-etapas-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+
+.funil-etapas-table th,
+.funil-etapas-table td {
+  border: 1px solid var(--color-border);
+  padding: 0;
+  vertical-align: top;
+}
+
+.funil-etapas-table thead th {
+  background: var(--color-bg);
+  padding: 8px;
+  min-width: 200px;
+}
+
+.campo-label-cell {
+  background: var(--color-bg);
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  padding: 8px 10px;
+  white-space: nowrap;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.etapa-nome-input {
+  width: 100%;
+  min-width: 190px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.etapa-nome-input:hover {
+  border-color: var(--color-border);
+}
+
+.etapa-nome-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.etapa-cell-input {
+  width: 100%;
+  min-width: 190px;
+  height: 100%;
+  min-height: 56px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--color-text);
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.etapa-cell-input:hover {
+  border-color: var(--color-border);
+}
+
+.etapa-cell-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
 /* ── Wizard ── */
