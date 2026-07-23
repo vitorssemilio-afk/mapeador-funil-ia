@@ -8,53 +8,51 @@ export type FunilIA = {
   etapas: EtapaFunil[];
 };
 
-type AnthropicMessage = {
-  role: 'user' | 'assistant';
+type GeminiTurn = {
+  role: 'user' | 'model';
   content: string;
 };
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_TENTATIVAS = 2;
 
-async function chamarClaude(messages: AnthropicMessage[]): Promise<string> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+async function chamarGemini(turns: GeminiTurn[]): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY não configurada nas secrets da função.');
+    throw new Error('GEMINI_API_KEY não configurada nas secrets da função.');
   }
 
-  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-4-6';
+  const model = Deno.env.get('GEMINI_MODEL') || 'gemini-2.0-flash';
 
-  const response = await fetch(ANTHROPIC_API_URL, {
+  const response = await fetch(`${GEMINI_API_BASE}/${model}:generateContent`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
+      'x-goog-api-key': apiKey,
     },
     body: JSON.stringify({
-      model,
-      max_tokens: 8000,
-      system: SYSTEM_PROMPT,
-      messages,
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: turns.map((turn) => ({ role: turn.role, parts: [{ text: turn.content }] })),
+      generationConfig: {
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+      },
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Anthropic API respondeu ${response.status}: ${errorText}`);
+    throw new Error(`Gemini API respondeu ${response.status}: ${errorText}`);
   }
 
   const data = await response.json();
-  const textBlock = data.content?.find(
-    (block: { type: string; text?: string }) => block.type === 'text',
-  );
+  const texto = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-  if (!textBlock?.text) {
+  if (!texto) {
     throw new Error('Resposta da IA não contém texto.');
   }
 
-  return textBlock.text as string;
+  return texto as string;
 }
 
 function extrairJson(texto: string): string {
@@ -116,17 +114,17 @@ export async function gerarFunisComIA(
   respostasTexto: string,
   nomeNegocio: string,
 ): Promise<FunilIA[]> {
-  const messages: AnthropicMessage[] = [
+  const turns: GeminiTurn[] = [
     { role: 'user', content: `Negócio: ${nomeNegocio}\n\n${respostasTexto}` },
   ];
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
-    const textoResposta = await chamarClaude(messages);
+    const textoResposta = await chamarGemini(turns);
     const funis = parseRespostaIA(textoResposta);
     if (funis) return funis;
 
-    messages.push({ role: 'assistant', content: textoResposta });
-    messages.push({
+    turns.push({ role: 'model', content: textoResposta });
+    turns.push({
       role: 'user',
       content:
         'Sua resposta anterior não era um JSON válido. Responda apenas com JSON válido, sem texto adicional.',
