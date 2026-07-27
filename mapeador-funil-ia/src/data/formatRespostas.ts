@@ -5,7 +5,10 @@ export function formatValorPergunta(pergunta: Pergunta, respostas: Record<string
 
   if (pergunta.tipo === 'escolha_unica') {
     const opcao = pergunta.opcoes?.find((o) => o.value === valor);
-    return opcao?.label ?? '—';
+    if (!opcao) return '—';
+    const livre = (respostas[`${pergunta.id}__livre`] as Record<string, string>) ?? {};
+    const texto = livre[opcao.value];
+    return texto ? `${opcao.label} (${texto})` : opcao.label;
   }
 
   if (pergunta.tipo === 'escolha_multipla') {

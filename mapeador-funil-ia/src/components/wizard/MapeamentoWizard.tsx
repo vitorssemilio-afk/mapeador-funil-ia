@@ -60,7 +60,7 @@ export function MapeamentoWizard({ mapeamento, onStatusChange }: Props) {
   async function persist(nextRespostas: Record<string, unknown>) {
     setSaveStatus('saving');
 
-    const nomeQ0 = nextRespostas.q0_nome_negocio;
+    const nomeQ0 = nextRespostas.q0_nome_empresa;
     const nomeNegocio =
       typeof nomeQ0 === 'string' && nomeQ0.trim() ? nomeQ0.trim() : mapeamento.nome_negocio;
 

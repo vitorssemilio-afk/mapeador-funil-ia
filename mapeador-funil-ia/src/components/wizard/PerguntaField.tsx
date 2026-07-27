@@ -58,22 +58,41 @@ export function PerguntaField({ pergunta, respostas, onChange }: Props) {
   }
 
   if (pergunta.tipo === 'escolha_unica') {
+    const livreKeyUnica = `${pergunta.id}__livre`;
+    const livreValoresUnica = (respostas[livreKeyUnica] as Record<string, string>) ?? {};
+
     return (
       <fieldset className="field">
         <legend>{pergunta.label}</legend>
         {pergunta.helper && <p className="field-hint">{pergunta.helper}</p>}
         <div className="options-list">
-          {pergunta.opcoes?.map((opcao) => (
-            <label key={opcao.value} className="option-radio">
-              <input
-                type="radio"
-                name={pergunta.id}
-                checked={valor === opcao.value}
-                onChange={() => onChange(pergunta.id, opcao.value)}
-              />
-              <span>{opcao.label}</span>
-            </label>
-          ))}
+          {pergunta.opcoes?.map((opcao) => {
+            const checked = valor === opcao.value;
+            return (
+              <div key={opcao.value} className="option-checkbox-wrap">
+                <label className="option-radio">
+                  <input
+                    type="radio"
+                    name={pergunta.id}
+                    checked={checked}
+                    onChange={() => onChange(pergunta.id, opcao.value)}
+                  />
+                  <span>{opcao.label}</span>
+                </label>
+                {opcao.campoLivre && checked && (
+                  <input
+                    type="text"
+                    className="option-livre-input"
+                    placeholder={opcao.campoLivre.placeholder}
+                    value={livreValoresUnica[opcao.value] ?? ''}
+                    onChange={(e) =>
+                      onChange(livreKeyUnica, { ...livreValoresUnica, [opcao.value]: e.target.value })
+                    }
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       </fieldset>
     );
