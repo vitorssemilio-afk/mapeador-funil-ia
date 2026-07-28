@@ -4,15 +4,17 @@
   --color-border: #e2e5eb;
   --color-text: #1c2230;
   --color-text-muted: #667085;
-  --color-accent: #2563eb;
-  --color-accent-hover: #1d4ed8;
-  --color-accent-soft: #eaf0fe;
+  --color-accent: #a6192e;
+  --color-accent-hover: #7d1322;
+  --color-accent-soft: #fbeaec;
+  --color-info: #2563eb;
+  --color-info-soft: #eaf0fe;
   --color-success: #16794f;
   --color-success-soft: #e5f6ee;
   --color-warning: #a15c00;
   --color-warning-soft: #fdf1e0;
-  --color-danger: #b3261e;
-  --color-danger-soft: #fceeed;
+  --color-danger: #d64545;
+  --color-danger-soft: #fdeceb;
   --radius: 8px;
   --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.06);
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -455,8 +457,8 @@ button {
 }
 
 .status-processando_ia {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
+  background: var(--color-info-soft);
+  color: var(--color-info);
 }
 
 .status-concluido {
@@ -516,7 +518,7 @@ button {
   height: 28px;
   border-radius: 50%;
   border: 3px solid var(--color-border);
-  border-top-color: var(--color-accent);
+  border-top-color: var(--color-info);
   animation: spin 0.8s linear infinite;
 }
 
