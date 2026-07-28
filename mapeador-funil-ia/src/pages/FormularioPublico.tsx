@@ -12,6 +12,14 @@ export function FormularioPublico() {
   const [enviado, setEnviado] = useState(false);
 
   useEffect(() => {
+    const tituloAnterior = document.title;
+    document.title = 'Formulário de Diagnóstico Comercial';
+    return () => {
+      document.title = tituloAnterior;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!id && !codigo) return;
     let cancelled = false;
 
@@ -46,7 +54,7 @@ export function FormularioPublico() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <span className="topbar-brand">Mapeador de Funil IA</span>
+        <span className="topbar-brand">Formulário de Diagnóstico Comercial</span>
       </header>
       <main className="app-main">
         <div className="page">
