@@ -6,6 +6,9 @@ import { CamposPadrao } from './pages/CamposPadrao';
 import { Dashboard } from './pages/Dashboard';
 import { FormularioAdmin } from './pages/FormularioAdmin';
 import { FormularioPublico } from './pages/FormularioPublico';
+import { ImplementacaoChecklistAdmin } from './pages/ImplementacaoChecklistAdmin';
+import { ImplementacaoDetalhe } from './pages/ImplementacaoDetalhe';
+import { ImplementacoesCrm } from './pages/ImplementacoesCrm';
 import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
 import { NovoMapeamento } from './pages/NovoMapeamento';
@@ -30,6 +33,9 @@ function App() {
             <Route path="/mapeamento/:id" element={<Mapeamento />} />
             <Route path="/campos-padrao" element={<CamposPadrao />} />
             <Route path="/formulario" element={<FormularioAdmin />} />
+            <Route path="/implementacoes" element={<ImplementacoesCrm />} />
+            <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
+            <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

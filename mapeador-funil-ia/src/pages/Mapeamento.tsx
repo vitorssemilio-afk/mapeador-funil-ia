@@ -6,7 +6,12 @@ import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
 import { useAuth } from '../contexts/AuthContext';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { supabase } from '../lib/supabaseClient';
-import type { EtapaFunil, FunilGerado, Mapeamento as MapeamentoType } from '../types/database';
+import type {
+  EtapaFunil,
+  FunilGerado,
+  ImplementacaoCrm,
+  Mapeamento as MapeamentoType,
+} from '../types/database';
 
 export function Mapeamento() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +32,8 @@ export function Mapeamento() {
   const [regenerando, setRegenerando] = useState(false);
   const [regenerarError, setRegenerarError] = useState<string | null>(null);
   const [excluindo, setExcluindo] = useState(false);
+  const [implementacaoExistente, setImplementacaoExistente] = useState<ImplementacaoCrm | null>(null);
+  const [iniciandoImplementacao, setIniciandoImplementacao] = useState(false);
 
   async function carregarFunis(mapeamentoId: string, versaoAlvo?: number) {
     const { data: versoesData, error: versoesError } = await supabase
@@ -95,6 +102,14 @@ export function Mapeamento() {
         await carregarFunis(mapeamentoId);
       }
 
+      const { data: implementacaoData } = await supabase
+        .from('implementacoes_crm')
+        .select('*')
+        .eq('mapeamento_id', mapeamentoId)
+        .maybeSingle();
+
+      if (!cancelled) setImplementacaoExistente(implementacaoData ?? null);
+
       if (!cancelled) setLoading(false);
     }
 
@@ -161,6 +176,31 @@ export function Mapeamento() {
     }
 
     navigate('/');
+  }
+
+  async function handleIniciarImplementacao() {
+    if (!mapeamento || !user) return;
+    setIniciandoImplementacao(true);
+
+    const { data, error: insertError } = await supabase
+      .from('implementacoes_crm')
+      .insert({
+        mapeamento_id: mapeamento.id,
+        user_id: user.id,
+        nome_cliente: mapeamento.nome_negocio,
+        status: 'pre_requisito',
+      })
+      .select()
+      .single();
+
+    setIniciandoImplementacao(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    navigate(`/implementacoes/${data.id}`);
   }
 
   async function handleDuplicar() {
@@ -272,6 +312,25 @@ export function Mapeamento() {
           >
             {duplicando ? 'Duplicando…' : 'Duplicar como novo mapeamento'}
           </button>
+          {mapeamento.status === 'concluido' &&
+            (implementacaoExistente ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => navigate(`/implementacoes/${implementacaoExistente.id}`)}
+              >
+                Ver implementação de CRM
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleIniciarImplementacao}
+                disabled={iniciandoImplementacao}
+              >
+                {iniciandoImplementacao ? 'Iniciando…' : 'Iniciar implementação de CRM'}
+              </button>
+            ))}
           <button type="button" className="btn btn-ghost" onClick={handleExcluir} disabled={excluindo}>
             {excluindo ? 'Excluindo…' : 'Excluir mapeamento'}
           </button>

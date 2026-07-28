@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0005) no SQL Editor do Supabase, ou `supabase db push` via CLI.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0006) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -26,6 +26,10 @@ npm run dev
 - `/campos-padrao` — tela de admin com a biblioteca de Campos Padrão
 - `/formulario` — tela de admin com os blocos e perguntas do formulário (o que o cliente
   responde), com CRUD completo e reordenação
+- `/implementacoes` — lista das implementações de CRM em andamento (POP de 4 semanas)
+- `/implementacoes/:id` — detalhe de uma implementação: checklist por semana, dados de acesso e
+  credenciais do cliente no CRM
+- `/implementacoes/checklist` — tela de admin dos grupos/itens de checklist do POP
 
 ## Tabelas (Supabase)
 
@@ -34,12 +38,23 @@ npm run dev
 - `campos_padrao` — biblioteca reutilizável de campos (LEAD/CONTATO)
 - `blocos_formulario` / `perguntas_formulario` — os blocos e perguntas do formulário que o
   cliente responde (editáveis pela tela `/formulario`, ver seção abaixo)
+- `implementacoes_crm` — acompanhamento do POP de implementação de CRM de cada cliente (sempre
+  vinculada a um `mapeamento`)
+- `checklist_grupos_implementacao` / `checklist_itens_implementacao` — os itens de checklist do
+  POP (editáveis pela tela `/implementacoes/checklist`)
+- `implementacao_checklist_marcado` — quais itens estão marcados em cada implementação
+- `credenciais_crm` — login/senha do cliente no CRM, sempre criptografados (ver seção
+  "Implementação de CRM" abaixo)
 
 Todas as tabelas têm RLS habilitado: cada usuário só acessa seus próprios registros. As exceções
-são `campos_padrao` (compartilhada entre todos os usuários autenticados) e
+são as tabelas pensadas pra serem compartilhadas entre todo o time: `campos_padrao`,
 `blocos_formulario`/`perguntas_formulario` (leitura liberada até pro papel `anon`, já que o
-formulário público em `/f/:codigo` precisa saber quais perguntas mostrar sem estar logado;
-escrita continua restrita a quem está autenticado).
+formulário público em `/f/:codigo` precisa saber quais perguntas mostrar sem estar logado; escrita
+restrita a quem está autenticado), e `implementacoes_crm` /
+`checklist_grupos_implementacao`/`checklist_itens_implementacao`/`implementacao_checklist_marcado`
+(leitura e escrita liberadas pra qualquer usuário autenticado, pra centralizar o acompanhamento
+entre consultores). `credenciais_crm` é a exceção mais estrita: não tem policy de select/insert
+/update nenhuma — só dá pra ler/gravar através das funções descritas na seção seguinte.
 
 `funis_gerados` guarda histórico: cada regeneração cria uma nova `versao` para o mesmo
 `mapeamento_id` em vez de sobrescrever as linhas anteriores.
@@ -94,6 +109,39 @@ O wizard privado (`/mapeamento/:id`), o formulário público (`/f/:codigo`) e a 
 `gerar-funil` (pro texto que vai pro prompt da IA) buscam esse schema do banco em vez de importar
 um arquivo fixo — qualquer mudança feita em `/formulario` vale a partir do próximo carregamento,
 sem precisar de deploy.
+
+## Implementação de CRM (`/implementacoes`)
+
+Módulo pra centralizar o acompanhamento do POP de implementação de CRM (Kommo Basic/PRO) de cada
+cliente — as 4 semanas do processo, do pré-requisito até a entrega final.
+
+- Toda implementação nasce vinculada a um mapeamento já concluído: o botão "Iniciar implementação
+  de CRM" aparece na tela do mapeamento (`/mapeamento/:id`) quando o status é `concluido`, e cria
+  uma linha em `implementacoes_crm` já ligada àquele `mapeamento_id`.
+- Na tela de detalhe (`/implementacoes/:id`): dados gerais (consultor, stakeholder, status —
+  pré-requisito / semana 1-4 / concluída / cancelada), dados de acesso (conta criada via V4,
+  e-mail da conta Kommo, WhatsApp Corporativo e Facebook confirmados, plano e período
+  contratados), e um checklist por grupo (pré-requisito, cada semana, critérios de sucesso) —
+  marcar/desmarcar um item persiste na hora.
+- Os grupos/itens de checklist são editáveis em `/implementacoes/checklist` (mesmo padrão CRUD +
+  reordenação da tela `/formulario`), pro POP poder evoluir sem precisar mexer em código.
+
+### Credenciais do cliente no CRM
+
+A seção de credenciais guarda login/senha que o cliente usa pra acessar o Kommo. A senha **nunca
+fica em texto puro no banco**: é criptografada com `pgcrypto` (`pgp_sym_encrypt`/`pgp_sym_decrypt`)
+usando uma chave gerada uma única vez e guardada no [Supabase Vault](https://supabase.com/docs/guides/database/vault)
+(migration `0006`). A tabela `credenciais_crm` não tem nenhuma policy de RLS pra select/insert
+/update — a única forma de ler ou gravar uma credencial é através de 4 funções `SECURITY DEFINER`:
+
+- `salvar_credencial_crm` / `atualizar_credencial_crm` — recebem a senha em texto (nunca o
+  bytea criptografado) e criptografam antes de gravar
+- `listar_credenciais_crm` — retorna login/observações pra montar a tabela, **sem a senha**
+- `revelar_credencial_crm` — descriptografa e retorna a senha, chamada só quando o usuário clica
+  em "Revelar" ou "Editar" na tela; a senha nunca aparece antes desse clique explícito
+
+Se o projeto Supabase não tiver o Vault habilitado, ative em **Database → Extensions →
+`supabase_vault`** antes de rodar a migration `0006`.
 
 ## Campos Padrão (`/campos-padrao`)
 

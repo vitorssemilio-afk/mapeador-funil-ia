@@ -11,6 +11,9 @@ export function Layout() {
           <Link to="/" className="topbar-brand">
             Mapeador de Funil IA
           </Link>
+          <Link to="/implementacoes" className="topbar-nav-link">
+            Implementações
+          </Link>
           <Link to="/formulario" className="topbar-nav-link">
             Formulário
           </Link>

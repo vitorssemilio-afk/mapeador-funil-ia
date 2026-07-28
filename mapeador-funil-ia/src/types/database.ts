@@ -117,6 +117,88 @@ export type PerguntaFormularioRow = {
   updated_at: string;
 };
 
+export type ImplementacaoStatus =
+  | 'pre_requisito'
+  | 'semana_1'
+  | 'semana_2'
+  | 'semana_3'
+  | 'semana_4'
+  | 'concluida'
+  | 'cancelada';
+
+export type ImplementacaoCrm = {
+  id: string;
+  mapeamento_id: string;
+  user_id: string;
+  nome_cliente: string;
+  consultor_responsavel: string | null;
+  stakeholder_decisor: string | null;
+  status: ImplementacaoStatus;
+  conta_criada_via_v4: boolean;
+  email_conta_kommo: string | null;
+  whatsapp_corporativo_confirmado: boolean;
+  acesso_facebook_confirmado: boolean;
+  plano_contratado: string | null;
+  periodo_contratado: string | null;
+  data_decisao_plano: string | null;
+  observacoes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChecklistGrupoImplementacao = {
+  id: string;
+  chave: string;
+  titulo: string;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChecklistItemImplementacao = {
+  id: string;
+  grupo_id: string;
+  texto: string;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ImplementacaoChecklistMarcado = {
+  id: string;
+  implementacao_id: string;
+  item_id: string;
+  marcado: boolean;
+  marcado_em: string;
+};
+
+export type CredencialCrmListada = {
+  id: string;
+  login: string;
+  observacoes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CredencialCrmRevelada = {
+  login: string;
+  senha: string;
+  observacoes: string | null;
+};
+
+// A tabela credenciais_crm nunca é lida/gravada diretamente pelo client —
+// só via as funções salvar/atualizar/listar/revelar_credencial_crm. Esse
+// tipo existe só pra tipar o `.delete()`, a única operação direta permitida.
+export type CredencialCrmRow = {
+  id: string;
+  implementacao_id: string;
+  login: string;
+  senha_criptografada: string;
+  observacoes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: '13';
@@ -155,6 +237,41 @@ export type Database = {
         Update: Partial<PerguntaFormularioRow>;
         Relationships: [];
       };
+      implementacoes_crm: {
+        Row: ImplementacaoCrm;
+        Insert: Partial<ImplementacaoCrm> &
+          Pick<ImplementacaoCrm, 'mapeamento_id' | 'user_id' | 'nome_cliente'>;
+        Update: Partial<ImplementacaoCrm>;
+        Relationships: [];
+      };
+      checklist_grupos_implementacao: {
+        Row: ChecklistGrupoImplementacao;
+        Insert: Partial<ChecklistGrupoImplementacao> &
+          Pick<ChecklistGrupoImplementacao, 'chave' | 'titulo' | 'ordem'>;
+        Update: Partial<ChecklistGrupoImplementacao>;
+        Relationships: [];
+      };
+      checklist_itens_implementacao: {
+        Row: ChecklistItemImplementacao;
+        Insert: Partial<ChecklistItemImplementacao> &
+          Pick<ChecklistItemImplementacao, 'grupo_id' | 'texto' | 'ordem'>;
+        Update: Partial<ChecklistItemImplementacao>;
+        Relationships: [];
+      };
+      implementacao_checklist_marcado: {
+        Row: ImplementacaoChecklistMarcado;
+        Insert: Partial<ImplementacaoChecklistMarcado> &
+          Pick<ImplementacaoChecklistMarcado, 'implementacao_id' | 'item_id'>;
+        Update: Partial<ImplementacaoChecklistMarcado>;
+        Relationships: [];
+      };
+      credenciais_crm: {
+        Row: CredencialCrmRow;
+        Insert: Partial<CredencialCrmRow> &
+          Pick<CredencialCrmRow, 'implementacao_id' | 'login' | 'senha_criptografada'>;
+        Update: Partial<CredencialCrmRow>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -171,6 +288,32 @@ export type Database = {
       public_save_respostas: {
         Args: { p_id: string; p_respostas: Record<string, unknown>; p_finalizar: boolean };
         Returns: undefined;
+      };
+      salvar_credencial_crm: {
+        Args: {
+          p_implementacao_id: string;
+          p_login: string;
+          p_senha: string;
+          p_observacoes?: string | null;
+        };
+        Returns: string;
+      };
+      atualizar_credencial_crm: {
+        Args: {
+          p_id: string;
+          p_login: string;
+          p_senha: string;
+          p_observacoes?: string | null;
+        };
+        Returns: undefined;
+      };
+      listar_credenciais_crm: {
+        Args: { p_implementacao_id: string };
+        Returns: CredencialCrmListada[];
+      };
+      revelar_credencial_crm: {
+        Args: { p_id: string };
+        Returns: CredencialCrmRevelada[];
       };
     };
     Enums: {
