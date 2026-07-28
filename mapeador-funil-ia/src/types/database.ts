@@ -10,8 +10,16 @@ export type Mapeamento = {
   nome_negocio: string;
   status: MapeamentoStatus;
   respostas: Record<string, unknown>;
+  enviado_pelo_cliente: boolean;
   created_at: string;
   updated_at: string;
+};
+
+export type MapeamentoPublico = {
+  id: string;
+  nome_negocio: string;
+  respostas: Record<string, unknown>;
+  enviado_pelo_cliente: boolean;
 };
 
 export type TipoFunil =
@@ -99,7 +107,14 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      public_get_mapeamento: {
+        Args: { p_id: string };
+        Returns: MapeamentoPublico[];
+      };
+      public_save_respostas: {
+        Args: { p_id: string; p_respostas: Record<string, unknown>; p_finalizar: boolean };
+        Returns: undefined;
+      };
     };
     Enums: {
       mapeamento_status: MapeamentoStatus;

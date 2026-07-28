@@ -19,6 +19,7 @@ export function Mapeamento() {
   const [retomando, setRetomando] = useState(false);
   const [duplicando, setDuplicando] = useState(false);
   const [exportando, setExportando] = useState(false);
+  const [linkCopiado, setLinkCopiado] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -99,6 +100,14 @@ export function Mapeamento() {
     }
   }
 
+  async function handleCopiarLink() {
+    if (!mapeamento) return;
+    const link = `${window.location.origin}/formulario/${mapeamento.id}`;
+    await navigator.clipboard.writeText(link);
+    setLinkCopiado(true);
+    setTimeout(() => setLinkCopiado(false), 2000);
+  }
+
   async function handleDuplicar() {
     if (!mapeamento || !user) return;
     setDuplicando(true);
@@ -136,8 +145,16 @@ export function Mapeamento() {
         <div>
           <h1>{mapeamento.nome_negocio}</h1>
           <StatusBadge status={mapeamento.status} />
+          {mapeamento.enviado_pelo_cliente && (
+            <span className="status-badge status-concluido">Cliente respondeu</span>
+          )}
         </div>
         <div className="page-header-actions">
+          {!mapeamento.enviado_pelo_cliente && (
+            <button type="button" className="btn btn-secondary" onClick={handleCopiarLink}>
+              {linkCopiado ? 'Link copiado!' : 'Copiar link para o cliente'}
+            </button>
+          )}
           {mapeamento.status === 'concluido' && funis.length > 0 && (
             <button
               type="button"

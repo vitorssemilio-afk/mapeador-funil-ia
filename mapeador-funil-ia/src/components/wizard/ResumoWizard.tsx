@@ -1,14 +1,21 @@
 import { FORM_BLOCKS } from '../../data/formSchema';
 import { formatValorPergunta } from '../../data/formatRespostas';
 
-export function ResumoWizard({ respostas }: { respostas: Record<string, unknown> }) {
+type Props = {
+  respostas: Record<string, unknown>;
+  titulo?: string;
+  mensagem?: string;
+};
+
+export function ResumoWizard({
+  respostas,
+  titulo = 'Resumo do mapeamento',
+  mensagem = 'Revise as respostas abaixo. Você pode voltar para editar qualquer bloco antes de gerar o funil.',
+}: Props) {
   return (
     <div className="wizard-resumo">
-      <h2>Resumo do mapeamento</h2>
-      <p className="field-hint">
-        Revise as respostas abaixo. Você pode voltar para editar qualquer bloco antes de gerar o
-        funil.
-      </p>
+      <h2>{titulo}</h2>
+      <p className="field-hint">{mensagem}</p>
 
       {FORM_BLOCKS.map((bloco) => (
         <div key={bloco.titulo} className="resumo-bloco">
