@@ -7,6 +7,15 @@ const LABELS: Record<MapeamentoStatus, string> = {
   erro: 'Erro',
 };
 
-export function StatusBadge({ status }: { status: MapeamentoStatus }) {
+type Props = {
+  status: MapeamentoStatus;
+  enviadoPeloCliente?: boolean;
+};
+
+export function StatusBadge({ status, enviadoPeloCliente = false }: Props) {
+  if (status === 'em_preenchimento' && enviadoPeloCliente) {
+    return <span className="status-badge status-concluido">Cliente respondeu</span>;
+  }
+
   return <span className={`status-badge status-${status}`}>{LABELS[status]}</span>;
 }

@@ -144,10 +144,7 @@ export function Mapeamento() {
       <div className="page-header">
         <div>
           <h1>{mapeamento.nome_negocio}</h1>
-          <StatusBadge status={mapeamento.status} />
-          {mapeamento.enviado_pelo_cliente && (
-            <span className="status-badge status-concluido">Cliente respondeu</span>
-          )}
+          <StatusBadge status={mapeamento.status} enviadoPeloCliente={mapeamento.enviado_pelo_cliente} />
         </div>
         <div className="page-header-actions">
           {!mapeamento.enviado_pelo_cliente && (
@@ -177,29 +174,31 @@ export function Mapeamento() {
       </div>
 
       {mapeamento.status === 'em_preenchimento' && !retomando && (
-        <section className="card">
+        <section className="card form-card">
           <h2>Continue seu mapeamento</h2>
           <p className="field-hint">
-            Você já começou a responder o formulário. Retome de onde parou para gerar o funil.
+            {mapeamento.enviado_pelo_cliente
+              ? 'O cliente já respondeu. Revise as respostas e gere o funil.'
+              : 'Você já começou a responder o formulário. Retome de onde parou para gerar o funil.'}
           </p>
-          <button type="button" className="btn btn-primary" onClick={() => setRetomando(true)}>
-            Retomar formulário
+          <button type="button" className="btn btn-primary btn-auto" onClick={() => setRetomando(true)}>
+            {mapeamento.enviado_pelo_cliente ? 'Revisar e gerar funil' : 'Retomar formulário'}
           </button>
         </section>
       )}
 
       {mapeamento.status === 'erro' && !retomando && (
-        <section className="card">
+        <section className="card form-card">
           <h2>Não foi possível gerar o funil</h2>
           <p className="field-hint">Revise as respostas e tente novamente.</p>
-          <button type="button" className="btn btn-primary" onClick={() => setRetomando(true)}>
+          <button type="button" className="btn btn-primary btn-auto" onClick={() => setRetomando(true)}>
             Revisar e tentar novamente
           </button>
         </section>
       )}
 
       {podeRetomar && retomando && (
-        <MapeamentoWizard mapeamento={mapeamento} onStatusChange={handleStatusChange} />
+        <MapeamentoWizard mapeamento={mapeamento} onStatusChange={handleStatusChange} iniciarNoResumo />
       )}
 
       {mapeamento.status === 'processando_ia' && (

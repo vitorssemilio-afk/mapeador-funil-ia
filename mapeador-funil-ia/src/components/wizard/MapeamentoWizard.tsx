@@ -14,6 +14,7 @@ type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 type Props = {
   mapeamento: Mapeamento;
   onStatusChange: (mapeamento: Mapeamento) => void;
+  iniciarNoResumo?: boolean;
 };
 
 function temResposta(valor: unknown): boolean {
@@ -36,8 +37,8 @@ function saveStatusLabel(status: SaveStatus): string {
   }
 }
 
-export function MapeamentoWizard({ mapeamento, onStatusChange }: Props) {
-  const [step, setStep] = useState(0);
+export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo = false }: Props) {
+  const [step, setStep] = useState(iniciarNoResumo ? RESUMO_STEP : 0);
   const [respostas, setRespostas] = useState<Record<string, unknown>>(mapeamento.respostas ?? {});
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [submitting, setSubmitting] = useState(false);

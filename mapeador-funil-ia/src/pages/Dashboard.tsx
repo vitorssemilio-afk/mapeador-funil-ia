@@ -76,7 +76,7 @@ export function Dashboard() {
                 <tr key={m.id}>
                   <td>{m.nome_negocio}</td>
                   <td>
-                    <StatusBadge status={m.status} />
+                    <StatusBadge status={m.status} enviadoPeloCliente={m.enviado_pelo_cliente} />
                   </td>
                   <td>{new Date(m.created_at).toLocaleDateString('pt-BR')}</td>
                   <td className="table-actions">
