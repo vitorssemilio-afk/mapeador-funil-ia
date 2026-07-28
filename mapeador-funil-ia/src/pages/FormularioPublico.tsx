@@ -54,7 +54,12 @@ export function FormularioPublico() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <span className="topbar-brand">Formulário de Diagnóstico Comercial</span>
+        <span className="topbar-brand">
+          <span className="brand-mark" aria-hidden="true">
+            V4
+          </span>
+          Formulário de Diagnóstico Comercial
+        </span>
       </header>
       <main className="app-main">
         <div className="page">

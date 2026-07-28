@@ -1,5 +1,9 @@
-import { Link, Outlet } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+
+function navLinkClass({ isActive }: { isActive: boolean }): string {
+  return `topbar-nav-link${isActive ? ' active' : ''}`;
+}
 
 export function Layout() {
   const { user, signOut } = useAuth();
@@ -8,18 +12,23 @@ export function Layout() {
     <div className="app-shell">
       <header className="topbar">
         <div className="topbar-left">
-          <Link to="/" className="topbar-brand">
+          <NavLink to="/" end className="topbar-brand">
+            <span className="brand-mark" aria-hidden="true">
+              M
+            </span>
             Mapeador de Funil IA
-          </Link>
-          <Link to="/implementacoes" className="topbar-nav-link">
-            Implementações
-          </Link>
-          <Link to="/formulario" className="topbar-nav-link">
-            Formulário
-          </Link>
-          <Link to="/campos-padrao" className="topbar-nav-link">
-            Campos Padrão
-          </Link>
+          </NavLink>
+          <nav className="topbar-nav">
+            <NavLink to="/implementacoes" className={navLinkClass}>
+              Implementações
+            </NavLink>
+            <NavLink to="/formulario" className={navLinkClass}>
+              Formulário
+            </NavLink>
+            <NavLink to="/campos-padrao" className={navLinkClass}>
+              Campos Padrão
+            </NavLink>
+          </nav>
         </div>
         <div className="topbar-user">
           <span className="topbar-email">{user?.email}</span>
