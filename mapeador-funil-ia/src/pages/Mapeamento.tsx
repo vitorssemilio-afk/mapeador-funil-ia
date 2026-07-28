@@ -26,6 +26,7 @@ export function Mapeamento() {
   const [instrucoesExtras, setInstrucoesExtras] = useState('');
   const [regenerando, setRegenerando] = useState(false);
   const [regenerarError, setRegenerarError] = useState<string | null>(null);
+  const [excluindo, setExcluindo] = useState(false);
 
   async function carregarFunis(mapeamentoId: string, versaoAlvo?: number) {
     const { data: versoesData, error: versoesError } = await supabase
@@ -140,6 +141,28 @@ export function Mapeamento() {
     setTimeout(() => setLinkCopiado(false), 2000);
   }
 
+  async function handleExcluir() {
+    if (!mapeamento) return;
+    if (
+      !window.confirm(
+        `Excluir o mapeamento "${mapeamento.nome_negocio}"? Essa ação não pode ser desfeita e também apaga os funis gerados a partir dele.`,
+      )
+    ) {
+      return;
+    }
+
+    setExcluindo(true);
+    const { error: deleteError } = await supabase.from('mapeamentos').delete().eq('id', mapeamento.id);
+    setExcluindo(false);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    navigate('/');
+  }
+
   async function handleDuplicar() {
     if (!mapeamento || !user) return;
     setDuplicando(true);
@@ -211,6 +234,12 @@ export function Mapeamento() {
 
   const podeRetomar = mapeamento.status === 'em_preenchimento' || mapeamento.status === 'erro';
   const versaoMaisRecente = versoesDisponiveis[0];
+  const temRespostas = Object.values(mapeamento.respostas ?? {}).some((valor) => {
+    if (Array.isArray(valor)) return valor.length > 0;
+    if (typeof valor === 'string') return valor.trim().length > 0;
+    if (typeof valor === 'number') return true;
+    return false;
+  });
 
   return (
     <div className="page">
@@ -243,20 +272,44 @@ export function Mapeamento() {
           >
             {duplicando ? 'Duplicando…' : 'Duplicar como novo mapeamento'}
           </button>
+          <button type="button" className="btn btn-ghost" onClick={handleExcluir} disabled={excluindo}>
+            {excluindo ? 'Excluindo…' : 'Excluir mapeamento'}
+          </button>
         </div>
       </div>
 
       {mapeamento.status === 'em_preenchimento' && !retomando && (
         <section className="card form-card">
-          <h2>Continue seu mapeamento</h2>
-          <p className="field-hint">
-            {mapeamento.enviado_pelo_cliente
-              ? 'O cliente já respondeu. Revise as respostas e gere o funil.'
-              : 'Você já começou a responder o formulário. Retome de onde parou para gerar o funil.'}
-          </p>
-          <button type="button" className="btn btn-primary btn-auto" onClick={() => setRetomando(true)}>
-            {mapeamento.enviado_pelo_cliente ? 'Revisar e gerar funil' : 'Retomar formulário'}
-          </button>
+          {mapeamento.enviado_pelo_cliente ? (
+            <>
+              <h2>Continue seu mapeamento</h2>
+              <p className="field-hint">O cliente já respondeu. Revise as respostas e gere o funil.</p>
+              <button type="button" className="btn btn-primary btn-auto" onClick={() => setRetomando(true)}>
+                Revisar e gerar funil
+              </button>
+            </>
+          ) : temRespostas ? (
+            <>
+              <h2>Continue seu mapeamento</h2>
+              <p className="field-hint">
+                Você já começou a responder o formulário. Retome de onde parou para gerar o funil.
+              </p>
+              <button type="button" className="btn btn-primary btn-auto" onClick={() => setRetomando(true)}>
+                Retomar formulário
+              </button>
+            </>
+          ) : (
+            <>
+              <h2>Aguardando o cliente</h2>
+              <p className="field-hint">
+                Copie o link acima e envie para o cliente responder o formulário. Assim que ele
+                enviar as respostas, volte aqui para gerar o funil.
+              </p>
+              <button type="button" className="btn btn-ghost btn-auto" onClick={() => setRetomando(true)}>
+                Preencher manualmente
+              </button>
+            </>
+          )}
         </section>
       )}
 

@@ -30,6 +30,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro | null>(null);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -77,6 +78,27 @@ export function Dashboard() {
 
   function toggleFiltro(novoFiltro: Filtro) {
     setFiltro((atual) => (atual === novoFiltro ? null : novoFiltro));
+  }
+
+  async function handleExcluir(m: Mapeamento) {
+    if (
+      !window.confirm(
+        `Excluir o mapeamento "${m.nome_negocio}"? Essa ação não pode ser desfeita e também apaga os funis gerados a partir dele.`,
+      )
+    ) {
+      return;
+    }
+
+    setExcluindoId(m.id);
+    const { error: deleteError } = await supabase.from('mapeamentos').delete().eq('id', m.id);
+    setExcluindoId(null);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setMapeamentos((prev) => prev.filter((item) => item.id !== m.id));
   }
 
   return (
@@ -181,7 +203,15 @@ export function Dashboard() {
                       <td className="table-actions">
                         <Link to={`/mapeamento/${m.id}`} className="btn btn-secondary">
                           Ver
-                        </Link>
+                        </Link>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleExcluir(m)}
+                          disabled={excluindoId === m.id}
+                        >
+                          {excluindoId === m.id ? 'Excluindo…' : 'Excluir'}
+                        </button>
                       </td>
                     </tr>
                   ))}
