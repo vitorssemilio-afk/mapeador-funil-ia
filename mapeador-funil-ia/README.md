@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001, 0002, 0003, depois 0004) no SQL Editor do Supabase, ou `supabase db push` via CLI.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0005) no SQL Editor do Supabase, ou `supabase db push` via CLI.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -24,16 +24,22 @@ npm run dev
 - `/formulario/:id` — rota pública antiga (por `uuid` em vez do código curto), mantida só por
   compatibilidade com links já enviados antes da migration `0004`
 - `/campos-padrao` — tela de admin com a biblioteca de Campos Padrão
+- `/formulario` — tela de admin com os blocos e perguntas do formulário (o que o cliente
+  responde), com CRUD completo e reordenação
 
 ## Tabelas (Supabase)
 
 - `mapeamentos` — cada preenchimento do formulário de mapeamento
 - `funis_gerados` — funis produzidos pela IA a partir de um mapeamento
 - `campos_padrao` — biblioteca reutilizável de campos (LEAD/CONTATO)
+- `blocos_formulario` / `perguntas_formulario` — os blocos e perguntas do formulário que o
+  cliente responde (editáveis pela tela `/formulario`, ver seção abaixo)
 
-Todas as tabelas têm RLS habilitado: cada usuário só acessa seus próprios registros. A exceção é
-`campos_padrao`, que é compartilhada entre todos os usuários autenticados (mesmo vocabulário pra
-todo o time de implantação).
+Todas as tabelas têm RLS habilitado: cada usuário só acessa seus próprios registros. As exceções
+são `campos_padrao` (compartilhada entre todos os usuários autenticados) e
+`blocos_formulario`/`perguntas_formulario` (leitura liberada até pro papel `anon`, já que o
+formulário público em `/f/:codigo` precisa saber quais perguntas mostrar sem estar logado;
+escrita continua restrita a quem está autenticado).
 
 `funis_gerados` guarda histórico: cada regeneração cria uma nova `versao` para o mesmo
 `mapeamento_id` em vez de sobrescrever as linhas anteriores.
@@ -62,6 +68,32 @@ O código é gerado automaticamente por um trigger `before insert` no Postgres (
 usando um alfabeto sem caracteres ambíguos (sem `0/O`, `1/I/l`), então nenhum código precisa ser
 gerado manualmente no front. A rota antiga `/formulario/:id` continua funcionando, então links já
 enviados antes dessa mudança não quebram.
+
+## Formulário dinâmico (`/formulario`)
+
+As perguntas do formulário público não vivem mais fixas no código — ficam nas tabelas
+`blocos_formulario` e `perguntas_formulario` (migration `0005`, que também faz o seed com os 5
+blocos / 24 perguntas que existiam antes em código). A tela `/formulario` permite:
+
+- Criar, renomear, reordenar (↑/↓) e excluir blocos
+- Criar, editar, reordenar e excluir perguntas dentro de um bloco (tipo, label, texto de ajuda,
+  prefixo pra campos numéricos, se é obrigatória, e as opções pra escolha única/múltipla)
+
+O identificador interno de cada pergunta (`pergunta_id`, a chave usada dentro do `respostas` jsonb
+de cada mapeamento) é gerado automaticamente a partir do label na criação e nunca muda depois —
+editar o label de uma pergunta já existente não quebra respostas já salvas com aquele
+`pergunta_id`.
+
+As opções de escolha única/múltipla são editadas como texto (uma opção por linha), no formato
+`valor|Rótulo` — ou só `Rótulo`, e o valor é gerado automaticamente. Pra uma opção ter campo de
+texto livre (tipo "Outro, qual?"), acrescenta `|livre:Placeholder` no fim da linha. O formato com
+`valor|` explícito existe justamente pra editar uma pergunta sem trocar sem querer o valor
+salvo nas respostas já respondidas por clientes anteriores.
+
+O wizard privado (`/mapeamento/:id`), o formulário público (`/f/:codigo`) e a Edge Function
+`gerar-funil` (pro texto que vai pro prompt da IA) buscam esse schema do banco em vez de importar
+um arquivo fixo — qualquer mudança feita em `/formulario` vale a partir do próximo carregamento,
+sem precisar de deploy.
 
 ## Campos Padrão (`/campos-padrao`)
 

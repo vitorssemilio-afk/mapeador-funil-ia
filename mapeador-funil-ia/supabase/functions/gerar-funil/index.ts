@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.110.8';
 import { formatRespostasTexto } from '../../../src/data/formatRespostas.ts';
+import type { BlocoFormulario, Pergunta } from '../../../src/data/formSchema.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { gerarFunisComIA } from './ia.ts';
 
@@ -8,6 +9,46 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { ...corsHeaders, 'content-type': 'application/json' },
   });
+}
+
+async function carregarBlocosFormulario(
+  supabase: ReturnType<typeof createClient>,
+): Promise<BlocoFormulario[]> {
+  const { data: blocosRows } = await supabase
+    .from('blocos_formulario')
+    .select('id, titulo, ordem')
+    .order('ordem', { ascending: true });
+
+  const { data: perguntasRows } = await supabase
+    .from('perguntas_formulario')
+    .select('*')
+    .order('ordem', { ascending: true });
+
+  return (blocosRows ?? []).map((bloco: { id: string; titulo: string }) => ({
+    titulo: bloco.titulo,
+    perguntas: (perguntasRows ?? [])
+      .filter((p: { bloco_id: string }) => p.bloco_id === bloco.id)
+      .sort((a: { ordem: number }, b: { ordem: number }) => a.ordem - b.ordem)
+      .map(
+        (p: {
+          pergunta_id: string;
+          tipo: Pergunta['tipo'];
+          label: string;
+          helper: string | null;
+          opcoes: Pergunta['opcoes'];
+          prefixo: string | null;
+          obrigatoria: boolean;
+        }): Pergunta => ({
+          id: p.pergunta_id,
+          tipo: p.tipo,
+          label: p.label,
+          helper: p.helper ?? undefined,
+          opcoes: p.opcoes ?? undefined,
+          prefixo: p.prefixo ?? undefined,
+          obrigatoria: p.obrigatoria,
+        }),
+      ),
+  }));
 }
 
 function formatCamposPadraoTexto(
@@ -66,7 +107,11 @@ Deno.serve(async (req: Request) => {
 
   await supabase.from('mapeamentos').update({ status: 'processando_ia' }).eq('id', mapeamentoId);
 
-  const respostasTexto = formatRespostasTexto((mapeamento.respostas ?? {}) as Record<string, unknown>);
+  const blocos = await carregarBlocosFormulario(supabase);
+  const respostasTexto = formatRespostasTexto(
+    blocos,
+    (mapeamento.respostas ?? {}) as Record<string, unknown>,
+  );
 
   const { data: camposPadrao } = await supabase
     .from('campos_padrao')

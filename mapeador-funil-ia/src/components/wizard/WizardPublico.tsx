@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { FORM_BLOCKS } from '../../data/formSchema';
+import type { BlocoFormulario } from '../../data/formSchema';
+import { carregarFormSchema } from '../../lib/formSchemaService';
 import { supabase } from '../../lib/supabaseClient';
 import type { MapeamentoPublico } from '../../types/database';
 import { PerguntaField } from './PerguntaField';
 import { ResumoWizard } from './ResumoWizard';
 
 const AUTOSAVE_DELAY_MS = 1000;
-const TOTAL_STEPS = FORM_BLOCKS.length + 1;
-const RESUMO_STEP = FORM_BLOCKS.length;
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -37,7 +36,11 @@ function saveStatusLabel(status: SaveStatus): string {
 }
 
 export function WizardPublico({ mapeamento, onEnviado }: Props) {
+  const [blocos, setBlocos] = useState<BlocoFormulario[]>([]);
+  const [schemaLoading, setSchemaLoading] = useState(true);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
+
   const [respostas, setRespostas] = useState<Record<string, unknown>>(mapeamento.respostas ?? {});
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +49,28 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const respostasRef = useRef(respostas);
   respostasRef.current = respostas;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSchema() {
+      setSchemaLoading(true);
+      setSchemaError(null);
+      try {
+        const data = await carregarFormSchema();
+        if (!cancelled) setBlocos(data);
+      } catch {
+        if (!cancelled) setSchemaError('Não foi possível carregar as perguntas do formulário.');
+      } finally {
+        if (!cancelled) setSchemaLoading(false);
+      }
+    }
+
+    loadSchema();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -93,7 +118,7 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
 
   function goNext() {
     flushSave();
-    setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+    setStep((s) => Math.min(s + 1, blocos.length));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -127,8 +152,13 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
     onEnviado();
   }
 
-  const isResumo = step === RESUMO_STEP;
-  const blocoAtual = isResumo ? null : FORM_BLOCKS[step];
+  if (schemaLoading) return <div className="page-loading">Carregando formulário…</div>;
+  if (schemaError) return <p className="form-error">{schemaError}</p>;
+
+  const totalSteps = blocos.length + 1;
+  const resumoStep = blocos.length;
+  const isResumo = step === resumoStep;
+  const blocoAtual = isResumo ? null : blocos[step];
   const podeAvancar =
     !blocoAtual || blocoAtual.perguntas.every((p) => !p.obrigatoria || temResposta(respostas[p.id]));
 
@@ -137,17 +167,18 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
       <div className="wizard-progress-bar">
         <div
           className="wizard-progress-fill"
-          style={{ width: `${((step + 1) / TOTAL_STEPS) * 100}%` }}
+          style={{ width: `${((step + 1) / totalSteps) * 100}%` }}
         />
       </div>
       <div className="wizard-progress-label">
-        <span>{isResumo ? 'Resumo' : `Etapa ${step + 1} de ${FORM_BLOCKS.length}`}</span>
+        <span>{isResumo ? 'Resumo' : `Etapa ${step + 1} de ${blocos.length}`}</span>
         <span className="save-status">{saveStatusLabel(saveStatus)}</span>
       </div>
 
       <div className="card wizard-card">
         {isResumo ? (
           <ResumoWizard
+            blocos={blocos}
             respostas={respostas}
             titulo="Revise suas respostas"
             mensagem="Confira tudo antes de enviar. Você pode voltar para ajustar qualquer bloco."

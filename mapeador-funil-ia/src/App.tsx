@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { Dashboard } from './pages/Dashboard';
+import { FormularioAdmin } from './pages/FormularioAdmin';
 import { FormularioPublico } from './pages/FormularioPublico';
 import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
@@ -28,6 +29,7 @@ function App() {
             <Route path="/novo" element={<NovoMapeamento />} />
             <Route path="/mapeamento/:id" element={<Mapeamento />} />
             <Route path="/campos-padrao" element={<CamposPadrao />} />
+            <Route path="/formulario" element={<FormularioAdmin />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

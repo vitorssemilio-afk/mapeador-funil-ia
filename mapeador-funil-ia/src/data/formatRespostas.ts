@@ -1,4 +1,4 @@
-import { FORM_BLOCKS, type Pergunta } from './formSchema.ts';
+import type { BlocoFormulario, Pergunta } from './formSchema.ts';
 
 export function formatValorPergunta(pergunta: Pergunta, respostas: Record<string, unknown>): string {
   const valor = respostas[pergunta.id];
@@ -34,10 +34,13 @@ export function formatValorPergunta(pergunta: Pergunta, respostas: Record<string
   return '—';
 }
 
-export function formatRespostasTexto(respostas: Record<string, unknown>): string {
+export function formatRespostasTexto(
+  blocos: BlocoFormulario[],
+  respostas: Record<string, unknown>,
+): string {
   const partes: string[] = [];
 
-  for (const bloco of FORM_BLOCKS) {
+  for (const bloco of blocos) {
     partes.push(`## ${bloco.titulo}`);
     for (const pergunta of bloco.perguntas) {
       partes.push(`- ${pergunta.label}\n  Resposta: ${formatValorPergunta(pergunta, respostas)}`);

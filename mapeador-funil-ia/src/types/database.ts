@@ -79,6 +79,44 @@ export type CampoPadrao = {
   created_at: string;
 };
 
+export type PerguntaTipo =
+  | 'texto_curto'
+  | 'texto_longo'
+  | 'numero'
+  | 'escolha_unica'
+  | 'escolha_multipla';
+
+export type OpcaoPergunta = {
+  value: string;
+  label: string;
+  campoLivre?: {
+    placeholder: string;
+  };
+};
+
+export type BlocoFormularioRow = {
+  id: string;
+  titulo: string;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PerguntaFormularioRow = {
+  id: string;
+  bloco_id: string;
+  pergunta_id: string;
+  ordem: number;
+  tipo: PerguntaTipo;
+  label: string;
+  helper: string | null;
+  opcoes: OpcaoPergunta[] | null;
+  prefixo: string | null;
+  obrigatoria: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: '13';
@@ -102,6 +140,19 @@ export type Database = {
         Row: CampoPadrao;
         Insert: Partial<CampoPadrao> & Pick<CampoPadrao, 'entidade' | 'nome_campo' | 'tipo'>;
         Update: Partial<CampoPadrao>;
+        Relationships: [];
+      };
+      blocos_formulario: {
+        Row: BlocoFormularioRow;
+        Insert: Partial<BlocoFormularioRow> & Pick<BlocoFormularioRow, 'titulo' | 'ordem'>;
+        Update: Partial<BlocoFormularioRow>;
+        Relationships: [];
+      };
+      perguntas_formulario: {
+        Row: PerguntaFormularioRow;
+        Insert: Partial<PerguntaFormularioRow> &
+          Pick<PerguntaFormularioRow, 'bloco_id' | 'pergunta_id' | 'ordem' | 'tipo' | 'label'>;
+        Update: Partial<PerguntaFormularioRow>;
         Relationships: [];
       };
     };
