@@ -11,6 +11,7 @@ export type Mapeamento = {
   status: MapeamentoStatus;
   respostas: Record<string, unknown>;
   enviado_pelo_cliente: boolean;
+  codigo_curto: string;
   created_at: string;
   updated_at: string;
 };
@@ -110,6 +111,10 @@ export type Database = {
     Functions: {
       public_get_mapeamento: {
         Args: { p_id: string };
+        Returns: MapeamentoPublico[];
+      };
+      public_get_mapeamento_by_codigo: {
+        Args: { p_codigo: string };
         Returns: MapeamentoPublico[];
       };
       public_save_respostas: {

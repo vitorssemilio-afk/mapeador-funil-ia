@@ -491,6 +491,66 @@ button {
   color: var(--color-danger);
 }
 
+/* ── Stat cards (dashboard) ── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat-card:hover {
+  border-color: var(--color-accent);
+}
+
+.stat-card-active {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+  line-height: 1.1;
+}
+
+.stat-card-warning .stat-value {
+  color: var(--color-warning);
+}
+
+.stat-card-success .stat-value {
+  color: var(--color-success);
+}
+
+.stat-card-info .stat-value {
+  color: var(--color-info);
+}
+
+.stat-card-danger .stat-value {
+  color: var(--color-danger);
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
 /* ── Empty state ── */
 .empty-state {
   background: var(--color-surface);

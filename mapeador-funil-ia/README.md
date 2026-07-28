@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001, 0002, depois 0003) no SQL Editor do Supabase, ou `supabase db push` via CLI.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001, 0002, 0003, depois 0004) no SQL Editor do Supabase, ou `supabase db push` via CLI.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -15,11 +15,14 @@ npm run dev
 ## Estrutura
 
 - `/login` — autenticação (login/cadastro)
-- `/` — dashboard com lista de mapeamentos
+- `/` — dashboard com cards de estatísticas (aguardando preenchimento, cliente respondeu, gerando
+  funil, funil gerado, erro) e lista de mapeamentos, filtrável por card
 - `/novo` — criação de um novo mapeamento
 - `/mapeamento/:id` — wizard de mapeamento (rascunho), status de processamento ou funis gerados
-- `/formulario/:id` — **rota pública**, sem login. Link que o cliente final recebe pra preencher
-  o formulário sozinho, sem ver o funil gerado nem nada relacionado a IA
+- `/f/:codigo` — **rota pública**, sem login. Link curto (6 caracteres) que o cliente final recebe
+  pra preencher o formulário sozinho, sem ver o funil gerado nem nada relacionado a IA
+- `/formulario/:id` — rota pública antiga (por `uuid` em vez do código curto), mantida só por
+  compatibilidade com links já enviados antes da migration `0004`
 - `/campos-padrao` — tela de admin com a biblioteca de Campos Padrão
 
 ## Tabelas (Supabase)
@@ -35,21 +38,30 @@ todo o time de implantação).
 `funis_gerados` guarda histórico: cada regeneração cria uma nova `versao` para o mesmo
 `mapeamento_id` em vez de sobrescrever as linhas anteriores.
 
-## Formulário público (`/formulario/:id`)
+## Formulário público (`/f/:codigo`)
 
 Permite que o cliente final preencha o formulário sem criar conta, sem ver o funil gerado e sem
 qualquer menção a IA — só quem está logado (o time que implanta o CRM) vê os funis.
 
-Implementado com duas funções `SECURITY DEFINER` no Postgres (migration `0002`), em vez de abrir
-RLS pro papel `anon`: `public_get_mapeamento(p_id)` e `public_save_respostas(p_id, p_respostas,
-p_finalizar)`. Isso evita que alguém sem o link consiga listar ou ler dados de outros clientes —
-o acesso é sempre por uma função que exige o `id` exato do mapeamento, nunca uma consulta aberta à
-tabela.
+Implementado com funções `SECURITY DEFINER` no Postgres (migrations `0002` e `0004`), em vez de
+abrir RLS pro papel `anon`: `public_get_mapeamento(p_id)`, `public_get_mapeamento_by_codigo(p_codigo)`
+e `public_save_respostas(p_id, p_respostas, p_finalizar)`. Isso evita que alguém sem o link consiga
+listar ou ler dados de outros clientes — o acesso é sempre por uma função que exige o `id` ou
+`codigo_curto` exato do mapeamento, nunca uma consulta aberta à tabela.
 
 O envio é único e definitivo: depois que o cliente clica em "Enviar respostas"
 (`p_finalizar = true`), a coluna `enviado_pelo_cliente` vira `true` e novas chamadas de
 `public_save_respostas` para aquele `id` são recusadas pela própria função — o link passa a
 mostrar só a tela de agradecimento.
+
+### Link curto (`codigo_curto`)
+
+O botão "Copiar link para o cliente" (na tela do mapeamento) monta o link com `codigo_curto` —
+6 caracteres (`/f/aX7k2Q`), bem mais curto e profissional do que o `uuid` completo do mapeamento.
+O código é gerado automaticamente por um trigger `before insert` no Postgres (migration `0004`),
+usando um alfabeto sem caracteres ambíguos (sem `0/O`, `1/I/l`), então nenhum código precisa ser
+gerado manualmente no front. A rota antiga `/formulario/:id` continua funcionando, então links já
+enviados antes dessa mudança não quebram.
 
 ## Campos Padrão (`/campos-padrao`)
 
@@ -94,3 +106,8 @@ supabase secrets set GROQ_MODEL=llama-3.3-70b-versatile
 A função usa o JWT do usuário autenticado (repassado pelo front via `supabase.functions.invoke`)
 para ler/gravar os dados, então o RLS garante que cada usuário só gera funil para os próprios
 mapeamentos.
+
+O `SYSTEM_PROMPT` (`supabase/functions/gerar-funil/prompt.ts`) tem uma regra explícita de quando
+separar em mais de um funil (qualificação, vendas, comparecimento, entrega/operação, pós-venda),
+apontando pra quais respostas do formulário são o sinal de cada separação — em vez de deixar a
+decisão totalmente a critério da IA.

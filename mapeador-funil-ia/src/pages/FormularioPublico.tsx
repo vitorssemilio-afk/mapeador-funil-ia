@@ -5,23 +5,23 @@ import { supabase } from '../lib/supabaseClient';
 import type { MapeamentoPublico } from '../types/database';
 
 export function FormularioPublico() {
-  const { id } = useParams<{ id: string }>();
+  const { id, codigo } = useParams<{ id?: string; codigo?: string }>();
   const [mapeamento, setMapeamento] = useState<MapeamentoPublico | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id && !codigo) return;
     let cancelled = false;
 
     async function load() {
       setLoading(true);
       setError(null);
 
-      const { data, error: fetchError } = await supabase.rpc('public_get_mapeamento', {
-        p_id: id as string,
-      });
+      const { data, error: fetchError } = codigo
+        ? await supabase.rpc('public_get_mapeamento_by_codigo', { p_codigo: codigo })
+        : await supabase.rpc('public_get_mapeamento', { p_id: id as string });
 
       if (cancelled) return;
 
@@ -41,7 +41,7 @@ export function FormularioPublico() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, codigo]);
 
   return (
     <div className="app-shell">

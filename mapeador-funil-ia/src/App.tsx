@@ -15,6 +15,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/f/:codigo" element={<FormularioPublico />} />
           <Route path="/formulario/:id" element={<FormularioPublico />} />
           <Route
             element={

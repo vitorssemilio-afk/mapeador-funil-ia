@@ -134,7 +134,7 @@ export function Mapeamento() {
 
   async function handleCopiarLink() {
     if (!mapeamento) return;
-    const link = `${window.location.origin}/formulario/${mapeamento.id}`;
+    const link = `${window.location.origin}/f/${mapeamento.codigo_curto}`;
     await navigator.clipboard.writeText(link);
     setLinkCopiado(true);
     setTimeout(() => setLinkCopiado(false), 2000);
