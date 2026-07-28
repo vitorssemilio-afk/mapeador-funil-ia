@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001, depois 0002) no SQL Editor do Supabase, ou `supabase db push` via CLI.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001, 0002, depois 0003) no SQL Editor do Supabase, ou `supabase db push` via CLI.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -20,6 +20,7 @@ npm run dev
 - `/mapeamento/:id` — wizard de mapeamento (rascunho), status de processamento ou funis gerados
 - `/formulario/:id` — **rota pública**, sem login. Link que o cliente final recebe pra preencher
   o formulário sozinho, sem ver o funil gerado nem nada relacionado a IA
+- `/campos-padrao` — tela de admin com a biblioteca de Campos Padrão
 
 ## Tabelas (Supabase)
 
@@ -27,7 +28,12 @@ npm run dev
 - `funis_gerados` — funis produzidos pela IA a partir de um mapeamento
 - `campos_padrao` — biblioteca reutilizável de campos (LEAD/CONTATO)
 
-Todas as tabelas têm RLS habilitado: cada usuário só acessa seus próprios registros.
+Todas as tabelas têm RLS habilitado: cada usuário só acessa seus próprios registros. A exceção é
+`campos_padrao`, que é compartilhada entre todos os usuários autenticados (mesmo vocabulário pra
+todo o time de implantação).
+
+`funis_gerados` guarda histórico: cada regeneração cria uma nova `versao` para o mesmo
+`mapeamento_id` em vez de sobrescrever as linhas anteriores.
 
 ## Formulário público (`/formulario/:id`)
 
@@ -45,10 +51,31 @@ O envio é único e definitivo: depois que o cliente clica em "Enviar respostas"
 `public_save_respostas` para aquele `id` são recusadas pela própria função — o link passa a
 mostrar só a tela de agradecimento.
 
+## Campos Padrão (`/campos-padrao`)
+
+Tela de admin (CRUD simples) com a biblioteca de campos "padronizados" (nome, entidade — LEAD ou
+CONTATO —, tipo, opções quando for lista/checkbox). Serve só como vocabulário de referência: a
+Edge Function `gerar-funil` lê essa tabela antes de chamar a IA e inclui esses nomes no prompt,
+pra reduzir variação de nomenclatura entre funis diferentes (ex: sempre "Convênio", nunca
+"Plano de saúde" numa geração e "Convênio médico" em outra).
+
+## Histórico de versões e regeneração
+
+Cada vez que a IA gera o funil (seja na primeira geração ou numa regeneração), o resultado é
+salvo como uma nova `versao` em `funis_gerados` — a versão anterior nunca é apagada. Na tela do
+mapeamento, um seletor de versões aparece quando há mais de uma; versões antigas abrem em modo
+somente leitura (os campos da tabela ficam com `readOnly`, sem autosave).
+
+O botão **"Regenerar com instruções extras"** (visível quando o mapeamento já tem pelo menos uma
+versão gerada) abre um campo de texto livre — ex: "trate convênio e particular como funis
+separados" — e reenvia pra Edge Function via `instrucoes_extras`, que soma esse texto ao prompt
+da IA antes de gerar a nova versão.
+
 ## Edge Function `gerar-funil`
 
-Recebe `mapeamento_id`, monta as respostas em texto, chama a Groq API (endpoint compatível com
-OpenAI) e grava os funis gerados em `funis_gerados`, atualizando `mapeamentos.status` para
+Recebe `mapeamento_id` (e opcionalmente `instrucoes_extras`), monta as respostas em texto, busca
+o vocabulário de `campos_padrao`, chama a Groq API (endpoint compatível com OpenAI) e grava os
+funis gerados em `funis_gerados` como uma nova `versao`, atualizando `mapeamentos.status` para
 `concluido` ou `erro`.
 
 Gere uma chave gratuita em [console.groq.com](https://console.groq.com) → **API Keys** (não exige
@@ -59,8 +86,8 @@ Deploy e configuração via [Supabase CLI](https://supabase.com/docs/guides/cli)
 ```bash
 supabase functions deploy gerar-funil
 supabase secrets set GROQ_API_KEY=gsk_...
-# opcional — sobrescreve o modelo padrão (openai/gpt-oss-120b)
-supabase secrets set GROQ_MODEL=openai/gpt-oss-120b
+# opcional — sobrescreve o modelo padrão (llama-3.3-70b-versatile)
+supabase secrets set GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
 `SUPABASE_URL` e `SUPABASE_ANON_KEY` já ficam disponíveis automaticamente no runtime da função.

@@ -54,6 +54,7 @@ export type FunilGerado = {
   justificativa: string | null;
   etapas: EtapaFunil[];
   ordem: number;
+  versao: number;
   created_at: string;
 };
 

@@ -10,12 +10,25 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function formatCamposPadraoTexto(
+  campos: { entidade: string; nome_campo: string; tipo: string; opcoes: string[] | null }[],
+): string {
+  if (campos.length === 0) return '';
+
+  return campos
+    .map((campo) => {
+      const opcoes = campo.opcoes && campo.opcoes.length > 0 ? `: ${campo.opcoes.join(', ')}` : '';
+      return `- [${campo.entidade}] ${campo.nome_campo} (${campo.tipo}${opcoes})`;
+    })
+    .join('\n');
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  let payload: { mapeamento_id?: unknown } | null = null;
+  let payload: { mapeamento_id?: unknown; instrucoes_extras?: unknown } | null = null;
   try {
     payload = await req.json();
   } catch {
@@ -26,6 +39,9 @@ Deno.serve(async (req: Request) => {
   if (typeof mapeamentoId !== 'string' || !mapeamentoId) {
     return jsonResponse({ error: 'mapeamento_id é obrigatório.' }, 400);
   }
+
+  const instrucoesExtras =
+    typeof payload?.instrucoes_extras === 'string' ? payload.instrucoes_extras.trim() : undefined;
 
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
@@ -52,9 +68,19 @@ Deno.serve(async (req: Request) => {
 
   const respostasTexto = formatRespostasTexto((mapeamento.respostas ?? {}) as Record<string, unknown>);
 
+  const { data: camposPadrao } = await supabase
+    .from('campos_padrao')
+    .select('entidade, nome_campo, tipo, opcoes');
+  const camposPadraoTexto = formatCamposPadraoTexto(camposPadrao ?? []);
+
   let funis;
   try {
-    funis = await gerarFunisComIA(respostasTexto, mapeamento.nome_negocio as string);
+    funis = await gerarFunisComIA(
+      respostasTexto,
+      mapeamento.nome_negocio as string,
+      camposPadraoTexto,
+      instrucoesExtras,
+    );
   } catch (iaError) {
     console.error('Erro ao gerar funil com IA', iaError);
     await supabase
@@ -70,6 +96,16 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Falha ao gerar funil com IA.' }, 502);
   }
 
+  const { data: versaoAtual } = await supabase
+    .from('funis_gerados')
+    .select('versao')
+    .eq('mapeamento_id', mapeamentoId)
+    .order('versao', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const proximaVersao = (versaoAtual?.versao ?? 0) + 1;
+
   const rows = funis.map((funil, index) => ({
     mapeamento_id: mapeamentoId,
     user_id: mapeamento.user_id as string,
@@ -78,10 +114,8 @@ Deno.serve(async (req: Request) => {
     justificativa: funil.justificativa,
     etapas: funil.etapas,
     ordem: index,
+    versao: proximaVersao,
   }));
-
-  // Remove gerações anteriores (ex: nova tentativa após um erro).
-  await supabase.from('funis_gerados').delete().eq('mapeamento_id', mapeamentoId);
 
   const { error: insertError } = await supabase.from('funis_gerados').insert(rows);
 

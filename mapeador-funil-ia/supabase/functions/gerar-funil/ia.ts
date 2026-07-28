@@ -112,10 +112,22 @@ function parseRespostaIA(texto: string): FunilIA[] | null {
 export async function gerarFunisComIA(
   respostasTexto: string,
   nomeNegocio: string,
+  camposPadraoTexto?: string,
+  instrucoesExtras?: string,
 ): Promise<FunilIA[]> {
+  let conteudo = `Negócio: ${nomeNegocio}\n\n${respostasTexto}`;
+
+  if (camposPadraoTexto) {
+    conteudo += `\n\n## Vocabulário de referência (campos já padronizados em outros funis — reaproveite esses nomes quando fizer sentido, em vez de inventar variações)\n${camposPadraoTexto}`;
+  }
+
+  if (instrucoesExtras) {
+    conteudo += `\n\n## Instruções adicionais para esta geração (pedidas pelo usuário que está revisando o funil)\n${instrucoesExtras}`;
+  }
+
   const messages: ChatMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: `Negócio: ${nomeNegocio}\n\n${respostasTexto}` },
+    { role: 'user', content: conteudo },
   ];
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {

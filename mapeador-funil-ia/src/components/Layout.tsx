@@ -7,9 +7,14 @@ export function Layout() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <Link to="/" className="topbar-brand">
-          Mapeador de Funil IA
-        </Link>
+        <div className="topbar-left">
+          <Link to="/" className="topbar-brand">
+            Mapeador de Funil IA
+          </Link>
+          <Link to="/campos-padrao" className="topbar-nav-link">
+            Campos Padrão
+          </Link>
+        </div>
         <div className="topbar-user">
           <span className="topbar-email">{user?.email}</span>
           <button type="button" className="btn btn-ghost" onClick={signOut}>

@@ -89,11 +89,27 @@ button {
   z-index: 10;
 }
 
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
 .topbar-brand {
   font-weight: 600;
   font-size: 15px;
   color: var(--color-text);
   text-decoration: none;
+}
+
+.topbar-nav-link {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.topbar-nav-link:hover {
+  color: var(--color-text);
 }
 
 .topbar-user {
