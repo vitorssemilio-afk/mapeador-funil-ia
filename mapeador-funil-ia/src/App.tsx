@@ -12,6 +12,7 @@ import { ImplementacoesCrm } from './pages/ImplementacoesCrm';
 import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
 import { NovoMapeamento } from './pages/NovoMapeamento';
+import { RelatorioFunil } from './pages/RelatorioFunil';
 
 function App() {
   return (
@@ -21,6 +22,14 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/f/:codigo" element={<FormularioPublico />} />
           <Route path="/formulario/:id" element={<FormularioPublico />} />
+          <Route
+            path="/mapeamento/:id/relatorio"
+            element={
+              <ProtectedRoute>
+                <RelatorioFunil />
+              </ProtectedRoute>
+            }
+          />
           <Route
             element={
               <ProtectedRoute>

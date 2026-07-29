@@ -30,6 +30,8 @@ npm run dev
 - `/implementacoes/:id` — detalhe de uma implementação: checklist por semana, dados de acesso e
   credenciais do cliente no CRM
 - `/implementacoes/checklist` — tela de admin dos grupos/itens de checklist do POP
+- `/mapeamento/:id/relatorio` — relatório em PDF do funil pra apresentar ao cliente (ver seção
+  abaixo)
 
 ## Tabelas (Supabase)
 
@@ -142,6 +144,25 @@ usando uma chave gerada uma única vez e guardada no [Supabase Vault](https://su
 
 Se o projeto Supabase não tiver o Vault habilitado, ative em **Database → Extensions →
 `supabase_vault`** antes de rodar a migration `0006`.
+
+## Relatório em PDF (`/mapeamento/:id/relatorio`)
+
+Gera um documento no estilo "deck de apresentação" (fundo escuro, tipografia grande, um slide por
+página) cobrindo todos os funis gerados pra um mapeamento — pensado pra apresentar ao cliente.
+Aberto pelo botão "Gerar relatório em PDF" na tela do mapeamento (aparece quando já existe pelo
+menos um funil), em uma aba nova.
+
+Estrutura do documento: capa (nome do cliente) → pra cada funil, um slide de visão geral (grid com
+todas as etapas) seguido de um slide de detalhe por etapa, cobrindo todos os campos do funil
+(objetivo, gatilho de entrada/saída, campos obrigatórios/desejáveis, SLA, responsável, tarefas,
+automação, regras de negócio/perda, script sugerido).
+
+Não usa nenhuma biblioteca de geração de PDF — o botão "Baixar PDF" chama `window.print()` e o
+usuário escolhe "Salvar como PDF" no diálogo de impressão do navegador. O CSS
+(`src/pages/RelatorioFunil.css`) define um `@page` com o tamanho de slide widescreen (13.333in ×
+7.5in, a mesma proporção 16:9 usada pelo PowerPoint) e cada "slide" quebra pra uma página nova via
+`break-after: page`. É essencial o `-webkit-print-color-adjust: exact` — sem ele, o navegador
+descarta cores de fundo na impressão e o PDF sairia em branco.
 
 ## Campos Padrão (`/campos-padrao`)
 

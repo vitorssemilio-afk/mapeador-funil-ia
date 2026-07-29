@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { FunilDetalhado } from '../components/funil/FunilDetalhado';
 import { StatusBadge } from '../components/StatusBadge';
 import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
@@ -303,6 +303,16 @@ export function Mapeamento() {
             >
               {exportando ? 'Exportando…' : 'Exportar para Excel'}
             </button>
+          )}
+          {funis.length > 0 && (
+            <Link
+              to={`/mapeamento/${mapeamento.id}/relatorio`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+            >
+              Gerar relatório em PDF
+            </Link>
           )}
           <button
             type="button"
