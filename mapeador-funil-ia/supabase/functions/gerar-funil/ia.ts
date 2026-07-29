@@ -8,6 +8,10 @@ export type FunilIA = {
   etapas: EtapaFunil[];
 };
 
+export type ResultadoIA =
+  | { tipo: 'funis'; funis: FunilIA[] }
+  | { tipo: 'perguntas'; perguntas: string[] };
+
 type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
@@ -94,7 +98,19 @@ function isFunilIA(item: unknown): item is FunilIA {
   );
 }
 
-function parseRespostaIA(texto: string): FunilIA[] | null {
+function isPerguntasIA(json: Record<string, unknown>): string[] | null {
+  const perguntas = json.perguntas_esclarecimento;
+  if (
+    Array.isArray(perguntas) &&
+    perguntas.length > 0 &&
+    perguntas.every((p) => typeof p === 'string')
+  ) {
+    return perguntas as string[];
+  }
+  return null;
+}
+
+function parseRespostaIA(texto: string): ResultadoIA | null {
   let json: unknown;
   try {
     json = JSON.parse(extrairJson(texto));
@@ -103,11 +119,16 @@ function parseRespostaIA(texto: string): FunilIA[] | null {
   }
 
   if (typeof json !== 'object' || json === null) return null;
-  const funis = (json as Record<string, unknown>).funis;
+  const obj = json as Record<string, unknown>;
+
+  const perguntas = isPerguntasIA(obj);
+  if (perguntas) return { tipo: 'perguntas', perguntas };
+
+  const funis = obj.funis;
   if (!Array.isArray(funis) || funis.length === 0) return null;
   if (!funis.every(isFunilIA)) return null;
 
-  return funis;
+  return { tipo: 'funis', funis };
 }
 
 export async function gerarFunisComIA(
@@ -115,7 +136,7 @@ export async function gerarFunisComIA(
   nomeNegocio: string,
   camposPadraoTexto?: string,
   instrucoesExtras?: string,
-): Promise<FunilIA[]> {
+): Promise<ResultadoIA> {
   let conteudo = `Negócio: ${nomeNegocio}\n\n${respostasTexto}`;
 
   if (camposPadraoTexto) {
@@ -130,8 +151,8 @@ export async function gerarFunisComIA(
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
     const textoResposta = await chamarAnthropic(messages);
-    const funis = parseRespostaIA(textoResposta);
-    if (funis) return funis;
+    const resultado = parseRespostaIA(textoResposta);
+    if (resultado) return resultado;
 
     messages.push({ role: 'assistant', content: textoResposta });
     messages.push({

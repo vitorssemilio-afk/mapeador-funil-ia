@@ -523,6 +523,17 @@ a {
   line-height: 1.5;
 }
 
+.perguntas-ia-lista {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
 .form-error {
   font-size: 13px;
   font-weight: 500;
@@ -673,6 +684,11 @@ a {
 .status-processando_ia {
   background: var(--color-info-soft);
   color: var(--color-info);
+}
+
+.status-aguardando_esclarecimento {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
 }
 
 .status-concluido {

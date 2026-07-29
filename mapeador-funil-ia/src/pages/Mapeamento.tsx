@@ -98,7 +98,11 @@ export function Mapeamento() {
 
       setMapeamento(mapeamentoData);
 
-      if (mapeamentoData.status === 'concluido' || mapeamentoData.status === 'erro') {
+      if (
+        mapeamentoData.status === 'concluido' ||
+        mapeamentoData.status === 'erro' ||
+        mapeamentoData.status === 'aguardando_esclarecimento'
+      ) {
         await carregarFunis(mapeamentoId);
       }
 
@@ -260,6 +264,8 @@ export function Mapeamento() {
 
     if (atualizado.status === 'erro') {
       setRegenerarError('A IA não conseguiu gerar a nova versão. Tente novamente.');
+    } else if (atualizado.status === 'aguardando_esclarecimento') {
+      setInstrucoesExtras('');
     } else {
       setMostrarRegenerar(false);
       setInstrucoesExtras('');
@@ -280,6 +286,11 @@ export function Mapeamento() {
     if (typeof valor === 'number') return true;
     return false;
   });
+  const perguntasIA = Array.isArray(mapeamento.respostas?._perguntas_ia)
+    ? (mapeamento.respostas._perguntas_ia as unknown[]).filter(
+        (p): p is string => typeof p === 'string',
+      )
+    : [];
 
   return (
     <div className="page">
@@ -388,6 +399,41 @@ export function Mapeamento() {
           <p className="field-hint">Revise as respostas e tente novamente.</p>
           <button type="button" className="btn btn-primary btn-auto" onClick={() => setRetomando(true)}>
             Revisar e tentar novamente
+          </button>
+        </section>
+      )}
+
+      {mapeamento.status === 'aguardando_esclarecimento' && (
+        <section className="card form-card">
+          <h2>A IA precisa de mais informações</h2>
+          <p className="field-hint">
+            Antes de gerar o funil, responda as perguntas abaixo (ou repasse pro cliente) e envie
+            como instruções extras.
+          </p>
+          <ul className="perguntas-ia-lista">
+            {perguntasIA.map((pergunta, i) => (
+              <li key={i}>{pergunta}</li>
+            ))}
+          </ul>
+          <label className="field">
+            <span>Suas respostas</span>
+            <textarea
+              rows={4}
+              value={instrucoesExtras}
+              onChange={(e) => setInstrucoesExtras(e.target.value)}
+              placeholder="Responda as perguntas acima com o que você sabe sobre o negócio"
+              autoFocus
+            />
+          </label>
+          {regenerando && <p className="field-hint">Gerando funil, isso pode levar até 1 minuto…</p>}
+          {regenerarError && <p className="form-error">{regenerarError}</p>}
+          <button
+            type="button"
+            className="btn btn-primary btn-auto"
+            onClick={handleRegenerar}
+            disabled={regenerando || !instrucoesExtras.trim()}
+          >
+            {regenerando ? 'Gerando…' : 'Gerar funil'}
           </button>
         </section>
       )}

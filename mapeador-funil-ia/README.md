@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0006) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0007) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -184,6 +184,24 @@ versão gerada) abre um campo de texto livre — ex: "trate convênio e particul
 separados" — e reenvia pra Edge Function via `instrucoes_extras`, que soma esse texto ao prompt
 da IA antes de gerar a nova versão.
 
+## A IA pode pedir esclarecimento antes de gerar
+
+Se as respostas do formulário não derem base suficiente pra montar um funil específico e
+confiável (ex: não ficou claro quem é responsável pelas etapas principais, ou não há nenhum
+critério de qualificação/motivo de perda), o `SYSTEM_PROMPT` instrui a IA a responder com
+`{"perguntas_esclarecimento": ["pergunta 1", ...]}` em vez de inventar informação e gerar um
+funil genérico.
+
+Quando isso acontece, `mapeamentos.status` vira `aguardando_esclarecimento` (migration `0007`,
+novo valor no enum `mapeamento_status`) e as perguntas ficam salvas em
+`mapeamentos.respostas._perguntas_ia`. A tela do mapeamento mostra essas perguntas com um campo
+de texto pra responder — a resposta é reenviada pra Edge Function pelo mesmo mecanismo de
+`instrucoes_extras` do botão de regenerar, então nenhum endpoint novo foi necessário. Se ainda
+assim a IA achar que falta informação, ela pode pedir esclarecimento de novo (o formulário
+continua aberto pra uma nova resposta) — mas isso só deve acontecer quando a lacuna for realmente
+bloqueante; detalhes menores são preenchidos com `"[sugestão — validar com o cliente]"` em vez de
+virar pergunta.
+
 ## Edge Function `gerar-funil`
 
 Recebe `mapeamento_id` (e opcionalmente `instrucoes_extras`), monta as respostas em texto, busca
@@ -210,4 +228,7 @@ mapeamentos.
 O `SYSTEM_PROMPT` (`supabase/functions/gerar-funil/prompt.ts`) tem uma regra explícita de quando
 separar em mais de um funil (qualificação, vendas, comparecimento, entrega/operação, pós-venda),
 apontando pra quais respostas do formulário são o sinal de cada separação — em vez de deixar a
-decisão totalmente a critério da IA.
+decisão totalmente a critério da IA. Vendas e Pós-venda são considerados ativamente em todo
+mapeamento, mas com um critério de substância: um funil só vira funil próprio se render pelo
+menos 2 etapas reais e distintas — um "funil" de pós-venda com uma etapa só vira, em vez disso, a
+etapa final do funil de Vendas.

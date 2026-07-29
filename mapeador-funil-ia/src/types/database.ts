@@ -1,6 +1,7 @@
 export type MapeamentoStatus =
   | 'em_preenchimento'
   | 'processando_ia'
+  | 'aguardando_esclarecimento'
   | 'concluido'
   | 'erro';
 

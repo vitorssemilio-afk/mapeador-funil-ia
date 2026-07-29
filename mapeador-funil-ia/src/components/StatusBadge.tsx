@@ -3,6 +3,7 @@ import type { MapeamentoStatus } from '../types/database';
 const LABELS: Record<MapeamentoStatus, string> = {
   em_preenchimento: 'Em preenchimento',
   processando_ia: 'Processando IA',
+  aguardando_esclarecimento: 'IA pediu esclarecimento',
   concluido: 'Concluído',
   erro: 'Erro',
 };

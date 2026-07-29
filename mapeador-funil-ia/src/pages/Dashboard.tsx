@@ -5,7 +5,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import type { Mapeamento } from '../types/database';
 
-type Filtro = 'aguardando' | 'respondeu' | 'gerando' | 'concluido' | 'erro';
+type Filtro =
+  | 'aguardando'
+  | 'respondeu'
+  | 'gerando'
+  | 'esclarecimento'
+  | 'concluido'
+  | 'erro';
 
 function pertenceAoFiltro(m: Mapeamento, filtro: Filtro): boolean {
   switch (filtro) {
@@ -15,6 +21,8 @@ function pertenceAoFiltro(m: Mapeamento, filtro: Filtro): boolean {
       return m.status === 'em_preenchimento' && m.enviado_pelo_cliente;
     case 'gerando':
       return m.status === 'processando_ia';
+    case 'esclarecimento':
+      return m.status === 'aguardando_esclarecimento';
     case 'concluido':
       return m.status === 'concluido';
     case 'erro':
@@ -66,6 +74,7 @@ export function Dashboard() {
       aguardando: mapeamentos.filter((m) => pertenceAoFiltro(m, 'aguardando')).length,
       respondeu: mapeamentos.filter((m) => pertenceAoFiltro(m, 'respondeu')).length,
       gerando: mapeamentos.filter((m) => pertenceAoFiltro(m, 'gerando')).length,
+      esclarecimento: mapeamentos.filter((m) => pertenceAoFiltro(m, 'esclarecimento')).length,
       concluido: mapeamentos.filter((m) => pertenceAoFiltro(m, 'concluido')).length,
       erro: mapeamentos.filter((m) => pertenceAoFiltro(m, 'erro')).length,
     }),
@@ -157,6 +166,16 @@ export function Dashboard() {
               <span className="stat-value">{stats.gerando}</span>
               <span className="stat-label">Gerando funil</span>
             </button>
+            {stats.esclarecimento > 0 && (
+              <button
+                type="button"
+                className={`stat-card stat-card-warning${filtro === 'esclarecimento' ? ' stat-card-active' : ''}`}
+                onClick={() => toggleFiltro('esclarecimento')}
+              >
+                <span className="stat-value">{stats.esclarecimento}</span>
+                <span className="stat-label">IA pediu esclarecimento</span>
+              </button>
+            )}
             <button
               type="button"
               className={`stat-card stat-card-success${filtro === 'concluido' ? ' stat-card-active' : ''}`}

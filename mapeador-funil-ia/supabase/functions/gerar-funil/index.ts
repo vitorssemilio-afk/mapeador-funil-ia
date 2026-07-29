@@ -118,9 +118,9 @@ Deno.serve(async (req: Request) => {
     .select('entidade, nome_campo, tipo, opcoes');
   const camposPadraoTexto = formatCamposPadraoTexto(camposPadrao ?? []);
 
-  let funis;
+  let resultado;
   try {
-    funis = await gerarFunisComIA(
+    resultado = await gerarFunisComIA(
       respostasTexto,
       mapeamento.nome_negocio as string,
       camposPadraoTexto,
@@ -140,6 +140,24 @@ Deno.serve(async (req: Request) => {
       .eq('id', mapeamentoId);
     return jsonResponse({ error: 'Falha ao gerar funil com IA.' }, 502);
   }
+
+  const respostasBase = { ...(mapeamento.respostas as Record<string, unknown> | null) };
+  delete respostasBase._erro_ia;
+
+  if (resultado.tipo === 'perguntas') {
+    await supabase
+      .from('mapeamentos')
+      .update({
+        status: 'aguardando_esclarecimento',
+        respostas: { ...respostasBase, _perguntas_ia: resultado.perguntas },
+      })
+      .eq('id', mapeamentoId);
+
+    return jsonResponse({ ok: true, perguntas: resultado.perguntas });
+  }
+
+  delete respostasBase._perguntas_ia;
+  const funis = resultado.funis;
 
   const { data: versaoAtual } = await supabase
     .from('funis_gerados')
@@ -170,7 +188,10 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: insertError.message }, 500);
   }
 
-  await supabase.from('mapeamentos').update({ status: 'concluido' }).eq('id', mapeamentoId);
+  await supabase
+    .from('mapeamentos')
+    .update({ status: 'concluido', respostas: respostasBase })
+    .eq('id', mapeamentoId);
 
   return jsonResponse({ ok: true, funis: rows });
 });
