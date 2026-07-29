@@ -9,43 +9,44 @@ export type FunilIA = {
 };
 
 type ChatMessage = {
-  role: 'system' | 'user' | 'assistant';
+  role: 'user' | 'assistant';
   content: string;
 };
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+const ANTHROPIC_VERSION = '2023-06-01';
 const MAX_TENTATIVAS = 2;
 
-async function chamarGroq(messages: ChatMessage[]): Promise<string> {
-  const apiKey = Deno.env.get('GROQ_API_KEY');
+async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) {
-    throw new Error('GROQ_API_KEY não configurada nas secrets da função.');
+    throw new Error('ANTHROPIC_API_KEY não configurada nas secrets da função.');
   }
 
-  const model = Deno.env.get('GROQ_MODEL') || 'llama-3.3-70b-versatile';
+  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-5';
 
-  const response = await fetch(GROQ_API_URL, {
+  const response = await fetch(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      authorization: `Bearer ${apiKey}`,
+      'x-api-key': apiKey,
+      'anthropic-version': ANTHROPIC_VERSION,
     },
     body: JSON.stringify({
       model,
-      messages,
-      temperature: 0.4,
       max_tokens: 4096,
-      response_format: { type: 'json_object' },
+      system: SYSTEM_PROMPT,
+      messages,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Groq API respondeu ${response.status}: ${errorText}`);
+    throw new Error(`Anthropic API respondeu ${response.status}: ${errorText}`);
   }
 
   const data = await response.json();
-  const texto = data.choices?.[0]?.message?.content;
+  const texto = data.content?.[0]?.text;
 
   if (!texto) {
     throw new Error('Resposta da IA não contém texto.');
@@ -125,13 +126,10 @@ export async function gerarFunisComIA(
     conteudo += `\n\n## Instruções adicionais para esta geração (pedidas pelo usuário que está revisando o funil)\n${instrucoesExtras}`;
   }
 
-  const messages: ChatMessage[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
-    { role: 'user', content: conteudo },
-  ];
+  const messages: ChatMessage[] = [{ role: 'user', content: conteudo }];
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
-    const textoResposta = await chamarGroq(messages);
+    const textoResposta = await chamarAnthropic(messages);
     const funis = parseRespostaIA(textoResposta);
     if (funis) return funis;
 

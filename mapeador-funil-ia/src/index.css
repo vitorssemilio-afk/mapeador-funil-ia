@@ -877,7 +877,7 @@ a {
 .funil-etapas-table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 .funil-etapas-table th,
@@ -889,8 +889,20 @@ a {
 
 .funil-etapas-table thead th {
   background: var(--color-surface-raised);
-  padding: 10px;
-  min-width: 200px;
+  padding: 12px;
+  min-width: 260px;
+}
+
+.funil-etapas-table tbody tr:nth-child(even) td:not(.campo-label-cell) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.funil-etapas-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.funil-etapas-table tbody tr:hover td.campo-label-cell {
+  background: var(--color-surface-raised);
 }
 
 .campo-label-cell {
@@ -901,22 +913,23 @@ a {
   letter-spacing: 0.03em;
   font-weight: 700;
   color: var(--color-text-muted);
-  padding: 10px 12px;
+  padding: 12px 14px;
   white-space: nowrap;
   position: sticky;
   left: 0;
   z-index: 1;
+  box-shadow: 4px 0 8px -4px rgba(0, 0, 0, 0.5);
 }
 
 .etapa-nome-input {
   width: 100%;
-  min-width: 190px;
+  min-width: 260px;
   border: 1px solid transparent;
   background: transparent;
-  font-size: 13.5px;
+  font-size: 14.5px;
   font-weight: 700;
   color: var(--color-text);
-  padding: 5px 7px;
+  padding: 6px 8px;
   border-radius: var(--radius-sm);
 }
 
@@ -933,17 +946,17 @@ a {
 
 .etapa-cell-input {
   width: 100%;
-  min-width: 190px;
+  min-width: 260px;
   height: 100%;
-  min-height: 56px;
+  min-height: 76px;
   border: 1px solid transparent;
   background: transparent;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--color-text);
-  padding: 9px 11px;
-  resize: vertical;
+  padding: 11px 13px;
+  resize: none;
 }
 
 .etapa-cell-input:hover {

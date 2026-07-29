@@ -289,6 +289,16 @@ export function Mapeamento() {
           <StatusBadge status={mapeamento.status} enviadoPeloCliente={mapeamento.enviado_pelo_cliente} />
         </div>
         <div className="page-header-actions">
+          {funis.length > 0 && (
+            <Link
+              to={`/mapeamento/${mapeamento.id}/relatorio`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-primary"
+            >
+              Gerar relatório em PDF
+            </Link>
+          )}
           {!mapeamento.enviado_pelo_cliente && (
             <button type="button" className="btn btn-secondary" onClick={handleCopiarLink}>
               {linkCopiado ? 'Link copiado!' : 'Copiar link para o cliente'}
@@ -303,16 +313,6 @@ export function Mapeamento() {
             >
               {exportando ? 'Exportando…' : 'Exportar para Excel'}
             </button>
-          )}
-          {funis.length > 0 && (
-            <Link
-              to={`/mapeamento/${mapeamento.id}/relatorio`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-secondary"
-            >
-              Gerar relatório em PDF
-            </Link>
           )}
           <button
             type="button"

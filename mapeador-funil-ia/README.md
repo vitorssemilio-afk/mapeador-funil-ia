@@ -187,20 +187,19 @@ da IA antes de gerar a nova versão.
 ## Edge Function `gerar-funil`
 
 Recebe `mapeamento_id` (e opcionalmente `instrucoes_extras`), monta as respostas em texto, busca
-o vocabulário de `campos_padrao`, chama a Groq API (endpoint compatível com OpenAI) e grava os
-funis gerados em `funis_gerados` como uma nova `versao`, atualizando `mapeamentos.status` para
-`concluido` ou `erro`.
+o vocabulário de `campos_padrao`, chama a API da Anthropic (Messages API,
+`https://api.anthropic.com/v1/messages`) e grava os funis gerados em `funis_gerados` como uma nova
+`versao`, atualizando `mapeamentos.status` para `concluido` ou `erro`.
 
-Gere uma chave gratuita em [console.groq.com](https://console.groq.com) → **API Keys** (não exige
-cartão).
+Gere uma chave em [console.anthropic.com](https://console.anthropic.com) → **API Keys**.
 
 Deploy e configuração via [Supabase CLI](https://supabase.com/docs/guides/cli):
 
 ```bash
 supabase functions deploy gerar-funil
-supabase secrets set GROQ_API_KEY=gsk_...
-# opcional — sobrescreve o modelo padrão (llama-3.3-70b-versatile)
-supabase secrets set GROQ_MODEL=llama-3.3-70b-versatile
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+# opcional — sobrescreve o modelo padrão (claude-sonnet-5)
+supabase secrets set ANTHROPIC_MODEL=claude-sonnet-5
 ```
 
 `SUPABASE_URL` e `SUPABASE_ANON_KEY` já ficam disponíveis automaticamente no runtime da função.
