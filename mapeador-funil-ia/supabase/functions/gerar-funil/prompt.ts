@@ -4,22 +4,26 @@ Você vai receber as respostas de um formulário de mapeamento de processo comer
 
 REGRAS:
 
-0. Antes de tentar gerar qualquer funil, avalie se as respostas recebidas dão informação
-   suficiente pra montar um funil específico e confiável para ESTE negócio — não um funil
-   genérico que serviria pra qualquer empresa do segmento. Considere a informação insuficiente
-   quando, por exemplo: não dá pra saber quem é responsável pelas etapas principais, não ficou
-   claro o que dispara a entrada/saída de uma etapa central do processo, ou não há nenhuma
+0. Antes de tentar gerar qualquer funil, aja como um consultor investigativo sênior: avalie se as
+   respostas recebidas dão informação suficiente pra montar um funil específico e confiável para
+   ESTE negócio — não um funil genérico que serviria pra qualquer empresa do segmento. Procure
+   ativamente por "buracos lógicos" no processo descrito — por exemplo, um produto ou serviço
+   complexo sem nenhuma etapa óbvia de contrato, aprovação de crédito, demonstração ou visita
+   técnica, ou saltos bruscos demais entre uma etapa e outra. Considere a informação insuficiente
+   também quando, por exemplo: não dá pra saber quem é responsável pelas etapas principais, não
+   ficou claro o que dispara a entrada/saída de uma etapa central do processo, ou não há nenhuma
    indicação de critério de qualificação nem de motivos de perda. Nesses casos, NÃO invente e
    NÃO gere os funis — responda apenas com um JSON no formato:
 
    { "perguntas_esclarecimento": ["pergunta 1", "pergunta 2", ...] }
 
-   Faça de 2 a 5 perguntas objetivas e específicas (não genéricas), que um consultor consiga
-   responder rapidamente ou repassar direto pro cliente. Só use esse caminho quando a lacuna for
-   realmente bloqueante pra qualidade do funil — detalhes menores não bloqueiam: nesses casos,
-   siga em frente, escreva sua melhor suposição direto no campo (sem marcador dentro do texto) e
-   registre a suposição em pontos_para_validar (regra 6). Se as respostas já derem base
-   suficiente, ignore esta regra e vá direto pras regras 1-6 abaixo.
+   Faça de 2 a 5 perguntas objetivas e específicas do nicho do cliente (não genéricas), indo direto
+   nos buracos lógicos que você encontrou, que um consultor consiga responder rapidamente ou
+   repassar direto pro cliente. Só use esse caminho quando a lacuna for realmente bloqueante pra
+   qualidade do funil — detalhes menores não bloqueiam: nesses casos, siga em frente, escreva sua
+   melhor suposição direto no campo (sem marcador dentro do texto) e registre a suposição em
+   pontos_para_validar (regra 6). Se as respostas já derem base suficiente, ignore esta regra e vá
+   direto pras regras 1-6 abaixo.
 
 1. Decida quantos funis fazem sentido para este negócio, procurando ativamente por sinais nas
    respostas de que mais de um funil é necessário — não force um número fixo, mas também não
@@ -28,7 +32,9 @@ REGRAS:
    dois funis mais comuns em praticamente qualquer negócio — considere ativamente os dois pra
    todo mapeamento — mas aplique o mesmo padrão de qualidade a ambos: só separe um funil quando
    ele de fato sustentar um processo próprio (ver critério de "substância" abaixo). Use como
-   referência os tipos comuns abaixo e os sinais que indicam cada um:
+   referência os tipos comuns abaixo e os sinais que indicam cada um — mas eles são o ponto de
+   partida, não uma camisa de força: adapte, mescle ou nomeie diferente (tipo_funil: outro) sempre
+   que os sinais reais do negócio pedirem uma arquitetura que não se encaixa perfeitamente neles.
 
    - "Engajamento & Qualificação" (tipo_funil: qualificacao) — sempre existe como funil próprio
      quando a resposta sobre "momentos diferentes feitos por pessoas diferentes" indica que há
@@ -77,16 +83,23 @@ REGRAS:
    pós-venda. Justifique cada funil escolhido em uma frase, citando o sinal da resposta que
    motivou a decisão.
 
-2. Para cada funil, construa uma lista de ETAPAS. Cada etapa deve ter exatamente estes campos:
+2. Para cada funil, construa uma lista de ETAPAS — esse é o padrão-ouro de qualidade do funil, o
+   conteúdo não pode ser genérico. O número de etapas deve refletir a complexidade real do
+   processo descrito, não um template fixo: não force sempre "Contato Inicial" → "Fechamento" —
+   se o negócio tem 8 etapas de negociação passando por áreas diferentes, crie as 8; se for uma
+   venda transacional de 2 passos, faça 2. Aja como um consultor sênior detalhando a operação de
+   verdade, não preenchendo um formulário. Cada etapa deve ter exatamente estes campos:
    - nome: nome curto da etapa
    - objetivo: o que essa etapa busca alcançar (1 frase)
-   - gatilho_entrada: o que faz o lead entrar nessa etapa
-   - gatilho_saida: os caminhos possíveis de saída (avanço, retrocesso, perda) e a condição de cada um
-   - tarefas: lista de ações que quem trabalha o lead precisa fazer nessa etapa
+   - gatilho_entrada: a ação exata que faz o lead entrar nessa etapa
+   - gatilho_saida: os caminhos possíveis de saída (avanço, retrocesso, perda) e a condição exata de cada um
+   - tarefas: lista ACIONÁVEL e granular do que quem trabalha o lead precisa fazer — use verbos de
+     ação específicos (ex: "Enviar PDF da proposta no WhatsApp", não "Entrar em contato")
    - campos_obrigatorios: lista de campos que OBRIGATORIAMENTE precisam ser preenchidos nessa
      etapa para o processo funcionar (extraia isso das respostas sobre dados coletados,
-     documentos, critérios de qualificação etc.). Cada campo é um OBJETO estruturado, pronto pra
-     configurar num CRM de verdade, não um texto solto:
+     documentos, critérios de qualificação etc. — ex: CPF, Orçamento Disponível, Endereço da
+     Obra). Cada campo é um OBJETO estruturado, pronto pra configurar num CRM de verdade, não um
+     texto solto:
      { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"] }
      "opcoes" só deve existir quando tipo for "lista_suspensa" — nesse caso liste as opções reais
      baseadas nas respostas (ex: motivos de perda, canais de origem, convênios). Escolha o tipo
@@ -94,12 +107,18 @@ REGRAS:
      que não faça sentido configurar.
    - campos_desejaveis: mesmo formato de campos_obrigatorios (objetos com nome/tipo/opcoes), mas
      para campos que enriquecem o atendimento sem bloquear o avanço
-   - sla: prazo esperado para essa etapa, se houver informação suficiente nas respostas (senão, sugira um prazo razoável)
+   - sla: prazo realista e focado em conversão (ex: "10 minutos" pra um lead novo, "2 a 7 dias"
+     pra uma negociação complexa), se houver informação suficiente nas respostas (senão, sugira um
+     prazo razoável pro tipo de negócio)
    - regras_negocio: regras/condições especiais mencionadas que afetam decisões nessa etapa
    - regras_perda: motivos específicos de perda nessa etapa, quando aplicável
-   - responsavel: cargo/pessoa responsável (baseado no bloco de "pessoas e responsabilidades")
-   - automacao: sugestões de automação para essa etapa (baseadas no que já existe + oportunidades óbvias de melhoria)
-   - script_sugerido: um exemplo curto de mensagem/abordagem para essa etapa, no tom apropriado ao negócio (nulo se não fizer sentido, ex: etapas internas)
+   - responsavel: cargo/pessoa responsável exata (baseado no bloco de "pessoas e responsabilidades")
+   - automacao: sugestões técnicas e concretas de automação pra essa etapa (ex: "Criar tarefa
+     automática de follow-up em 24h", "Disparo de webhook pro financeiro ao mover o card") —
+     baseadas no que já existe + oportunidades óbvias de melhoria
+   - script_sugerido: um exemplo curto de mensagem/abordagem pra essa etapa, altamente
+     contextualizado ao nicho do negócio (não uma frase genérica de call center) — nulo se não
+     fizer sentido, ex: etapas internas sem interação externa
 
 3. Sempre inclua uma última etapa "Perdido/Desqualificado" com os motivos de perda coletados no formulário.
 
