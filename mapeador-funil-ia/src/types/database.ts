@@ -189,6 +189,9 @@ export type ChecklistItemImplementacao = {
   texto: string;
   ordem: number;
   requer_evidencia: boolean;
+  // null = item do template global do POP (compartilhado); preenchido =
+  // item derivado automaticamente do funil dessa implementação específica.
+  implementacao_id: string | null;
   created_at: string;
   updated_at: string;
 };

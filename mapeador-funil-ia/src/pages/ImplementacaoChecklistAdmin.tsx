@@ -27,7 +27,13 @@ export function ImplementacaoChecklistAdmin() {
     const [{ data: gruposData, error: gruposError }, { data: itensData, error: itensError }] =
       await Promise.all([
         supabase.from('checklist_grupos_implementacao').select('*').order('ordem', { ascending: true }),
-        supabase.from('checklist_itens_implementacao').select('*').order('ordem', { ascending: true }),
+        // Só o template global (compartilhado entre todo mundo) — itens derivados
+        // automaticamente do funil de um cliente específico não aparecem aqui.
+        supabase
+          .from('checklist_itens_implementacao')
+          .select('*')
+          .is('implementacao_id', null)
+          .order('ordem', { ascending: true }),
       ]);
 
     if (gruposError) setError(gruposError.message);
@@ -228,6 +234,9 @@ export function ImplementacaoChecklistAdmin() {
             Itens do POP de implementação de CRM (pré-requisito, semanas, critérios de sucesso).
             Alterar aqui vale pra próxima vez que alguém marcar um item numa implementação — os
             itens já marcados em implementações existentes não são afetados por edição de texto.
+            Itens gerados automaticamente a partir do funil de um cliente (botão "Gerar itens a
+            partir do funil" na tela de cada implementação) são específicos daquele cliente e não
+            aparecem aqui.
           </p>
         </div>
         {!mostrarFormGrupo && (

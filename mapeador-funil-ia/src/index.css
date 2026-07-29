@@ -527,6 +527,12 @@ a {
   color: var(--color-warning);
 }
 
+.derivado-badge {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-info);
+}
+
 .field-hint {
   font-size: 13px;
   color: var(--color-text-muted);

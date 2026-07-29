@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0009) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0010) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -129,6 +129,27 @@ cliente — as 4 semanas do processo, do pré-requisito até a entrega final.
   marcar/desmarcar um item persiste na hora.
 - Os grupos/itens de checklist são editáveis em `/implementacoes/checklist` (mesmo padrão CRUD +
   reordenação da tela `/formulario`), pro POP poder evoluir sem precisar mexer em código.
+
+### Checklist derivado do funil (Semana 1 e Semana 2)
+
+Fase 3 do roadmap V4: o botão **"Gerar itens a partir do funil"** (na tela de cada implementação)
+lê o funil já gerado pra aquele cliente (a versão mais recente) e cria, direto no checklist,
+itens específicos daquele cliente — sem IA, só formatando o que já está salvo em `funis_gerados`:
+
+- **Semana 1** (funis, cards, campos personalizados, gatilhos): um item por funil listando as
+  etapas, um item por etapa com os gatilhos de entrada/saída, e um item por etapa com os campos
+  obrigatórios/desejáveis a cadastrar.
+- **Semana 2** (canais, automações, mensagens, motivos de perda): um item por etapa com
+  automação sugerida, um item por etapa com o script sugerido (modelo de mensagem), e um item
+  agregando todos os motivos de perda do funil.
+
+Esses itens ficam marcados com `implementacao_id` preenchido em `checklist_itens_implementacao`
+(migration `0010`) — diferente dos itens do template global do POP, que têm `implementacao_id`
+nulo e continuam compartilhados entre todos os clientes (editáveis em
+`/implementacoes/checklist`, que só mostra os itens globais). Na tela da implementação os dois
+tipos aparecem juntos no mesmo checklist, com um "· gerado do funil" identificando os derivados.
+Rodar o botão de novo substitui os itens derivados anteriores (o que já tinha sido marcado neles
+se perde) — útil depois de regenerar o funil com uma versão diferente.
 
 ### Gate de Semana 1 e evidência nos Critérios de Sucesso
 

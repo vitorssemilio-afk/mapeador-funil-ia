@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
+import { gerarItensDerivados } from '../lib/checklistDerivado';
 import { supabase } from '../lib/supabaseClient';
 import type {
   ChecklistGrupoImplementacao,
   ChecklistItemImplementacao,
   CredencialCrmListada,
+  FunilGerado,
   ImplementacaoCrm,
   ImplementacaoStatus,
 } from '../types/database';
@@ -92,6 +94,7 @@ export function ImplementacaoDetalhe() {
   const [revelando, setRevelando] = useState<string | null>(null);
 
   const [excluindo, setExcluindo] = useState(false);
+  const [gerandoItens, setGerandoItens] = useState(false);
 
   async function carregar(implementacaoId: string) {
     setLoading(true);
@@ -106,7 +109,12 @@ export function ImplementacaoDetalhe() {
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       supabase.from('checklist_grupos_implementacao').select('*').order('ordem', { ascending: true }),
-      supabase.from('checklist_itens_implementacao').select('*').order('ordem', { ascending: true }),
+      // Template global (implementacao_id nulo) + itens derivados do funil desta implementação.
+      supabase
+        .from('checklist_itens_implementacao')
+        .select('*')
+        .or(`implementacao_id.is.null,implementacao_id.eq.${implementacaoId}`)
+        .order('ordem', { ascending: true }),
       supabase
         .from('implementacao_checklist_marcado')
         .select('item_id, marcado, evidencia')
@@ -142,6 +150,105 @@ export function ImplementacaoDetalhe() {
 
   function itensDoGrupo(grupoId: string): ChecklistItemImplementacao[] {
     return itens.filter((item) => item.grupo_id === grupoId).sort((a, b) => a.ordem - b.ordem);
+  }
+
+  // Base pros itens derivados: sempre logo após os itens globais do template,
+  // pra não crescer a cada regeneração (os derivados antigos já foram apagados).
+  function proximaOrdemGrupo(grupoId: string): number {
+    const ordens = itens
+      .filter((item) => item.grupo_id === grupoId && item.implementacao_id === null)
+      .map((item) => item.ordem);
+    return ordens.length > 0 ? Math.max(...ordens) + 1 : 0;
+  }
+
+  async function buscarFunisMaisRecentes(mapeamentoId: string): Promise<FunilGerado[]> {
+    const { data: versaoAtual } = await supabase
+      .from('funis_gerados')
+      .select('versao')
+      .eq('mapeamento_id', mapeamentoId)
+      .order('versao', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!versaoAtual) return [];
+
+    const { data } = await supabase
+      .from('funis_gerados')
+      .select('*')
+      .eq('mapeamento_id', mapeamentoId)
+      .eq('versao', versaoAtual.versao)
+      .order('ordem', { ascending: true });
+
+    return data ?? [];
+  }
+
+  async function handleGerarItensDoFunil() {
+    if (!implementacao) return;
+
+    const jaTemDerivados = itens.some((item) => item.implementacao_id === implementacao.id);
+    if (
+      jaTemDerivados &&
+      !window.confirm(
+        'Já existem itens gerados a partir do funil nesta implementação. Gerar de novo substitui esses itens — o que já tinha sido marcado neles se perde. Continuar?',
+      )
+    ) {
+      return;
+    }
+
+    setGerandoItens(true);
+    setError(null);
+
+    const funis = await buscarFunisMaisRecentes(implementacao.mapeamento_id);
+    if (funis.length === 0) {
+      setGerandoItens(false);
+      setError('O mapeamento de origem ainda não tem funil gerado.');
+      return;
+    }
+
+    const grupoSemana1 = grupos.find((g) => g.chave === 'semana_1');
+    const grupoSemana2 = grupos.find((g) => g.chave === 'semana_2');
+    if (!grupoSemana1 || !grupoSemana2) {
+      setGerandoItens(false);
+      setError('Grupos de checklist "Semana 1" / "Semana 2" não encontrados.');
+      return;
+    }
+
+    const { semana1, semana2 } = gerarItensDerivados(funis);
+
+    if (jaTemDerivados) {
+      await supabase
+        .from('checklist_itens_implementacao')
+        .delete()
+        .eq('implementacao_id', implementacao.id);
+    }
+
+    const ordemBaseSemana1 = proximaOrdemGrupo(grupoSemana1.id);
+    const ordemBaseSemana2 = proximaOrdemGrupo(grupoSemana2.id);
+
+    const rows = [
+      ...semana1.map((texto, i) => ({
+        grupo_id: grupoSemana1.id,
+        texto,
+        ordem: ordemBaseSemana1 + i,
+        implementacao_id: implementacao.id,
+      })),
+      ...semana2.map((texto, i) => ({
+        grupo_id: grupoSemana2.id,
+        texto,
+        ordem: ordemBaseSemana2 + i,
+        implementacao_id: implementacao.id,
+      })),
+    ];
+
+    const { error: insertError } = await supabase.from('checklist_itens_implementacao').insert(rows);
+    setGerandoItens(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    await carregar(implementacao.id);
   }
 
   async function persistirItem(itemId: string, marcado: boolean) {
@@ -546,6 +653,24 @@ export function ImplementacaoDetalhe() {
         </div>
       </form>
 
+      <section className="card form-card">
+        <h2>Itens derivados do funil</h2>
+        <p className="field-hint">
+          Gera itens específicos pra Semana 1 (funis, campos, gatilhos) e Semana 2 (automações,
+          mensagens, motivos de perda) a partir do funil já gerado pra este cliente, direto no
+          checklist abaixo — sem precisar montar essa lista na mão. Rodar de novo substitui os
+          itens gerados anteriormente (o que já tinha sido marcado neles se perde).
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary btn-auto"
+          onClick={handleGerarItensDoFunil}
+          disabled={gerandoItens}
+        >
+          {gerandoItens ? 'Gerando…' : 'Gerar itens a partir do funil'}
+        </button>
+      </section>
+
       {grupos.map((grupo) => (
         <section key={grupo.id} className="card form-card">
           <h2>{grupo.titulo}</h2>
@@ -559,7 +684,10 @@ export function ImplementacaoDetalhe() {
                       checked={marcados.has(item.id)}
                       onChange={() => handleToggleItem(item)}
                     />
-                    <span>{item.texto}</span>
+                    <span>
+                      {item.texto}
+                      {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
+                    </span>
                   </label>
                   <input
                     type="text"
@@ -580,7 +708,10 @@ export function ImplementacaoDetalhe() {
                     checked={marcados.has(item.id)}
                     onChange={() => handleToggleItem(item)}
                   />
-                  <span>{item.texto}</span>
+                  <span>
+                    {item.texto}
+                    {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
+                  </span>
                 </label>
               ),
             )}
