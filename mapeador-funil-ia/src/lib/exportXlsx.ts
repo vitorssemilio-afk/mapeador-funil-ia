@@ -37,7 +37,7 @@ export async function exportarFunisParaExcel(nomeNegocio: string, funis: FunilGe
     const cabecalho = ['Campo', ...funil.etapas.map((etapa) => etapa.nome)];
     const linhas = CAMPOS_ETAPA.map((campo) => [
       campo.label,
-      ...funil.etapas.map((etapa) => valorEtapaParaTexto(etapa[campo.key])),
+      ...funil.etapas.map((etapa) => valorEtapaParaTexto(etapa[campo.key], campo.estruturado)),
     ]);
 
     const planilha = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);

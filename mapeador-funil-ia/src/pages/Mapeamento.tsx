@@ -9,9 +9,16 @@ import { supabase } from '../lib/supabaseClient';
 import type {
   EtapaFunil,
   FunilGerado,
+  GeracaoMeta,
   ImplementacaoCrm,
   Mapeamento as MapeamentoType,
 } from '../types/database';
+
+const NIVEL_COMPLEXIDADE_LABELS: Record<string, string> = {
+  baixa: 'Baixa',
+  media: 'Média',
+  alta: 'Alta',
+};
 
 export function Mapeamento() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +26,7 @@ export function Mapeamento() {
   const navigate = useNavigate();
   const [mapeamento, setMapeamento] = useState<MapeamentoType | null>(null);
   const [funis, setFunis] = useState<FunilGerado[]>([]);
+  const [geracaoMeta, setGeracaoMeta] = useState<GeracaoMeta | null>(null);
   const [versoesDisponiveis, setVersoesDisponiveis] = useState<number[]>([]);
   const [versaoSelecionada, setVersaoSelecionada] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,6 +63,7 @@ export function Mapeamento() {
 
     if (alvo === undefined) {
       setFunis([]);
+      setGeracaoMeta(null);
       return;
     }
 
@@ -67,6 +76,15 @@ export function Mapeamento() {
 
     if (funisError) setError(funisError.message);
     else setFunis(funisData ?? []);
+
+    const { data: metaData } = await supabase
+      .from('geracoes_meta')
+      .select('*')
+      .eq('mapeamento_id', mapeamentoId)
+      .eq('versao', alvo)
+      .maybeSingle();
+
+    setGeracaoMeta(metaData ?? null);
   }
 
   useEffect(() => {
@@ -472,6 +490,54 @@ export function Mapeamento() {
               ))}
             </div>
           )}
+
+          {geracaoMeta &&
+            (geracaoMeta.pontos_para_validar.length > 0 ||
+              geracaoMeta.transicoes_entre_funis.length > 0 ||
+              geracaoMeta.nivel_complexidade) && (
+              <section className="card geracao-meta-card">
+                {geracaoMeta.nivel_complexidade && (
+                  <div className="estimativa-badge">
+                    <span className={`estimativa-nivel estimativa-nivel-${geracaoMeta.nivel_complexidade}`}>
+                      Complexidade {NIVEL_COMPLEXIDADE_LABELS[geracaoMeta.nivel_complexidade]}
+                    </span>
+                    {geracaoMeta.semanas_estimadas != null && (
+                      <span className="estimativa-semanas">
+                        ~{geracaoMeta.semanas_estimadas}{' '}
+                        {geracaoMeta.semanas_estimadas === 1 ? 'semana' : 'semanas'} de implementação
+                      </span>
+                    )}
+                    {geracaoMeta.observacao_estimativa && (
+                      <p className="field-hint">{geracaoMeta.observacao_estimativa}</p>
+                    )}
+                  </div>
+                )}
+
+                {geracaoMeta.transicoes_entre_funis.length > 0 && (
+                  <div className="geracao-meta-bloco">
+                    <h3>Transições entre funis</h3>
+                    <ul className="transicoes-lista">
+                      {geracaoMeta.transicoes_entre_funis.map((t, i) => (
+                        <li key={i}>
+                          <strong>{t.de_funil}</strong> → <strong>{t.para_funil}</strong>: {t.condicao}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {geracaoMeta.pontos_para_validar.length > 0 && (
+                  <div className="geracao-meta-bloco">
+                    <h3>Pontos para validar com o cliente</h3>
+                    <ul className="perguntas-ia-lista">
+                      {geracaoMeta.pontos_para_validar.map((ponto, i) => (
+                        <li key={i}>{ponto}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+            )}
 
           {funis.map((funil) => (
             <FunilDetalhado

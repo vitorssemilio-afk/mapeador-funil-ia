@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0007) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0008) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -37,6 +37,8 @@ npm run dev
 
 - `mapeamentos` — cada preenchimento do formulário de mapeamento
 - `funis_gerados` — funis produzidos pela IA a partir de um mapeamento
+- `geracoes_meta` — metadados de nível-raiz de cada geração (pontos para validar com o cliente,
+  transições entre funis, estimativa de esforço) — ver seção "Campos estruturados..." abaixo
 - `campos_padrao` — biblioteca reutilizável de campos (LEAD/CONTATO)
 - `blocos_formulario` / `perguntas_formulario` — os blocos e perguntas do formulário que o
   cliente responde (editáveis pela tela `/formulario`, ver seção abaixo)
@@ -152,10 +154,12 @@ página) cobrindo todos os funis gerados pra um mapeamento — pensado pra apres
 Aberto pelo botão "Gerar relatório em PDF" na tela do mapeamento (aparece quando já existe pelo
 menos um funil), em uma aba nova.
 
-Estrutura do documento: capa (nome do cliente) → pra cada funil, um slide de visão geral (grid com
-todas as etapas) seguido de um slide de detalhe por etapa, cobrindo todos os campos do funil
-(objetivo, gatilho de entrada/saída, campos obrigatórios/desejáveis, SLA, responsável, tarefas,
-automação, regras de negócio/perda, script sugerido).
+Estrutura do documento: capa (nome do cliente) → slide "Pontos de atenção" (quando a geração atual
+tem `pontos_para_validar`, `transicoes_entre_funis` ou `estimativa` — ver seção "Campos
+estruturados..." acima) → pra cada funil, um slide de visão geral (grid com todas as etapas)
+seguido de um slide de detalhe por etapa, cobrindo todos os campos do funil (objetivo, gatilho de
+entrada/saída, campos obrigatórios/desejáveis, SLA, responsável, tarefas, automação, regras de
+negócio/perda, script sugerido).
 
 Não usa nenhuma biblioteca de geração de PDF — o botão "Baixar PDF" chama `window.print()` e o
 usuário escolhe "Salvar como PDF" no diálogo de impressão do navegador. O CSS
@@ -199,15 +203,41 @@ de texto pra responder — a resposta é reenviada pra Edge Function pelo mesmo 
 `instrucoes_extras` do botão de regenerar, então nenhum endpoint novo foi necessário. Se ainda
 assim a IA achar que falta informação, ela pode pedir esclarecimento de novo (o formulário
 continua aberto pra uma nova resposta) — mas isso só deve acontecer quando a lacuna for realmente
-bloqueante; detalhes menores são preenchidos com `"[sugestão — validar com o cliente]"` em vez de
-virar pergunta.
+bloqueante; detalhes menores são preenchidos com a melhor suposição da IA e viram um item em
+`pontos_para_validar` (ver seção abaixo), em vez de virar pergunta.
+
+## Campos estruturados e metadados da geração
+
+Fase 1 da evolução pedida pela V4 Company: o JSON que a IA devolve ficou mais rico, pensado pra
+sair "pronto pra configurar" no CRM, não só descrito.
+
+- **Campos estruturados**: `campos_obrigatorios`/`campos_desejaveis` de cada etapa deixaram de ser
+  texto solto e viraram objetos `{ nome, tipo, opcoes? }` — o mesmo vocabulário de tipo já usado em
+  `campos_padrao` (`lista_suspensa`, `texto_curto`, `texto_longo`, `numero`, `data`, `checkbox`,
+  `telefone`). Na tabela editável (`FunilDetalhado`), cada campo é uma linha no formato `Nome
+  (tipo)` ou `Nome (lista_suspensa: opção 1, opção 2)` — editar é só editar o texto, o parser
+  reconstrói o objeto ao salvar. Dados de funis gerados antes dessa mudança (string solta) continuam
+  sendo exibidos normalmente, sem precisar migrar nada.
+- **`pontos_para_validar`**: lista de suposições que a IA precisou fazer por falta de informação
+  (SLA chutado, campo obrigatório inferido etc.), cada uma identificando o funil/etapa. Vira
+  automaticamente a pauta da call de alinhamento com o cliente antes de implementar.
+- **`transicoes_entre_funis`**: quando há mais de um funil, o que faz um lead sair de um e entrar
+  no outro (`de_funil`, `para_funil`, `condicao`) — a regra de negócio que geralmente trava a
+  implementação se não estiver clara.
+- **`estimativa`**: `nivel_complexidade` (baixa/média/alta) e `semanas_estimadas`, baseado no
+  número de funis/etapas/automações identificados — serve de proxy rápido pra orçar a proposta.
+
+Esses três últimos são salvos em `geracoes_meta` (migration `0008`), uma linha por versão gerada
+(mesmo padrão de versionamento de `funis_gerados`). Aparecem num card na tela do mapeamento logo
+acima dos funis, e como um slide extra ("Pontos de atenção") no relatório em PDF.
 
 ## Edge Function `gerar-funil`
 
 Recebe `mapeamento_id` (e opcionalmente `instrucoes_extras`), monta as respostas em texto, busca
 o vocabulário de `campos_padrao`, chama a API da Anthropic (Messages API,
 `https://api.anthropic.com/v1/messages`) e grava os funis gerados em `funis_gerados` como uma nova
-`versao`, atualizando `mapeamentos.status` para `concluido` ou `erro`.
+`versao` (mais a linha correspondente em `geracoes_meta`), atualizando `mapeamentos.status` para
+`concluido` ou `erro`.
 
 Gere uma chave em [console.anthropic.com](https://console.anthropic.com) → **API Keys**.
 

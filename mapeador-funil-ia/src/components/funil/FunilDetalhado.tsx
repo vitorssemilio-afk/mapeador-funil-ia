@@ -57,8 +57,13 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
     campoKey: keyof EtapaFunil,
     texto: string,
     lista: boolean,
+    estruturado: boolean,
   ) {
-    let novoValor: string | string[] | null = textoParaValorEtapa(texto, lista);
+    let novoValor: ReturnType<typeof textoParaValorEtapa> | null = textoParaValorEtapa(
+      texto,
+      lista,
+      estruturado,
+    );
     if (campoKey === 'script_sugerido' && typeof novoValor === 'string' && novoValor.trim() === '') {
       novoValor = null;
     }
@@ -112,8 +117,10 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
                     <textarea
                       className="etapa-cell-input"
                       rows={2}
-                      value={valorEtapaParaTexto(etapa[campo.key])}
-                      onChange={(e) => handleCellChange(i, campo.key, e.target.value, campo.lista)}
+                      value={valorEtapaParaTexto(etapa[campo.key], campo.estruturado)}
+                      onChange={(e) =>
+                        handleCellChange(i, campo.key, e.target.value, campo.lista, !!campo.estruturado)
+                      }
                       readOnly={somenteLeitura}
                     />
                   </td>
@@ -123,6 +130,14 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
           </tbody>
         </table>
       </div>
+
+      {funil.etapas.length > 0 && (
+        <p className="field-hint funil-estruturado-hint">
+          Campos Obrigatórios/Desejáveis: uma linha por campo, no formato "Nome (tipo)" — ex:
+          "Telefone (telefone)" — ou "Nome (lista_suspensa: opção 1, opção 2)" quando o tipo tiver
+          opções.
+        </p>
+      )}
     </section>
   );
 }

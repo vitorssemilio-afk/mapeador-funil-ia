@@ -188,6 +188,21 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: insertError.message }, 500);
   }
 
+  const { error: metaError } = await supabase.from('geracoes_meta').insert({
+    mapeamento_id: mapeamentoId,
+    user_id: mapeamento.user_id as string,
+    versao: proximaVersao,
+    pontos_para_validar: resultado.pontos_para_validar,
+    transicoes_entre_funis: resultado.transicoes_entre_funis,
+    nivel_complexidade: resultado.estimativa?.nivel_complexidade ?? null,
+    semanas_estimadas: resultado.estimativa?.semanas_estimadas ?? null,
+    observacao_estimativa: resultado.estimativa?.observacao ?? null,
+  });
+
+  if (metaError) {
+    console.error('Erro ao salvar geracoes_meta', metaError);
+  }
+
   await supabase
     .from('mapeamentos')
     .update({ status: 'concluido', respostas: respostasBase })

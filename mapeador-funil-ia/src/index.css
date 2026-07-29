@@ -534,6 +534,76 @@ a {
   line-height: 1.5;
 }
 
+.geracao-meta-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.geracao-meta-bloco h3 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.transicoes-lista {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.estimativa-badge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.estimativa-nivel {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.estimativa-nivel-baixa {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.estimativa-nivel-media {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.estimativa-nivel-alta {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.estimativa-semanas {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.estimativa-badge .field-hint {
+  flex-basis: 100%;
+}
+
+.funil-estruturado-hint {
+  margin-top: 10px;
+}
+
 .form-error {
   font-size: 13px;
   font-weight: 500;

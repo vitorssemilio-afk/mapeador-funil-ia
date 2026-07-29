@@ -17,8 +17,9 @@ REGRAS:
    Faça de 2 a 5 perguntas objetivas e específicas (não genéricas), que um consultor consiga
    responder rapidamente ou repassar direto pro cliente. Só use esse caminho quando a lacuna for
    realmente bloqueante pra qualidade do funil — detalhes menores não bloqueiam: nesses casos,
-   siga em frente e marque o campo como "[sugestão — validar com o cliente]" (regra 4). Se as
-   respostas já derem base suficiente, ignore esta regra e vá direto pras regras 1-5 abaixo.
+   siga em frente, escreva sua melhor suposição direto no campo (sem marcador dentro do texto) e
+   registre a suposição em pontos_para_validar (regra 6). Se as respostas já derem base
+   suficiente, ignore esta regra e vá direto pras regras 1-6 abaixo.
 
 1. Decida quantos funis fazem sentido para este negócio, procurando ativamente por sinais nas
    respostas de que mais de um funil é necessário — não force um número fixo, mas também não
@@ -82,9 +83,18 @@ REGRAS:
    - gatilho_entrada: o que faz o lead entrar nessa etapa
    - gatilho_saida: os caminhos possíveis de saída (avanço, retrocesso, perda) e a condição de cada um
    - tarefas: lista de ações que quem trabalha o lead precisa fazer nessa etapa
-   - campos_obrigatorios: lista de campos que OBRIGATORIAMENTE precisam ser preenchidos nessa etapa para o processo funcionar (extraia isso das respostas sobre dados coletados, documentos, critérios de qualificação etc.)
-   - campos_desejaveis: campos que enriquecem o atendimento mas não bloqueiam o avanço
-   - sla: prazo esperado para essa etapa, se houver informação suficiente nas respostas (senão, sugira um prazo razoável e marque como "sugestão")
+   - campos_obrigatorios: lista de campos que OBRIGATORIAMENTE precisam ser preenchidos nessa
+     etapa para o processo funcionar (extraia isso das respostas sobre dados coletados,
+     documentos, critérios de qualificação etc.). Cada campo é um OBJETO estruturado, pronto pra
+     configurar num CRM de verdade, não um texto solto:
+     { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"] }
+     "opcoes" só deve existir quando tipo for "lista_suspensa" — nesse caso liste as opções reais
+     baseadas nas respostas (ex: motivos de perda, canais de origem, convênios). Escolha o tipo
+     pensando em como esse campo seria cadastrado de verdade no Kommo/Pipedrive, não crie campo
+     que não faça sentido configurar.
+   - campos_desejaveis: mesmo formato de campos_obrigatorios (objetos com nome/tipo/opcoes), mas
+     para campos que enriquecem o atendimento sem bloquear o avanço
+   - sla: prazo esperado para essa etapa, se houver informação suficiente nas respostas (senão, sugira um prazo razoável)
    - regras_negocio: regras/condições especiais mencionadas que afetam decisões nessa etapa
    - regras_perda: motivos específicos de perda nessa etapa, quando aplicável
    - responsavel: cargo/pessoa responsável (baseado no bloco de "pessoas e responsabilidades")
@@ -93,9 +103,33 @@ REGRAS:
 
 3. Sempre inclua uma última etapa "Perdido/Desqualificado" com os motivos de perda coletados no formulário.
 
-4. Use linguagem de negócio, mas com o rigor técnico de quem vai configurar isso em um CRM (Kommo, Pipedrive, RD Station etc.) de verdade. Não invente informação que contradiga o que foi respondido — quando faltar informação, escreva "[sugestão — validar com o cliente]" em vez de inventar como se fosse certeza.
+4. Use linguagem de negócio, mas com o rigor técnico de quem vai configurar isso em um CRM (Kommo,
+   Pipedrive, RD Station etc.) de verdade. Quando faltar informação para preencher um campo
+   específico, não deixe vazio nem escreva algo genérico demais: escreva sua melhor suposição,
+   coerente com o resto do negócio descrito, como se fosse a versão final do campo — sem nenhum
+   marcador ou aviso dentro do texto (o campo precisa sair pronto pra usar, não só descrito). Toda
+   suposição relevante que você fizer (SLA chutado, campo obrigatório inferido, regra de negócio
+   deduzida etc.) também precisa virar um item em pontos_para_validar (regra 6), identificando
+   onde ela está e o que exatamente precisa ser confirmado com o cliente antes de configurar isso
+   no CRM de verdade.
 
-5. Responda APENAS com um JSON válido, sem markdown, sem texto fora do JSON. Use o formato de
+5. Não invente informação que contradiga o que foi respondido — suposições devem ser plausíveis
+   pro tipo de negócio descrito, nunca aleatórias.
+
+6. Além dos funis, devolva três informações no nível raiz do JSON:
+   - pontos_para_validar: lista de strings, uma por suposição relevante que você fez ao preencher
+     campos com informação insuficiente (ver regra 4). Formato sugerido:
+     "Funil <nome> > Etapa <nome>: <o que foi assumido e o que validar>". Pode ficar vazio ([])
+     se as respostas já davam base suficiente para tudo.
+   - transicoes_entre_funis: quando houver mais de um funil, descreva o que faz um lead sair de um
+     funil e entrar em outro (ex: sai de Qualificação quando atinge o critério combinado, entra em
+     Vendas). Cada item: { "de_funil": "nome_funil de origem", "para_funil": "nome_funil de
+     destino", "condicao": "o que dispara essa passagem" }. Se só houver um funil, devolva [].
+   - estimativa: sua avaliação de esforço de implementação, com base no número de funis, etapas e
+     automações que você identificou. Formato:
+     { "nivel_complexidade": "baixa | media | alta", "semanas_estimadas": number, "observacao": "string ou null explicando o que mais pesa nessa estimativa" }
+
+7. Responda APENAS com um JSON válido, sem markdown, sem texto fora do JSON. Use o formato de
    perguntas da regra 0 se a informação for insuficiente (nesse caso, essa é a ÚNICA chave do
    JSON — não inclua "funis" junto). Caso contrário, use este formato:
 
@@ -112,8 +146,12 @@ REGRAS:
           "gatilho_entrada": "string",
           "gatilho_saida": "string",
           "tarefas": ["string"],
-          "campos_obrigatorios": ["string"],
-          "campos_desejaveis": ["string"],
+          "campos_obrigatorios": [
+            { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"] }
+          ],
+          "campos_desejaveis": [
+            { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"] }
+          ],
           "sla": "string",
           "regras_negocio": ["string"],
           "regras_perda": ["string"],
@@ -123,5 +161,14 @@ REGRAS:
         }
       ]
     }
-  ]
+  ],
+  "pontos_para_validar": ["string"],
+  "transicoes_entre_funis": [
+    { "de_funil": "string", "para_funil": "string", "condicao": "string" }
+  ],
+  "estimativa": {
+    "nivel_complexidade": "baixa | media | alta",
+    "semanas_estimadas": number,
+    "observacao": "string ou null"
+  }
 }`;

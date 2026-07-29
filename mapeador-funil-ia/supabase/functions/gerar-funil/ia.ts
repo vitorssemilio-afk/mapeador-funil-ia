@@ -1,4 +1,4 @@
-import type { EtapaFunil } from '../../../src/types/database.ts';
+import type { EtapaFunil, TransicaoEntreFunis } from '../../../src/types/database.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 
 export type FunilIA = {
@@ -8,8 +8,20 @@ export type FunilIA = {
   etapas: EtapaFunil[];
 };
 
+export type EstimativaIA = {
+  nivel_complexidade: string;
+  semanas_estimadas: number;
+  observacao: string | null;
+};
+
 export type ResultadoIA =
-  | { tipo: 'funis'; funis: FunilIA[] }
+  | {
+      tipo: 'funis';
+      funis: FunilIA[];
+      pontos_para_validar: string[];
+      transicoes_entre_funis: TransicaoEntreFunis[];
+      estimativa: EstimativaIA | null;
+    }
   | { tipo: 'perguntas'; perguntas: string[] };
 
 type ChatMessage = {
@@ -65,6 +77,17 @@ function extrairJson(texto: string): string {
   return fenceMatch ? fenceMatch[1] : semEspacos;
 }
 
+function isCampoEtapaIA(item: unknown): boolean {
+  if (typeof item !== 'object' || item === null) return false;
+  const c = item as Record<string, unknown>;
+  return (
+    typeof c.nome === 'string' &&
+    typeof c.tipo === 'string' &&
+    (c.opcoes === undefined ||
+      (Array.isArray(c.opcoes) && c.opcoes.every((o) => typeof o === 'string')))
+  );
+}
+
 function isEtapaIA(item: unknown): item is EtapaFunil {
   if (typeof item !== 'object' || item === null) return false;
   const e = item as Record<string, unknown>;
@@ -75,7 +98,9 @@ function isEtapaIA(item: unknown): item is EtapaFunil {
     typeof e.gatilho_saida === 'string' &&
     Array.isArray(e.tarefas) &&
     Array.isArray(e.campos_obrigatorios) &&
+    e.campos_obrigatorios.every(isCampoEtapaIA) &&
     Array.isArray(e.campos_desejaveis) &&
+    e.campos_desejaveis.every(isCampoEtapaIA) &&
     typeof e.sla === 'string' &&
     Array.isArray(e.regras_negocio) &&
     Array.isArray(e.regras_perda) &&
@@ -96,6 +121,45 @@ function isFunilIA(item: unknown): item is FunilIA {
     f.etapas.length > 0 &&
     f.etapas.every(isEtapaIA)
   );
+}
+
+function extrairPontosParaValidar(json: Record<string, unknown>): string[] {
+  const valor = json.pontos_para_validar;
+  if (Array.isArray(valor) && valor.every((p) => typeof p === 'string')) {
+    return valor as string[];
+  }
+  return [];
+}
+
+function extrairTransicoesEntreFunis(json: Record<string, unknown>): TransicaoEntreFunis[] {
+  const valor = json.transicoes_entre_funis;
+  if (!Array.isArray(valor)) return [];
+  return valor.filter((item): item is TransicaoEntreFunis => {
+    if (typeof item !== 'object' || item === null) return false;
+    const t = item as Record<string, unknown>;
+    return (
+      typeof t.de_funil === 'string' &&
+      typeof t.para_funil === 'string' &&
+      typeof t.condicao === 'string'
+    );
+  });
+}
+
+const NIVEIS_COMPLEXIDADE = new Set(['baixa', 'media', 'alta']);
+
+function extrairEstimativa(json: Record<string, unknown>): EstimativaIA | null {
+  const valor = json.estimativa;
+  if (typeof valor !== 'object' || valor === null) return null;
+  const e = valor as Record<string, unknown>;
+  if (typeof e.nivel_complexidade !== 'string' || !NIVEIS_COMPLEXIDADE.has(e.nivel_complexidade)) {
+    return null;
+  }
+  if (typeof e.semanas_estimadas !== 'number') return null;
+  return {
+    nivel_complexidade: e.nivel_complexidade,
+    semanas_estimadas: e.semanas_estimadas,
+    observacao: typeof e.observacao === 'string' ? e.observacao : null,
+  };
 }
 
 function isPerguntasIA(json: Record<string, unknown>): string[] | null {
@@ -128,7 +192,13 @@ function parseRespostaIA(texto: string): ResultadoIA | null {
   if (!Array.isArray(funis) || funis.length === 0) return null;
   if (!funis.every(isFunilIA)) return null;
 
-  return { tipo: 'funis', funis };
+  return {
+    tipo: 'funis',
+    funis,
+    pontos_para_validar: extrairPontosParaValidar(obj),
+    transicoes_entre_funis: extrairTransicoesEntreFunis(obj),
+    estimativa: extrairEstimativa(obj),
+  };
 }
 
 export async function gerarFunisComIA(

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { formatCampoEtapaLabel } from '../data/etapaCampos';
 import { supabase } from '../lib/supabaseClient';
-import type { EtapaFunil, FunilGerado, Mapeamento } from '../types/database';
+import type { EtapaFunil, FunilGerado, GeracaoMeta, Mapeamento } from '../types/database';
 import './RelatorioFunil.css';
 
 const TIPO_FUNIL_LABELS: Record<string, string> = {
@@ -10,6 +11,12 @@ const TIPO_FUNIL_LABELS: Record<string, string> = {
   comparecimento: 'Comparecimento',
   pos_venda: 'Pós-venda',
   outro: 'Outro',
+};
+
+const NIVEL_COMPLEXIDADE_LABELS: Record<string, string> = {
+  baixa: 'Baixa',
+  media: 'Média',
+  alta: 'Alta',
 };
 
 function ItemList({ items }: { items: string[] }) {
@@ -58,14 +65,14 @@ function EtapaSlide({ etapa, index }: { etapa: EtapaFunil; index: number }) {
           {etapa.campos_obrigatorios.length > 0 && (
             <>
               <div className="relatorio-col-title">Campos Obrigatórios</div>
-              <ItemList items={etapa.campos_obrigatorios} />
+              <ItemList items={etapa.campos_obrigatorios.map(formatCampoEtapaLabel)} />
             </>
           )}
 
           {etapa.campos_desejaveis.length > 0 && (
             <>
               <div className="relatorio-col-title">Campos Desejáveis</div>
-              <ItemList items={etapa.campos_desejaveis} />
+              <ItemList items={etapa.campos_desejaveis.map(formatCampoEtapaLabel)} />
             </>
           )}
 
@@ -169,10 +176,63 @@ function VisaoGeralSlide({
   );
 }
 
+function MetaSlide({ meta }: { meta: GeracaoMeta }) {
+  const temConteudo =
+    meta.pontos_para_validar.length > 0 ||
+    meta.transicoes_entre_funis.length > 0 ||
+    meta.nivel_complexidade;
+
+  if (!temConteudo) return null;
+
+  return (
+    <section className="relatorio-slide">
+      <div className="relatorio-eyebrow">Antes de implementar</div>
+      <h2>Pontos de atenção</h2>
+      <div className="relatorio-inner">
+        <div className="relatorio-col relatorio-col-left">
+          {meta.nivel_complexidade && (
+            <>
+              <div className="relatorio-sla-badge">
+                Complexidade {NIVEL_COMPLEXIDADE_LABELS[meta.nivel_complexidade] ?? meta.nivel_complexidade}
+                {meta.semanas_estimadas != null &&
+                  ` · ~${meta.semanas_estimadas} ${meta.semanas_estimadas === 1 ? 'semana' : 'semanas'}`}
+              </div>
+              {meta.observacao_estimativa && (
+                <p className="relatorio-paragraph">{meta.observacao_estimativa}</p>
+              )}
+            </>
+          )}
+
+          {meta.transicoes_entre_funis.length > 0 && (
+            <>
+              <div className="relatorio-col-title">Transições entre funis</div>
+              <ItemList
+                items={meta.transicoes_entre_funis.map(
+                  (t) => `${t.de_funil} → ${t.para_funil}: ${t.condicao}`,
+                )}
+              />
+            </>
+          )}
+        </div>
+
+        <div className="relatorio-col relatorio-col-right">
+          {meta.pontos_para_validar.length > 0 && (
+            <>
+              <div className="relatorio-col-title">Pontos para validar com o cliente</div>
+              <ItemList items={meta.pontos_para_validar} />
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function RelatorioFunil() {
   const { id } = useParams<{ id: string }>();
   const [mapeamento, setMapeamento] = useState<Mapeamento | null>(null);
   const [funis, setFunis] = useState<FunilGerado[]>([]);
+  const [geracaoMeta, setGeracaoMeta] = useState<GeracaoMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -223,6 +283,16 @@ export function RelatorioFunil() {
         }
 
         setFunis(funisData ?? []);
+
+        const { data: metaData } = await supabase
+          .from('geracoes_meta')
+          .select('*')
+          .eq('mapeamento_id', id as string)
+          .eq('versao', versaoAtual.versao)
+          .maybeSingle();
+
+        if (cancelled) return;
+        setGeracaoMeta(metaData ?? null);
       }
 
       setMapeamento(mapeamentoData);
@@ -273,6 +343,8 @@ export function RelatorioFunil() {
             <p className="relatorio-paragraph">Nenhum funil gerado para este mapeamento ainda.</p>
           </section>
         )}
+
+        {geracaoMeta && <MetaSlide meta={geracaoMeta} />}
 
         {funis.map((funil, indice) => (
           <div key={funil.id} style={{ display: 'contents' }}>

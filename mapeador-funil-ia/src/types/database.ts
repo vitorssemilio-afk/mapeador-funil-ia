@@ -31,14 +31,20 @@ export type TipoFunil =
   | 'pos_venda'
   | 'outro';
 
+export type CampoEtapa = {
+  nome: string;
+  tipo: TipoCampo | string;
+  opcoes?: string[];
+};
+
 export type EtapaFunil = {
   nome: string;
   objetivo: string;
   gatilho_entrada: string;
   gatilho_saida: string;
   tarefas: string[];
-  campos_obrigatorios: string[];
-  campos_desejaveis: string[];
+  campos_obrigatorios: CampoEtapa[];
+  campos_desejaveis: CampoEtapa[];
   sla: string;
   regras_negocio: string[];
   regras_perda: string[];
@@ -57,6 +63,27 @@ export type FunilGerado = {
   etapas: EtapaFunil[];
   ordem: number;
   versao: number;
+  created_at: string;
+};
+
+export type TransicaoEntreFunis = {
+  de_funil: string;
+  para_funil: string;
+  condicao: string;
+};
+
+export type NivelComplexidade = 'baixa' | 'media' | 'alta';
+
+export type GeracaoMeta = {
+  id: string;
+  mapeamento_id: string;
+  user_id: string;
+  versao: number;
+  pontos_para_validar: string[];
+  transicoes_entre_funis: TransicaoEntreFunis[];
+  nivel_complexidade: NivelComplexidade | null;
+  semanas_estimadas: number | null;
+  observacao_estimativa: string | null;
   created_at: string;
 };
 
@@ -217,6 +244,12 @@ export type Database = {
         Insert: Partial<FunilGerado> &
           Pick<FunilGerado, 'mapeamento_id' | 'user_id' | 'nome_funil' | 'tipo_funil'>;
         Update: Partial<FunilGerado>;
+        Relationships: [];
+      };
+      geracoes_meta: {
+        Row: GeracaoMeta;
+        Insert: Partial<GeracaoMeta> & Pick<GeracaoMeta, 'mapeamento_id' | 'user_id' | 'versao'>;
+        Update: Partial<GeracaoMeta>;
         Relationships: [];
       };
       campos_padrao: {
