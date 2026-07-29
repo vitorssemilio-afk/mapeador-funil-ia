@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0008) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0009) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -129,6 +129,26 @@ cliente — as 4 semanas do processo, do pré-requisito até a entrega final.
   marcar/desmarcar um item persiste na hora.
 - Os grupos/itens de checklist são editáveis em `/implementacoes/checklist` (mesmo padrão CRUD +
   reordenação da tela `/formulario`), pro POP poder evoluir sem precisar mexer em código.
+
+### Gate de Semana 1 e evidência nos Critérios de Sucesso
+
+Fase 2 do roadmap V4: dois pontos do POP que eram só recomendação viraram regra ativa na tela.
+
+- **Gate real**: o POP diz que a Semana 1 só pode ser agendada com o formulário de
+  pré-configuração preenchido (e-mail, WhatsApp Business, credenciais do Facebook). Enquanto o
+  status ainda for `pre_requisito` e um desses três campos ("Acessos", no formulário de dados
+  gerais) estiver faltando, as opções de status `semana_1` em diante ficam desabilitadas no
+  `<select>`, com uma dica explicando o que falta — e o backend recusa o salvamento mesmo que
+  alguém force a opção. Implementações que já tinham avançado antes dessa mudança não são
+  travadas retroativamente (o gate só vale saindo de `pre_requisito`).
+- **Evidência nos Critérios de Sucesso**: vários itens desse grupo pedem verificação, não só
+  configuração ("canais recebendo mensagens de fato", "relatórios exibindo dados corretos"). Um
+  checkbox binário vira só um lembrete nesses casos. Itens marcados com `requer_evidencia = true`
+  (migration `0009`; já aplicado nos 14 itens do grupo "Critérios de Sucesso" no seed) ganham um
+  campo de texto (link, print ou nota) ao lado do checkbox — não dá pra marcar sem preencher a
+  evidência, e se o texto for apagado depois o item se desmarca sozinho. Outros grupos (Semana
+  1-4) continuam com checkbox simples. O toggle "Exige evidência pra marcar" fica disponível pra
+  qualquer item novo em `/implementacoes/checklist`.
 
 ### Credenciais do cliente no CRM
 

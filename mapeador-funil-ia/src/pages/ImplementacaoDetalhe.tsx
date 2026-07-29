@@ -34,6 +34,22 @@ type FormCredencial = {
 
 const FORM_CREDENCIAL_VAZIO: FormCredencial = { id: null, login: '', senha: '', observacoes: '' };
 
+const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
+  'semana_1',
+  'semana_2',
+  'semana_3',
+  'semana_4',
+  'concluida',
+]);
+
+function preRequisitoCompleto(form: FormGeral): boolean {
+  return (
+    form.email_conta_kommo.trim().length > 0 &&
+    form.whatsapp_corporativo_confirmado &&
+    form.acesso_facebook_confirmado
+  );
+}
+
 function paraFormGeral(impl: ImplementacaoCrm): FormGeral {
   return {
     nome_cliente: impl.nome_cliente,
@@ -59,6 +75,8 @@ export function ImplementacaoDetalhe() {
   const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
   const [itens, setItens] = useState<ChecklistItemImplementacao[]>([]);
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  const [evidencias, setEvidencias] = useState<Record<string, string>>({});
+  const [evidenciaFaltando, setEvidenciaFaltando] = useState<Set<string>>(new Set());
   const [credenciais, setCredenciais] = useState<CredencialCrmListada[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -91,7 +109,7 @@ export function ImplementacaoDetalhe() {
       supabase.from('checklist_itens_implementacao').select('*').order('ordem', { ascending: true }),
       supabase
         .from('implementacao_checklist_marcado')
-        .select('item_id, marcado')
+        .select('item_id, marcado, evidencia')
         .eq('implementacao_id', implementacaoId),
       supabase.rpc('listar_credenciais_crm', { p_implementacao_id: implementacaoId }),
     ]);
@@ -108,7 +126,11 @@ export function ImplementacaoDetalhe() {
     if (!itensError) setItens(itensData ?? []);
     if (!marcadosError) {
       setMarcados(new Set((marcadosData ?? []).filter((m) => m.marcado).map((m) => m.item_id)));
+      setEvidencias(
+        Object.fromEntries((marcadosData ?? []).map((m) => [m.item_id, m.evidencia ?? ''])),
+      );
     }
+    setEvidenciaFaltando(new Set());
     if (!credenciaisError) setCredenciais(credenciaisData ?? []);
 
     setLoading(false);
@@ -122,35 +144,88 @@ export function ImplementacaoDetalhe() {
     return itens.filter((item) => item.grupo_id === grupoId).sort((a, b) => a.ordem - b.ordem);
   }
 
-  async function handleToggleItem(itemId: string) {
+  async function persistirItem(itemId: string, marcado: boolean) {
     if (!implementacao) return;
-    const jaMarcado = marcados.has(itemId);
+    await supabase.from('implementacao_checklist_marcado').upsert(
+      {
+        implementacao_id: implementacao.id,
+        item_id: itemId,
+        marcado,
+        evidencia: (evidencias[itemId] ?? '').trim() || null,
+        marcado_em: new Date().toISOString(),
+      },
+      { onConflict: 'implementacao_id,item_id' },
+    );
+  }
 
-    if (jaMarcado) {
+  async function handleToggleItem(item: ChecklistItemImplementacao) {
+    if (!implementacao) return;
+    const jaMarcado = marcados.has(item.id);
+    const novoMarcado = !jaMarcado;
+
+    // Critério que exige evidência não pode ser marcado sem ela — vira só
+    // um lembrete e perde a força de controle de qualidade, senão.
+    if (novoMarcado && item.requer_evidencia && !(evidencias[item.id] ?? '').trim()) {
+      setEvidenciaFaltando((prev) => new Set(prev).add(item.id));
+      return;
+    }
+
+    setEvidenciaFaltando((prev) => {
+      if (!prev.has(item.id)) return prev;
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+
+    setMarcados((prev) => {
+      const next = new Set(prev);
+      if (novoMarcado) next.add(item.id);
+      else next.delete(item.id);
+      return next;
+    });
+
+    await persistirItem(item.id, novoMarcado);
+  }
+
+  function handleEvidenciaChange(itemId: string, texto: string) {
+    setEvidencias((prev) => ({ ...prev, [itemId]: texto }));
+  }
+
+  async function handleEvidenciaBlur(item: ChecklistItemImplementacao) {
+    const texto = (evidencias[item.id] ?? '').trim();
+    const estavaMarcado = marcados.has(item.id);
+
+    // Sem evidência não sustenta a marcação de um critério que exige evidência.
+    if (item.requer_evidencia && !texto && estavaMarcado) {
       setMarcados((prev) => {
         const next = new Set(prev);
-        next.delete(itemId);
+        next.delete(item.id);
         return next;
       });
-      await supabase
-        .from('implementacao_checklist_marcado')
-        .delete()
-        .eq('implementacao_id', implementacao.id)
-        .eq('item_id', itemId);
-    } else {
-      setMarcados((prev) => new Set(prev).add(itemId));
-      await supabase
-        .from('implementacao_checklist_marcado')
-        .upsert(
-          { implementacao_id: implementacao.id, item_id: itemId, marcado: true, marcado_em: new Date().toISOString() },
-          { onConflict: 'implementacao_id,item_id' },
-        );
+      await persistirItem(item.id, false);
+      return;
     }
+
+    if (!estavaMarcado && !texto) return;
+    await persistirItem(item.id, estavaMarcado);
   }
 
   async function handleSalvarGeral(e: FormEvent) {
     e.preventDefault();
     if (!implementacao || !formGeral) return;
+
+    setError(null);
+
+    if (
+      implementacao.status === 'pre_requisito' &&
+      STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(formGeral.status) &&
+      !preRequisitoCompleto(formGeral)
+    ) {
+      setError(
+        'Não dá pra avançar pra Semana 1 sem o pré-requisito completo: e-mail da conta Kommo, WhatsApp Corporativo e acesso ao Facebook confirmados.',
+      );
+      return;
+    }
 
     setSalvandoGeral(true);
     setSalvoRecentemente(false);
@@ -306,6 +381,8 @@ export function ImplementacaoDetalhe() {
   if (error && !implementacao) return <p className="form-error">{error}</p>;
   if (!implementacao || !formGeral) return <p className="form-error">Implementação não encontrada.</p>;
 
+  const gateSemanaUmBloqueado = implementacao.status === 'pre_requisito' && !preRequisitoCompleto(formGeral);
+
   return (
     <div className="page">
       <div className="page-header">
@@ -346,11 +423,21 @@ export function ImplementacaoDetalhe() {
             }
           >
             {Object.entries(IMPLEMENTACAO_STATUS_LABELS).map(([valor, label]) => (
-              <option key={valor} value={valor}>
+              <option
+                key={valor}
+                value={valor}
+                disabled={gateSemanaUmBloqueado && STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(valor as ImplementacaoStatus)}
+              >
                 {label}
               </option>
             ))}
           </select>
+          {gateSemanaUmBloqueado && (
+            <span className="field-hint">
+              Bloqueado até confirmar o pré-requisito: e-mail da conta Kommo, WhatsApp Corporativo e
+              acesso ao Facebook (campos "Acessos" abaixo).
+            </span>
+          )}
         </label>
 
         <label className="field">
@@ -463,16 +550,40 @@ export function ImplementacaoDetalhe() {
         <section key={grupo.id} className="card form-card">
           <h2>{grupo.titulo}</h2>
           <div className="options-list">
-            {itensDoGrupo(grupo.id).map((item) => (
-              <label key={item.id} className="option-checkbox">
-                <input
-                  type="checkbox"
-                  checked={marcados.has(item.id)}
-                  onChange={() => handleToggleItem(item.id)}
-                />
-                <span>{item.texto}</span>
-              </label>
-            ))}
+            {itensDoGrupo(grupo.id).map((item) =>
+              item.requer_evidencia ? (
+                <div key={item.id} className="option-checkbox-wrap">
+                  <label className="option-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={marcados.has(item.id)}
+                      onChange={() => handleToggleItem(item)}
+                    />
+                    <span>{item.texto}</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="option-livre-input evidencia-input"
+                    placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
+                    value={evidencias[item.id] ?? ''}
+                    onChange={(e) => handleEvidenciaChange(item.id, e.target.value)}
+                    onBlur={() => handleEvidenciaBlur(item)}
+                  />
+                  {evidenciaFaltando.has(item.id) && (
+                    <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
+                  )}
+                </div>
+              ) : (
+                <label key={item.id} className="option-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={marcados.has(item.id)}
+                    onChange={() => handleToggleItem(item)}
+                  />
+                  <span>{item.texto}</span>
+                </label>
+              ),
+            )}
             {itensDoGrupo(grupo.id).length === 0 && (
               <p className="field-hint">Nenhum item cadastrado neste grupo.</p>
             )}

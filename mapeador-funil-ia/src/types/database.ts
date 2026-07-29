@@ -188,6 +188,7 @@ export type ChecklistItemImplementacao = {
   grupo_id: string;
   texto: string;
   ordem: number;
+  requer_evidencia: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -197,6 +198,7 @@ export type ImplementacaoChecklistMarcado = {
   implementacao_id: string;
   item_id: string;
   marcado: boolean;
+  evidencia: string | null;
   marcado_em: string;
 };
 

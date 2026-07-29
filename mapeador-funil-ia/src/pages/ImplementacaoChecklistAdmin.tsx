@@ -13,9 +13,12 @@ export function ImplementacaoChecklistAdmin() {
   const [tituloNovoGrupo, setTituloNovoGrupo] = useState('');
   const [chaveNovoGrupo, setChaveNovoGrupo] = useState('');
 
-  const [formItem, setFormItem] = useState<{ id: string | null; grupo_id: string; texto: string } | null>(
-    null,
-  );
+  const [formItem, setFormItem] = useState<{
+    id: string | null;
+    grupo_id: string;
+    texto: string;
+    requer_evidencia: boolean;
+  } | null>(null);
 
   async function carregar() {
     setLoading(true);
@@ -128,11 +131,16 @@ export function ImplementacaoChecklistAdmin() {
   }
 
   function abrirNovoItem(grupoId: string) {
-    setFormItem({ id: null, grupo_id: grupoId, texto: '' });
+    setFormItem({ id: null, grupo_id: grupoId, texto: '', requer_evidencia: false });
   }
 
   function abrirEdicaoItem(item: ChecklistItemImplementacao) {
-    setFormItem({ id: item.id, grupo_id: item.grupo_id, texto: item.texto });
+    setFormItem({
+      id: item.id,
+      grupo_id: item.grupo_id,
+      texto: item.texto,
+      requer_evidencia: item.requer_evidencia,
+    });
   }
 
   function fecharFormItem() {
@@ -148,7 +156,7 @@ export function ImplementacaoChecklistAdmin() {
     if (formItem.id) {
       const { error: updateError } = await supabase
         .from('checklist_itens_implementacao')
-        .update({ texto: formItem.texto.trim() })
+        .update({ texto: formItem.texto.trim(), requer_evidencia: formItem.requer_evidencia })
         .eq('id', formItem.id);
 
       setSalvando(false);
@@ -165,6 +173,7 @@ export function ImplementacaoChecklistAdmin() {
         grupo_id: formItem.grupo_id,
         texto: formItem.texto.trim(),
         ordem: proximaOrdem,
+        requer_evidencia: formItem.requer_evidencia,
       });
 
       setSalvando(false);
@@ -327,7 +336,12 @@ export function ImplementacaoChecklistAdmin() {
                 <tbody>
                   {itensDoGrupo(grupo.id).map((item, itemIndex, lista) => (
                     <tr key={item.id}>
-                      <td>{item.texto}</td>
+                      <td>
+                        {item.texto}
+                        {item.requer_evidencia && (
+                          <span className="requer-evidencia-badge"> · exige evidência</span>
+                        )}
+                      </td>
                       <td className="table-actions">
                         <button
                           type="button"
@@ -384,6 +398,17 @@ export function ImplementacaoChecklistAdmin() {
                     onChange={(e) => setFormItem({ ...formItem, texto: e.target.value })}
                     placeholder="Ex: Configuração dos relatórios de desempenho de vendas"
                   />
+                </label>
+                <label className="option-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={formItem.requer_evidencia}
+                    onChange={(e) => setFormItem({ ...formItem, requer_evidencia: e.target.checked })}
+                  />
+                  <span>
+                    Exige evidência pra marcar (link, print ou nota — pra itens que pedem
+                    verificação, não só configuração)
+                  </span>
                 </label>
                 <div className="wizard-actions">
                   <button type="button" className="btn btn-secondary" onClick={fecharFormItem}>
