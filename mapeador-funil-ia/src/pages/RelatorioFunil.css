@@ -371,6 +371,16 @@
     break-inside: avoid;
   }
 
+    /* O fundo (gradiente + brilho vermelho) era calculado em cima da altura
+     total da etapa. Como uma etapa agora pode ocupar mais de uma página
+     física, a 2ª página em diante só pegava o final do gradiente (bem mais
+     escuro, parecendo "preto puro" sem o tom acinzentado). Cor sólida evita
+     essa inconsistência entre páginas. */
+  html,
+  body {
+    background: #050506 !important;
+  }
+
   .relatorio-viewport {
     background: #050506;
     padding: 0;
@@ -387,10 +397,15 @@
     height: auto;
     aspect-ratio: unset;
     overflow: visible;
+    background: #0d0d0f;
     border-radius: 0;
     border: none;
     box-shadow: none;
     break-after: page;
+  }
+
+  .relatorio-slide::after {
+    display: none;
   }
 
   .relatorio-slide:last-child {
@@ -400,5 +415,6 @@
   @page {
     size: 13.333in 9.5in;
     margin: 0;
+    background: #050506;
   }
 }
