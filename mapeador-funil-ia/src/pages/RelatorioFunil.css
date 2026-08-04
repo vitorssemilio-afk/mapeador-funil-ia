@@ -341,8 +341,21 @@
     display: none !important;
   }
 
-  .relatorio-etapa .relatorio-inner {
-    align-items: start;
+    .relatorio-etapa .relatorio-inner {
+    display: block;
+  }
+
+  .relatorio-col-left {
+    border-right: none;
+    padding-right: 0;
+    padding-bottom: 28px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .relatorio-resp,
+  .relatorio-quote {
+    margin-top: 24px;
   }
 
   .relatorio-resp,
