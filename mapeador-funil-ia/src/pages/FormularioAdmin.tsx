@@ -17,6 +17,8 @@ const TIPO_LABELS: Record<PerguntaTipo, string> = {
 
 const TIPOS_COM_OPCOES: PerguntaTipo[] = ['escolha_unica', 'escolha_multipla'];
 
+const TIPOS_COM_CONDICAO: PerguntaTipo[] = ['escolha_unica', 'escolha_multipla'];
+
 type FormPerguntaState = {
   id: string | null;
   bloco_id: string;
@@ -26,6 +28,8 @@ type FormPerguntaState = {
   prefixo: string;
   obrigatoria: boolean;
   opcoesTexto: string;
+  condicaoPerguntaId: string;
+  condicaoValores: string[];
 };
 
 const FORM_PERGUNTA_VAZIO: Omit<FormPerguntaState, 'bloco_id'> = {
@@ -36,6 +40,8 @@ const FORM_PERGUNTA_VAZIO: Omit<FormPerguntaState, 'bloco_id'> = {
   prefixo: '',
   obrigatoria: false,
   opcoesTexto: '',
+  condicaoPerguntaId: '',
+  condicaoValores: [],
 };
 
 // Faixa Unicode de acentos combinantes (U+0300–U+036F), usada após normalize('NFD')
@@ -207,7 +213,18 @@ export function FormularioAdmin() {
       prefixo: pergunta.prefixo ?? '',
       obrigatoria: pergunta.obrigatoria,
       opcoesTexto: formatOpcoesTexto(pergunta.opcoes),
+      condicaoPerguntaId: pergunta.condicao_pergunta_id ?? '',
+      condicaoValores: pergunta.condicao_valores ?? [],
     });
+  }
+
+  function condicaoLabel(pergunta: PerguntaFormularioRow): string | null {
+    if (!pergunta.condicao_pergunta_id) return null;
+    const origem = perguntas.find((p) => p.pergunta_id === pergunta.condicao_pergunta_id);
+    if (!origem) return null;
+    const valores = pergunta.condicao_valores ?? [];
+    const labels = valores.map((v) => origem.opcoes?.find((o) => o.value === v)?.label ?? v);
+    return `Só se "${origem.label}" for ${labels.join(' ou ')}`;
   }
 
   function fecharFormPergunta() {
@@ -223,6 +240,8 @@ export function FormularioAdmin() {
     const opcoes = TIPOS_COM_OPCOES.includes(formPergunta.tipo)
       ? parseOpcoesTexto(formPergunta.opcoesTexto)
       : null;
+    const condicaoPerguntaId = formPergunta.condicaoPerguntaId || null;
+    const condicaoValores = condicaoPerguntaId ? formPergunta.condicaoValores : null;
 
     if (formPergunta.id) {
       const { error: updateError } = await supabase
@@ -234,6 +253,8 @@ export function FormularioAdmin() {
           prefixo: formPergunta.prefixo.trim() || null,
           obrigatoria: formPergunta.obrigatoria,
           opcoes,
+          condicao_pergunta_id: condicaoPerguntaId,
+          condicao_valores: condicaoValores,
         })
         .eq('id', formPergunta.id);
 
@@ -261,6 +282,8 @@ export function FormularioAdmin() {
         prefixo: formPergunta.prefixo.trim() || null,
         obrigatoria: formPergunta.obrigatoria,
         opcoes,
+        condicao_pergunta_id: condicaoPerguntaId,
+        condicao_valores: condicaoValores,
       });
 
       setSalvando(false);
@@ -410,6 +433,7 @@ export function FormularioAdmin() {
                     <th>Pergunta</th>
                     <th>Tipo</th>
                     <th>Obrigatória</th>
+                    <th>Condição</th>
                     <th />
                   </tr>
                 </thead>
@@ -419,6 +443,7 @@ export function FormularioAdmin() {
                       <td>{pergunta.label}</td>
                       <td>{TIPO_LABELS[pergunta.tipo]}</td>
                       <td>{pergunta.obrigatoria ? 'Sim' : '—'}</td>
+                      <td className="field-hint">{condicaoLabel(pergunta) ?? '—'}</td>
                       <td className="table-actions">
                         <button
                           type="button"
@@ -457,7 +482,7 @@ export function FormularioAdmin() {
                   ))}
                   {perguntasDoBloco(bloco.id).length === 0 && (
                     <tr>
-                      <td colSpan={4} className="field-hint">
+                      <td colSpan={5} className="field-hint">
                         Nenhuma pergunta neste bloco ainda.
                       </td>
                     </tr>
@@ -534,6 +559,67 @@ export function FormularioAdmin() {
                       <code>|livre:Placeholder</code>.
                     </p>
                   </label>
+                )}
+
+                <label className="field">
+                  <span>Só aparece se… (opcional)</span>
+                  <select
+                    value={formPergunta.condicaoPerguntaId}
+                    onChange={(e) =>
+                      setFormPergunta({
+                        ...formPergunta,
+                        condicaoPerguntaId: e.target.value,
+                        condicaoValores: [],
+                      })
+                    }
+                  >
+                    <option value="">Sempre visível (sem condição)</option>
+                    {perguntas
+                      .filter(
+                        (p) =>
+                          TIPOS_COM_CONDICAO.includes(p.tipo) &&
+                          p.id !== formPergunta.id &&
+                          (p.opcoes?.length ?? 0) > 0,
+                      )
+                      .map((p) => (
+                        <option key={p.id} value={p.pergunta_id}>
+                          {p.label}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="field-hint">
+                    Escolha uma pergunta anterior de escolha única/múltipla. Esta pergunta só será
+                    exibida quando a resposta daquela pergunta bater com um dos valores marcados
+                    abaixo.
+                  </p>
+                </label>
+
+                {formPergunta.condicaoPerguntaId && (
+                  <fieldset className="field">
+                    <legend>Aparece quando a resposta for:</legend>
+                    <div className="options-list">
+                      {perguntas
+                        .find((p) => p.pergunta_id === formPergunta.condicaoPerguntaId)
+                        ?.opcoes?.map((opcao) => {
+                          const checked = formPergunta.condicaoValores.includes(opcao.value);
+                          return (
+                            <label key={opcao.value} className="option-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const next = e.target.checked
+                                    ? [...formPergunta.condicaoValores, opcao.value]
+                                    : formPergunta.condicaoValores.filter((v) => v !== opcao.value);
+                                  setFormPergunta({ ...formPergunta, condicaoValores: next });
+                                }}
+                              />
+                              <span>{opcao.label}</span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                  </fieldset>
                 )}
 
                 <label className="option-checkbox">

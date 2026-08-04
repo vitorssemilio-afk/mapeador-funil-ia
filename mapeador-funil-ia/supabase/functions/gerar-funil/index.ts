@@ -38,6 +38,8 @@ async function carregarBlocosFormulario(
           opcoes: Pergunta['opcoes'];
           prefixo: string | null;
           obrigatoria: boolean;
+          condicao_pergunta_id: string | null;
+          condicao_valores: string[] | null;
         }): Pergunta => ({
           id: p.pergunta_id,
           tipo: p.tipo,
@@ -46,6 +48,9 @@ async function carregarBlocosFormulario(
           opcoes: p.opcoes ?? undefined,
           prefixo: p.prefixo ?? undefined,
           obrigatoria: p.obrigatoria,
+          condicao: p.condicao_pergunta_id
+            ? { perguntaId: p.condicao_pergunta_id, valores: p.condicao_valores ?? [] }
+            : undefined,
         }),
       ),
   }));

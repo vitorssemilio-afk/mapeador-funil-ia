@@ -1,4 +1,5 @@
-import type { BlocoFormulario, Pergunta } from './formSchema.ts';
+@'
+import { perguntaVisivel, type BlocoFormulario, type Pergunta } from './formSchema.ts';
 
 export function formatValorPergunta(pergunta: Pergunta, respostas: Record<string, unknown>): string {
   const valor = respostas[pergunta.id];
@@ -41,8 +42,11 @@ export function formatRespostasTexto(
   const partes: string[] = [];
 
   for (const bloco of blocos) {
+    const perguntasVisiveis = bloco.perguntas.filter((p) => perguntaVisivel(p, respostas));
+    if (perguntasVisiveis.length === 0) continue;
+
     partes.push(`## ${bloco.titulo}`);
-    for (const pergunta of bloco.perguntas) {
+    for (const pergunta of perguntasVisiveis) {
       partes.push(`- ${pergunta.label}\n  Resposta: ${formatValorPergunta(pergunta, respostas)}`);
     }
     partes.push('');

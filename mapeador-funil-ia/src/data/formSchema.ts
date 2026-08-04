@@ -13,6 +13,11 @@ export type OpcaoPergunta = {
   };
 };
 
+export type CondicaoPergunta = {
+  perguntaId: string;
+  valores: string[];
+};
+
 export type Pergunta = {
   id: string;
   tipo: PerguntaTipo;
@@ -21,9 +26,21 @@ export type Pergunta = {
   opcoes?: OpcaoPergunta[];
   prefixo?: string;
   obrigatoria?: boolean;
+  condicao?: CondicaoPergunta;
 };
 
 export type BlocoFormulario = {
   titulo: string;
   perguntas: Pergunta[];
 };
+
+// Uma pergunta condicional só aparece (e só entra no resumo/texto pra IA)
+// quando a resposta da pergunta da qual ela depende bate com um dos valores
+// esperados. Sem `condicao`, a pergunta é sempre visível.
+export function perguntaVisivel(pergunta: Pergunta, respostas: Record<string, unknown>): boolean {
+  if (!pergunta.condicao) return true;
+  const valor = respostas[pergunta.condicao.perguntaId];
+  const { valores } = pergunta.condicao;
+  if (Array.isArray(valor)) return valor.some((v) => valores.includes(v as string));
+  return typeof valor === 'string' && valores.includes(valor);
+}
