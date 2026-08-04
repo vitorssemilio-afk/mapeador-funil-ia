@@ -1,4 +1,3 @@
-@'
 import { perguntaVisivel, type BlocoFormulario, type Pergunta } from './formSchema.ts';
 
 export function formatValorPergunta(pergunta: Pergunta, respostas: Record<string, unknown>): string {

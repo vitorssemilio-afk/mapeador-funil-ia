@@ -1,4 +1,3 @@
-@'
 import type { BlocoFormulario, Pergunta } from '../data/formSchema';
 import { supabase } from './supabaseClient';
 
