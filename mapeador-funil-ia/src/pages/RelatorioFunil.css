@@ -341,6 +341,15 @@
     display: none !important;
   }
 
+  .relatorio-etapa .relatorio-inner {
+    align-items: start;
+  }
+
+  .relatorio-resp,
+  .relatorio-quote {
+    margin-top: 24px;
+  }
+
   .relatorio-viewport {
     background: #050506;
     padding: 0;
