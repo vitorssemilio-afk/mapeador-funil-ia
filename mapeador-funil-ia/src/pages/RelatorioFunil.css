@@ -351,9 +351,9 @@
     gap: 0;
   }
 
-    .relatorio-slide {
+      .relatorio-slide {
     width: 13.333in;
-    min-height: 7.5in;
+    min-height: 9.5in;
     height: auto;
     aspect-ratio: unset;
     overflow: visible;
@@ -361,6 +361,15 @@
     border: none;
     box-shadow: none;
     break-after: page;
+  }
+
+  .relatorio-slide:last-child {
+    break-after: auto;
+  }
+
+  @page {
+    size: 13.333in 9.5in;
+    margin: 0;
   }
 
   .relatorio-slide:last-child {
