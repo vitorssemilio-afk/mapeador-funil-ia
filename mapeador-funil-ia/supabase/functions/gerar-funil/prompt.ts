@@ -37,11 +37,12 @@ REGRAS:
    que os sinais reais do negócio pedirem uma arquitetura que não se encaixa perfeitamente neles.
 
    - "Engajamento & Qualificação" (tipo_funil: qualificacao) — sempre existe como funil próprio
-     quando a resposta sobre "momentos diferentes feitos por pessoas diferentes" indica que há
-     quem faz a triagem/pré-venda separado de quem fecha a venda. Nesse caso NÃO junte triagem e
-     fechamento no mesmo funil — são dois funis com responsáveis e critérios de passagem
-     diferentes (o "critério de qualificação" respondido é o gatilho de saída da qualificação e
-     entrada nas vendas).
+     quando a resposta sobre "momentos diferentes feitos por pessoas diferentes" for "Sim" E a
+     descrição de quem cuida de cada etapa (bloco "Sua Equipe e Suas Metas") deixar claro que há
+     uma etapa/pessoa de triagem ou pré-venda separada de quem fecha a venda. Nesse caso NÃO junte
+     triagem e fechamento no mesmo funil — são dois funis com responsáveis e critérios de
+     passagem diferentes (o "critério de qualificação" respondido é o gatilho de saída da
+     qualificação e entrada nas vendas).
 
    - "Vendas/Fechamento" (tipo_funil: vendas) — o funil onde a negociação de fato acontece até o
      pagamento/assinatura. Quando não há triagem separada (a mesma pessoa atende e vende), pode
@@ -53,9 +54,10 @@ REGRAS:
      terceiros ou documentos" ou o ciclo de venda sugerem essa dependência. Não crie esse funil só
      porque existe um agendamento incidental sem risco relevante de no-show.
 
-   - "Entrega/Operação" (tipo_funil: outro) — quando a resposta sobre "momentos diferentes"
-     indica uma etapa de Venda seguida de uma etapa de Entrega/Operação feita por outra área,
-     modele isso como um funil separado do funil de Vendas, e não como mais uma etapa dentro dele.
+   - "Entrega/Operação" (tipo_funil: outro) — quando a descrição de quem cuida de cada etapa
+     (bloco "Sua Equipe e Suas Metas") indica uma etapa de Venda seguida de uma etapa de
+     Entrega/Operação feita por outra área, modele isso como um funil separado do funil de
+     Vendas, e não como mais uma etapa dentro dele.
 
    - "Pós-venda/Retenção" (tipo_funil: pos_venda) — sempre avalie ativamente a possibilidade de
      criar esse funil separado do funil de Vendas, mas SÓ crie se houver processo suficiente pra
@@ -84,7 +86,10 @@ REGRAS:
    motivou a decisão.
 
 2. Para cada funil, construa uma lista de ETAPAS — esse é o padrão-ouro de qualidade do funil, o
-   conteúdo não pode ser genérico. O número de etapas deve refletir a complexidade real do
+   conteúdo não pode ser genérico. Use a resposta sobre os "passos" da venda listados pelo cliente
+   (bloco "Como a Venda Acontece na Prática") como a principal referência da sequência real de
+   etapas, cruzando com a jornada do último cliente (bloco "A Jornada de Compra") pra enriquecer
+   detalhes de cada uma. O número de etapas deve refletir a complexidade real do
    processo descrito, não um template fixo: não force sempre "Contato Inicial" → "Fechamento" —
    se o negócio tem 8 etapas de negociação passando por áreas diferentes, crie as 8; se for uma
    venda transacional de 2 passos, faça 2. Aja como um consultor sênior detalhando a operação de
@@ -110,9 +115,11 @@ REGRAS:
    - sla: prazo realista e focado em conversão (ex: "10 minutos" pra um lead novo, "2 a 7 dias"
      pra uma negociação complexa), se houver informação suficiente nas respostas (senão, sugira um
      prazo razoável pro tipo de negócio)
-   - regras_negocio: regras/condições especiais mencionadas que afetam decisões nessa etapa
+   - regras_negocio: regras/condições especiais mencionadas que afetam decisões nessa etapa (ex:
+     necessidade de aprovação de desconto por outra pessoa, "regra de ouro" do atendimento)
    - regras_perda: motivos específicos de perda nessa etapa, quando aplicável
-   - responsavel: cargo/pessoa responsável exata (baseado no bloco de "pessoas e responsabilidades")
+   - responsavel: cargo/pessoa responsável exata (baseado nas respostas do bloco "Sua Equipe e
+     Suas Metas")
    - automacao: sugestões técnicas e concretas de automação pra essa etapa (ex: "Criar tarefa
      automática de follow-up em 24h", "Disparo de webhook pro financeiro ao mover o card") —
      baseadas no que já existe + oportunidades óbvias de melhoria

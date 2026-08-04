@@ -1,4 +1,4 @@
-import type { BlocoFormulario } from '../../data/formSchema';
+import { perguntaVisivel, type BlocoFormulario } from '../../data/formSchema';
 import { formatValorPergunta } from '../../data/formatRespostas';
 
 type Props = {
@@ -23,12 +23,14 @@ export function ResumoWizard({
         <div key={`${index}-${bloco.titulo}`} className="resumo-bloco">
           <h3>{bloco.titulo}</h3>
           <dl className="resumo-lista">
-            {bloco.perguntas.map((p) => (
-              <div key={p.id} className="resumo-item">
-                <dt>{p.label}</dt>
-                <dd>{formatValorPergunta(p, respostas)}</dd>
-              </div>
-            ))}
+            {bloco.perguntas
+              .filter((p) => perguntaVisivel(p, respostas))
+              .map((p) => (
+                <div key={p.id} className="resumo-item">
+                  <dt>{p.label}</dt>
+                  <dd>{formatValorPergunta(p, respostas)}</dd>
+                </div>
+              ))}
           </dl>
         </div>
       ))}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { BlocoFormulario } from '../../data/formSchema';
+import { perguntaVisivel, type BlocoFormulario } from '../../data/formSchema';
 import { carregarFormSchema } from '../../lib/formSchemaService';
 import { supabase } from '../../lib/supabaseClient';
 import type { Mapeamento } from '../../types/database';
@@ -187,8 +187,10 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
   const resumoStep = blocos.length;
   const isResumo = step === resumoStep;
   const blocoAtual = isResumo ? null : blocos[step];
-  const podeAvancar =
-    !blocoAtual || blocoAtual.perguntas.every((p) => !p.obrigatoria || temResposta(respostas[p.id]));
+  const perguntasVisiveis = blocoAtual
+    ? blocoAtual.perguntas.filter((p) => perguntaVisivel(p, respostas))
+    : [];
+  const podeAvancar = perguntasVisiveis.every((p) => !p.obrigatoria || temResposta(respostas[p.id]));
 
   return (
     <div className="wizard">
@@ -210,7 +212,7 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
           <>
             <h2>{blocoAtual!.titulo}</h2>
             <div className="wizard-questions">
-              {blocoAtual!.perguntas.map((p) => (
+              {perguntasVisiveis.map((p) => (
                 <PerguntaField key={p.id} pergunta={p} respostas={respostas} onChange={handleChange} />
               ))}
             </div>

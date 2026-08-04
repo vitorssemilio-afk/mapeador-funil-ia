@@ -1,3 +1,4 @@
+@'
 import type { BlocoFormulario, Pergunta } from '../data/formSchema';
 import { supabase } from './supabaseClient';
 
@@ -29,6 +30,9 @@ export async function carregarFormSchema(): Promise<BlocoFormulario[]> {
           opcoes: p.opcoes ?? undefined,
           prefixo: p.prefixo ?? undefined,
           obrigatoria: p.obrigatoria,
+          condicao: p.condicao_pergunta_id
+            ? { perguntaId: p.condicao_pergunta_id, valores: p.condicao_valores ?? [] }
+            : undefined,
         }),
       ),
   }));

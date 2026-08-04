@@ -141,6 +141,8 @@ export type PerguntaFormularioRow = {
   opcoes: OpcaoPergunta[] | null;
   prefixo: string | null;
   obrigatoria: boolean;
+  condicao_pergunta_id: string | null;
+  condicao_valores: string[] | null;
   created_at: string;
   updated_at: string;
 };
