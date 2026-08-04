@@ -33,96 +33,99 @@ function ItemList({ items }: { items: string[] }) {
 }
 
 function EtapaSlide({ etapa, index }: { etapa: EtapaFunil; index: number }) {
+  const semConteudoAdicional =
+    etapa.tarefas.length === 0 &&
+    etapa.automacao.length === 0 &&
+    etapa.regras_negocio.length === 0 &&
+    etapa.regras_perda.length === 0 &&
+    !etapa.script_sugerido;
+
   return (
     <section className="relatorio-slide relatorio-etapa">
       <div className="relatorio-eyebrow">Etapa {index + 1}</div>
       <h2>{etapa.nome}</h2>
+      <div className="relatorio-header-meta">
+        {etapa.sla && <div className="relatorio-sla-badge">SLA: {etapa.sla}</div>}
+        {etapa.responsavel && (
+          <div className="relatorio-sla-badge relatorio-resp-badge">
+            Responsável: <span>{etapa.responsavel}</span>
+          </div>
+        )}
+      </div>
       <div className="relatorio-inner">
         <div className="relatorio-col relatorio-col-left">
-          {etapa.sla && <div className="relatorio-sla-badge">SLA: {etapa.sla}</div>}
-
           {etapa.objetivo && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Objetivo</div>
               <p className="relatorio-paragraph">{etapa.objetivo}</p>
-            </>
+            </div>
           )}
 
           {etapa.gatilho_entrada && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Gatilho de Entrada</div>
               <ItemList items={[etapa.gatilho_entrada]} />
-            </>
+            </div>
           )}
 
           {etapa.gatilho_saida && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Gatilho de Saída</div>
               <ItemList items={[etapa.gatilho_saida]} />
-            </>
+            </div>
           )}
 
           {etapa.campos_obrigatorios.length > 0 && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Campos Obrigatórios</div>
               <ItemList items={etapa.campos_obrigatorios.map(formatCampoEtapaLabel)} />
-            </>
+            </div>
           )}
 
           {etapa.campos_desejaveis.length > 0 && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Campos Desejáveis</div>
               <ItemList items={etapa.campos_desejaveis.map(formatCampoEtapaLabel)} />
-            </>
-          )}
-
-          {etapa.responsavel && (
-            <div className="relatorio-resp">
-              Responsável: <span>{etapa.responsavel}</span>
             </div>
           )}
         </div>
 
         <div className="relatorio-col relatorio-col-right">
           {etapa.tarefas.length > 0 && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Tarefas</div>
               <ItemList items={etapa.tarefas} />
-            </>
+            </div>
           )}
 
           {etapa.automacao.length > 0 && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Automação</div>
               <ItemList items={etapa.automacao} />
-            </>
+            </div>
           )}
 
           {etapa.regras_negocio.length > 0 && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Regras de Negócio</div>
               <ItemList items={etapa.regras_negocio} />
-            </>
+            </div>
           )}
 
           {etapa.regras_perda.length > 0 && (
-            <>
+            <div className="relatorio-section">
               <div className="relatorio-col-title">Regras de Perda</div>
               <ItemList items={etapa.regras_perda} />
-            </>
+            </div>
           )}
 
           {etapa.script_sugerido && (
             <div className="relatorio-quote">"{etapa.script_sugerido}"</div>
           )}
 
-          {etapa.tarefas.length === 0 &&
-            etapa.automacao.length === 0 &&
-            etapa.regras_negocio.length === 0 &&
-            etapa.regras_perda.length === 0 &&
-            !etapa.script_sugerido && (
-              <p className="relatorio-empty-col">Nenhuma informação adicional cadastrada.</p>
-            )}
+          {semConteudoAdicional && (
+            <p className="relatorio-empty-col">Nenhuma informação adicional cadastrada.</p>
+          )}
         </div>
       </div>
     </section>

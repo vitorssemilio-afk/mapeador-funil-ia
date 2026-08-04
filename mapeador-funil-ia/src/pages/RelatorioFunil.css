@@ -238,14 +238,20 @@
 
 .relatorio-etapa h2 {
   font-size: 34px;
-  margin: 8px 0 18px;
+  margin: 8px 0 14px;
+}
+
+.relatorio-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 22px;
 }
 
 .relatorio-sla-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  align-self: flex-start;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--color-border-strong);
   border-radius: 4px;
@@ -255,7 +261,6 @@
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-  margin-bottom: 22px;
 }
 
 .relatorio-sla-badge::before {
@@ -267,17 +272,26 @@
   flex-shrink: 0;
 }
 
+.relatorio-resp-badge span {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.relatorio-section {
+  margin-bottom: 18px;
+}
+
+.relatorio-section:last-child {
+  margin-bottom: 0;
+}
+
 .relatorio-col-title {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--color-accent);
-  margin: 18px 0 8px;
-}
-
-.relatorio-col-title:first-of-type {
-  margin-top: 0;
+  margin: 0 0 8px;
 }
 
 .relatorio-paragraph {
@@ -303,21 +317,6 @@
   border-bottom: none;
 }
 
-.relatorio-resp {
-  margin-top: auto;
-  padding-top: 18px;
-  border-top: 1px solid var(--color-border);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.relatorio-resp span {
-  color: var(--color-text);
-}
-
 .relatorio-quote {
   margin-top: auto;
   background: var(--color-accent-soft);
@@ -341,26 +340,35 @@
     display: none !important;
   }
 
-    .relatorio-etapa .relatorio-inner {
+  /* O motor de impressão do Chrome não pagina bem layouts em grid de duas
+     colunas — ele quebra a página seguindo mais a ordem do código do que a
+     posição visual, fazendo conteúdo pular sozinho pra outra página mesmo
+     sobrando espaço. Solução: no PDF, a etapa vira um fluxo de coluna única
+     (sem grid), que pagina de forma confiável — mas cada seção continua
+     visualmente destacada como um card, pra não parecer um bloco de texto
+     corrido sem hierarquia. */
+  .relatorio-etapa .relatorio-inner {
     display: block;
   }
 
   .relatorio-col-left {
     border-right: none;
     padding-right: 0;
-    padding-bottom: 28px;
-    margin-bottom: 28px;
-    border-bottom: 1px solid var(--color-border);
   }
 
-  .relatorio-resp,
-  .relatorio-quote {
-    margin-top: 24px;
+  .relatorio-section {
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--color-border);
+    border-left: 3px solid var(--color-accent);
+    border-radius: 0 8px 8px 0;
+    padding: 14px 18px;
+    margin-bottom: 14px;
+    break-inside: avoid;
   }
 
-  .relatorio-resp,
   .relatorio-quote {
-    margin-top: 24px;
+    margin-top: 14px;
+    break-inside: avoid;
   }
 
   .relatorio-viewport {
@@ -373,7 +381,7 @@
     gap: 0;
   }
 
-      .relatorio-slide {
+  .relatorio-slide {
     width: 13.333in;
     min-height: 9.5in;
     height: auto;
@@ -391,15 +399,6 @@
 
   @page {
     size: 13.333in 9.5in;
-    margin: 0;
-  }
-
-  .relatorio-slide:last-child {
-    break-after: auto;
-  }
-
-  @page {
-    size: 13.333in 7.5in;
     margin: 0;
   }
 }
