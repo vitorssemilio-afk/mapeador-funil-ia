@@ -50,7 +50,7 @@ async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages,
     }),
@@ -61,11 +61,14 @@ async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
     throw new Error(`Anthropic API respondeu ${response.status}: ${errorText}`);
   }
 
-  const data = await response.json();
-  const texto = data.content?.[0]?.text;
+   const data = await response.json();
+  const textBlock = Array.isArray(data.content)
+    ? data.content.find((block: { type?: string; text?: string }) => typeof block?.text === 'string')
+    : undefined;
+  const texto = textBlock?.text;
 
   if (!texto) {
-    throw new Error('Resposta da IA não contém texto.');
+    throw new Error(`Resposta da IA não contém texto. Resposta bruta: ${JSON.stringify(data)}`);
   }
 
   return texto as string;
@@ -224,6 +227,7 @@ export async function gerarFunisComIA(
     const resultado = parseRespostaIA(textoResposta);
     if (resultado) return resultado;
 
+    console.error('Resposta da IA não era JSON válido:', textoResposta.slice(0, 3000));
     messages.push({ role: 'assistant', content: textoResposta });
     messages.push({
       role: 'user',
