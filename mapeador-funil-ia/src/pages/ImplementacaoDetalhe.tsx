@@ -54,6 +54,21 @@ const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
   'concluida',
 ]);
 
+// Pra que grupo de checklist completo sugere avançar o status — e pra qual
+// próximo status. "criterios_sucesso" não é um status em si, então também
+// aponta pra "concluida" junto com o grupo "semana_4".
+const PROXIMO_STATUS: Partial<Record<ImplementacaoStatus, ImplementacaoStatus>> = {
+  pre_requisito: 'semana_1',
+  semana_1: 'semana_2',
+  semana_2: 'semana_3',
+  semana_3: 'semana_4',
+  semana_4: 'concluida',
+};
+
+function grupoSugereAvancoStatus(chave: string, statusAtual: ImplementacaoStatus): boolean {
+  return chave === statusAtual || (chave === 'criterios_sucesso' && statusAtual === 'semana_4');
+}
+
 function preRequisitoCompleto(form: FormGeral): boolean {
   return (
     form.email_conta_kommo.trim().length > 0 &&
@@ -422,6 +437,29 @@ export function ImplementacaoDetalhe() {
     setImplementacao(data);
     setSalvoRecentemente(true);
     setTimeout(() => setSalvoRecentemente(false), 2000);
+  }
+
+  async function handleAvancarStatus(proximo: ImplementacaoStatus) {
+    if (!implementacao || !formGeral) return;
+    setError(null);
+    setSalvandoGeral(true);
+
+    const { data, error: updateError } = await supabase
+      .from('implementacoes_crm')
+      .update({ status: proximo })
+      .eq('id', implementacao.id)
+      .select()
+      .single();
+
+    setSalvandoGeral(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setImplementacao(data);
+    setFormGeral({ ...formGeral, status: proximo });
   }
 
   async function handleExcluirImplementacao() {
@@ -1028,6 +1066,35 @@ export function ImplementacaoDetalhe() {
                   </div>
                 )}
               </div>
+              {completo && grupoSugereAvancoStatus(grupo.chave, implementacao.status) && (
+                (() => {
+                  const proximo = PROXIMO_STATUS[implementacao.status];
+                  if (!proximo) return null;
+                  const bloqueado =
+                    STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(proximo) &&
+                    !preRequisitoCompleto(formGeral);
+                  return (
+                    <p className="form-info form-info-com-acao">
+                      <span>
+                        Checklist completo! O status da implementação ainda está em "
+                        {IMPLEMENTACAO_STATUS_LABELS[implementacao.status]}".
+                      </span>
+                      {bloqueado ? (
+                        'Confirme o pré-requisito (aba Visão Geral) antes de avançar.'
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => handleAvancarStatus(proximo)}
+                          disabled={salvandoGeral}
+                        >
+                          Avançar status para "{IMPLEMENTACAO_STATUS_LABELS[proximo]}"
+                        </button>
+                      )}
+                    </p>
+                  );
+                })()
+              )}
               <div className="options-list">
                 {itensDoGrupo(grupo.id).map((item) =>
                   item.requer_evidencia ? (
