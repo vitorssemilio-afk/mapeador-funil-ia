@@ -105,13 +105,18 @@ REGRAS:
      documentos, critérios de qualificação etc. — ex: CPF, Orçamento Disponível, Endereço da
      Obra). Cada campo é um OBJETO estruturado, pronto pra configurar num CRM de verdade, não um
      texto solto:
-     { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"] }
+     { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"], "entidade": "LEAD | CONTATO" }
      "opcoes" só deve existir quando tipo for "lista_suspensa" — nesse caso liste as opções reais
      baseadas nas respostas (ex: motivos de perda, canais de origem, convênios). Escolha o tipo
      pensando em como esse campo seria cadastrado de verdade no Kommo/Pipedrive, não crie campo
      que não faça sentido configurar.
-   - campos_desejaveis: mesmo formato de campos_obrigatorios (objetos com nome/tipo/opcoes), mas
-     para campos que enriquecem o atendimento sem bloquear o avanço
+     "entidade" decide em qual cadastro do CRM o campo é criado — CONTATO para dado da PESSOA que
+     se repete entre negociações diferentes com o mesmo cliente (ex: Telefone, E-mail, CPF, Nome
+     completo, Endereço residencial); LEAD para dado específico DESSA negociação/venda, que muda a
+     cada novo negócio mesmo sendo o mesmo cliente (ex: Orçamento, Produto de interesse, Origem do
+     lead, Motivo de perda, Endereço da obra deste projeto). Na dúvida entre os dois, use LEAD.
+   - campos_desejaveis: mesmo formato de campos_obrigatorios (objetos com nome/tipo/opcoes/entidade),
+     mas para campos que enriquecem o atendimento sem bloquear o avanço
    - sla: prazo realista e focado em conversão (ex: "10 minutos" pra um lead novo, "2 a 7 dias"
      pra uma negociação complexa), se houver informação suficiente nas respostas (senão, sugira um
      prazo razoável pro tipo de negócio)
@@ -173,10 +178,10 @@ REGRAS:
           "gatilho_saida": "string",
           "tarefas": ["string"],
           "campos_obrigatorios": [
-            { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"] }
+            { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"], "entidade": "LEAD | CONTATO" }
           ],
           "campos_desejaveis": [
-            { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"] }
+            { "nome": "string", "tipo": "lista_suspensa | texto_curto | texto_longo | numero | data | checkbox | telefone", "opcoes": ["string"], "entidade": "LEAD | CONTATO" }
           ],
           "sla": "string",
           "regras_negocio": ["string"],

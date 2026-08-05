@@ -106,6 +106,8 @@ export function ImplementacaoDetalhe() {
   const [formCredencialKommo, setFormCredencialKommo] = useState<FormCredencialKommo | null>(null);
   const [salvandoCredencialKommo, setSalvandoCredencialKommo] = useState(false);
   const [criandoFunilId, setCriandoFunilId] = useState<string | null>(null);
+  const [apagarFunilPadrao, setApagarFunilPadrao] = useState(false);
+  const [mensagemSucessoKommo, setMensagemSucessoKommo] = useState<string | null>(null);
 
   const [excluindo, setExcluindo] = useState(false);
   const [gerandoItens, setGerandoItens] = useState(false);
@@ -571,9 +573,15 @@ export function ImplementacaoDetalhe() {
 
     setCriandoFunilId(funil.id);
     setError(null);
+    setMensagemSucessoKommo(null);
 
     const { data, error: invokeError } = await supabase.functions.invoke('criar-funil-kommo', {
-      body: { implementacao_id: implementacao.id, funil_id: funil.id, confirmar: Boolean(jaCriado) },
+      body: {
+        implementacao_id: implementacao.id,
+        funil_id: funil.id,
+        confirmar: Boolean(jaCriado),
+        apagar_funil_padrao: apagarFunilPadrao,
+      },
     });
 
     setCriandoFunilId(null);
@@ -581,6 +589,25 @@ export function ImplementacaoDetalhe() {
     if (invokeError || data?.error) {
       setError(data?.message ?? data?.error ?? invokeError?.message ?? 'Falha ao criar o funil no Kommo.');
       return;
+    }
+
+    const campos: { reaproveitado: boolean }[] = data?.campoIds ?? [];
+    const novos = campos.filter((c) => !c.reaproveitado).length;
+    const reaproveitados = campos.filter((c) => c.reaproveitado).length;
+    const resumoCampos =
+      campos.length > 0
+        ? ` ${novos} campo(s) criado(s)${reaproveitados > 0 ? `, ${reaproveitados} já existiam e foram reaproveitados` : ''}.`
+        : '';
+
+    if (data?.funil_padrao) {
+      setMensagemSucessoKommo(
+        (data.funil_padrao.apagado
+          ? `Funil "${funil.nome_funil}" criado no Kommo. O funil padrão da conta também foi apagado.`
+          : `Funil "${funil.nome_funil}" criado no Kommo. Funil padrão não apagado: ${data.funil_padrao.motivo ?? 'motivo desconhecido'}.`) +
+          resumoCampos,
+      );
+    } else {
+      setMensagemSucessoKommo(`Funil "${funil.nome_funil}" criado no Kommo.${resumoCampos}`);
     }
 
     await carregar(implementacao.id);
@@ -833,6 +860,20 @@ export function ImplementacaoDetalhe() {
             </div>
           </form>
         )}
+
+        <label className="option-checkbox">
+          <input
+            type="checkbox"
+            checked={apagarFunilPadrao}
+            onChange={(e) => setApagarFunilPadrao(e.target.checked)}
+          />
+          <span>
+            Ao criar, apagar também o funil padrão que o Kommo cria sozinho em conta nova — só
+            some se ele ainda estiver vazio (sem negociações); com dado dentro, não é apagado.
+          </span>
+        </label>
+
+        {mensagemSucessoKommo && <p className="form-info">{mensagemSucessoKommo}</p>}
 
         <div className="table-wrap">
           <table className="data-table">

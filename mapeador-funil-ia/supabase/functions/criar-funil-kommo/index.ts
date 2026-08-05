@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.110.8';
 import { corsHeaders } from '../_shared/cors.ts';
-import { criarFunilNoKommo, type EtapaFunilInput } from './kommoClient.ts';
+import { apagarFunilPadraoSeVazio, criarFunilNoKommo, type EtapaFunilInput } from './kommoClient.ts';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -14,7 +14,12 @@ Deno.serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  let payload: { implementacao_id?: unknown; funil_id?: unknown; confirmar?: unknown } | null = null;
+  let payload: {
+    implementacao_id?: unknown;
+    funil_id?: unknown;
+    confirmar?: unknown;
+    apagar_funil_padrao?: unknown;
+  } | null = null;
   try {
     payload = await req.json();
   } catch {
@@ -24,6 +29,7 @@ Deno.serve(async (req: Request) => {
   const implementacaoId = payload?.implementacao_id;
   const funilId = payload?.funil_id;
   const confirmar = payload?.confirmar === true;
+  const apagarFunilPadrao = payload?.apagar_funil_padrao === true;
 
   if (typeof implementacaoId !== 'string' || !implementacaoId) {
     return jsonResponse({ error: 'implementacao_id é obrigatório.' }, 400);
@@ -122,5 +128,18 @@ Deno.serve(async (req: Request) => {
     console.error('Erro ao salvar funis_kommo_criacoes', upsertError);
   }
 
-  return jsonResponse({ ok: true, ...resultado });
+  let funilPadrao: { apagado: boolean; motivo?: string; pipelineId?: number } | undefined;
+  if (apagarFunilPadrao) {
+    try {
+      funilPadrao = await apagarFunilPadraoSeVazio(credencial.subdominio, credencial.token);
+    } catch (limpezaError) {
+      console.error('Erro ao tentar apagar o funil padrão do Kommo', limpezaError);
+      funilPadrao = {
+        apagado: false,
+        motivo: limpezaError instanceof Error ? limpezaError.message : String(limpezaError),
+      };
+    }
+  }
+
+  return jsonResponse({ ok: true, ...resultado, funil_padrao: funilPadrao });
 });
