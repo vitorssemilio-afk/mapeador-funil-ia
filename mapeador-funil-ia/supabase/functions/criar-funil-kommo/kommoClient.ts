@@ -18,7 +18,7 @@ export type EtapaFunilInput = {
 export interface KommoCriacaoResultado {
   pipelineId: number;
   statusIds: { id: number; nome: string }[];
-  campoIds: { id: number; nome: string; entidade: 'LEAD' | 'CONTATO' }[];
+  campoIds: { id: number; nome: string; entidade: 'LEAD' | 'CONTATO'; reaproveitado: boolean }[];
 }
 
 export interface ApagarFunilPadraoResultado {
@@ -112,15 +112,57 @@ function deduplicarCampos(etapas: EtapaFunilInput[]): CampoDeduplicado[] {
   return [...mapa.values()];
 }
 
+async function listarCamposExistentes(
+  baseUrl: string,
+  token: string,
+  entidade: 'LEAD' | 'CONTATO',
+): Promise<Map<string, { id: number; name: string }>> {
+  const data = await kommoRequest<{ _embedded?: { custom_fields?: { id: number; name: string }[] } }>(
+    baseUrl,
+    token,
+    ENTIDADE_PATH[entidade],
+  );
+
+  const mapa = new Map<string, { id: number; name: string }>();
+  for (const campo of data._embedded?.custom_fields ?? []) {
+    mapa.set(campo.name.trim().toLowerCase(), campo);
+  }
+  return mapa;
+}
+
+type CampoResultado = { id: number; name: string; entidade: 'LEAD' | 'CONTATO'; reaproveitado: boolean };
+
+/**
+ * Cria os campos personalizados que faltam, reaproveitando (por nome, sem
+ * diferenciar maiúsculas/acentos) os que já existem na conta em vez de criar
+ * duplicado — evita acumular "Orçamento", "orçamento", "Orçamento (2)" etc.
+ * a cada funil novo apontando pro mesmo tipo de dado.
+ */
 async function criarCamposDaEntidade(
   baseUrl: string,
   token: string,
   entidade: 'LEAD' | 'CONTATO',
   campos: CampoDeduplicado[],
-): Promise<{ id: number; name: string; entidade: 'LEAD' | 'CONTATO' }[]> {
+): Promise<CampoResultado[]> {
   if (campos.length === 0) return [];
 
-  const payload = campos.map((campo) => {
+  const existentes = await listarCamposExistentes(baseUrl, token, entidade);
+
+  const reaproveitados: CampoResultado[] = [];
+  const aCriar: CampoDeduplicado[] = [];
+
+  for (const campo of campos) {
+    const existente = existentes.get(campo.nome.trim().toLowerCase());
+    if (existente) {
+      reaproveitados.push({ id: existente.id, name: existente.name, entidade, reaproveitado: true });
+    } else {
+      aCriar.push(campo);
+    }
+  }
+
+  if (aCriar.length === 0) return reaproveitados;
+
+  const payload = aCriar.map((campo) => {
     const tipoKommo = TIPO_CAMPO_KOMMO[campo.tipo] ?? 'text';
     return {
       name: campo.nome,
@@ -139,7 +181,13 @@ async function criarCamposDaEntidade(
     { method: 'POST', body: JSON.stringify(payload) },
   );
 
-  return (data._embedded?.custom_fields ?? []).map((c) => ({ ...c, entidade }));
+  const criados: CampoResultado[] = (data._embedded?.custom_fields ?? []).map((c) => ({
+    ...c,
+    entidade,
+    reaproveitado: false,
+  }));
+
+  return [...reaproveitados, ...criados];
 }
 
 export async function criarFunilNoKommo(
@@ -213,6 +261,7 @@ export async function criarFunilNoKommo(
       id: c.id,
       nome: c.name,
       entidade: c.entidade,
+      reaproveitado: c.reaproveitado,
     })),
   };
 }

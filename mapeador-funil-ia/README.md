@@ -220,11 +220,18 @@ nada manualmente na interface do Kommo.
 - **Campos por entidade (Lead vs Contato)**: cada campo (`campos_obrigatorios`/`campos_desejaveis`)
   tem um `entidade: "LEAD" | "CONTATO"` — a IA já classifica isso ao gerar (regra 2 do
   `SYSTEM_PROMPT`: CONTATO pra dado da pessoa que se repete entre negociações, como
-  Telefone/E-mail/CPF; LEAD pra dado específico da negociação, como Orçamento/Origem). Editável na
-  tabela do funil acrescentando " · Contato" no fim da linha (sem o sufixo, cai em LEAD — inclusive
-  pra funis gerados antes desse campo existir). Os campos são unificados por nome dentro de cada
-  entidade (obrigatório em qualquer etapa vence sobre desejável) e criados em paralelo via `POST
-  /leads/custom_fields` e `POST /contacts/custom_fields`.
+  Telefone/E-mail/CPF; LEAD pra dado específico da negociação, como Orçamento/Origem). Na tabela do
+  funil (`FunilDetalhado`), "Campos Obrigatórios"/"Campos Desejáveis" viram 4 linhas — uma por
+  combinação de entidade (`· Lead` / `· Contato`) — em vez de uma linha só; mover um campo de
+  entidade é só recortar da linha e colar na outra. Os campos são unificados por nome dentro de
+  cada entidade (obrigatório em qualquer etapa vence sobre desejável) e criados em paralelo via
+  `POST /leads/custom_fields` e `POST /contacts/custom_fields`.
+- **Sem duplicar campo já existente**: antes de criar, a função lista os campos personalizados já
+  cadastrados naquela entidade (`GET /leads/custom_fields` / `GET /contacts/custom_fields`) e
+  reaproveita (por nome, ignorando maiúsculas/acentuação) em vez de criar de novo — importante
+  porque vários funis do mesmo cliente tendem a repetir campo (ex: "Orçamento" aparecendo em
+  Qualificação e em Vendas). A mensagem de sucesso na tela mostra quantos foram criados e quantos
+  foram reaproveitados.
 - **Mapeamento de tipo**: `lista_suspensa → select`, `texto_curto → text`, `texto_longo →
   textarea`, `numero → numeric`, `data → date`, `checkbox → checkbox`, `telefone → text`
   (simplificação — o Kommo não tem um tipo "telefone" simples pra campo personalizado).

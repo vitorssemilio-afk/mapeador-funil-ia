@@ -1,7 +1,23 @@
 import { useRef, useState } from 'react';
-import { CAMPOS_ETAPA, textoParaValorEtapa, valorEtapaParaTexto } from '../../data/etapaCampos';
+import {
+  CAMPOS_ETAPA_ANTES_DOS_CAMPOS,
+  CAMPOS_ETAPA_DEPOIS_DOS_CAMPOS,
+  mesclarCamposPorEntidade,
+  textoCamposPorEntidade,
+  textoParaValorEtapa,
+  valorEtapaParaTexto,
+} from '../../data/etapaCampos';
 import { supabase } from '../../lib/supabaseClient';
 import type { EtapaFunil, FunilGerado } from '../../types/database';
+
+type CampoEntidadeKey = 'campos_obrigatorios' | 'campos_desejaveis';
+
+const LINHAS_CAMPOS_POR_ENTIDADE: { campoKey: CampoEntidadeKey; label: string; entidade: 'LEAD' | 'CONTATO' }[] = [
+  { campoKey: 'campos_obrigatorios', label: 'Campos Obrigatórios · Lead', entidade: 'LEAD' },
+  { campoKey: 'campos_obrigatorios', label: 'Campos Obrigatórios · Contato', entidade: 'CONTATO' },
+  { campoKey: 'campos_desejaveis', label: 'Campos Desejáveis · Lead', entidade: 'LEAD' },
+  { campoKey: 'campos_desejaveis', label: 'Campos Desejáveis · Contato', entidade: 'CONTATO' },
+];
 
 const AUTOSAVE_DELAY_MS = 1000;
 
@@ -91,6 +107,21 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
     );
   }
 
+  function handleCamposEntidadeChange(
+    etapaIndex: number,
+    campoKey: CampoEntidadeKey,
+    entidade: 'LEAD' | 'CONTATO',
+    texto: string,
+  ) {
+    commit(
+      funil.etapas.map((etapa, i) =>
+        i === etapaIndex
+          ? { ...etapa, [campoKey]: mesclarCamposPorEntidade(etapa[campoKey], entidade, texto) }
+          : etapa,
+      ),
+    );
+  }
+
   function handleAdicionarEtapa() {
     commit([...funil.etapas, { ...ETAPA_VAZIA }]);
   }
@@ -153,7 +184,49 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
             </tr>
           </thead>
           <tbody>
-            {CAMPOS_ETAPA.map((campo) => (
+            {CAMPOS_ETAPA_ANTES_DOS_CAMPOS.map((campo) => (
+              <tr key={campo.key}>
+                <th scope="row" className="campo-label-cell">
+                  {campo.label}
+                </th>
+                {funil.etapas.map((etapa, i) => (
+                  <td key={i}>
+                    <textarea
+                      className="etapa-cell-input"
+                      rows={2}
+                      value={valorEtapaParaTexto(etapa[campo.key], campo.estruturado)}
+                      onChange={(e) =>
+                        handleCellChange(i, campo.key, e.target.value, campo.lista, !!campo.estruturado)
+                      }
+                      readOnly={somenteLeitura}
+                    />
+                  </td>
+                ))}
+                {!somenteLeitura && <td />}
+              </tr>
+            ))}
+
+            {LINHAS_CAMPOS_POR_ENTIDADE.map(({ campoKey, label, entidade }) => (
+              <tr key={`${campoKey}-${entidade}`}>
+                <th scope="row" className="campo-label-cell">
+                  {label}
+                </th>
+                {funil.etapas.map((etapa, i) => (
+                  <td key={i}>
+                    <textarea
+                      className="etapa-cell-input"
+                      rows={2}
+                      value={textoCamposPorEntidade(etapa[campoKey], entidade)}
+                      onChange={(e) => handleCamposEntidadeChange(i, campoKey, entidade, e.target.value)}
+                      readOnly={somenteLeitura}
+                    />
+                  </td>
+                ))}
+                {!somenteLeitura && <td />}
+              </tr>
+            ))}
+
+            {CAMPOS_ETAPA_DEPOIS_DOS_CAMPOS.map((campo) => (
               <tr key={campo.key}>
                 <th scope="row" className="campo-label-cell">
                   {campo.label}
@@ -182,9 +255,8 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
         <p className="field-hint funil-estruturado-hint">
           Campos Obrigatórios/Desejáveis: uma linha por campo, no formato "Nome (tipo)" — ex:
           "Orçamento (numero)" — ou "Nome (lista_suspensa: opção 1, opção 2)" quando o tipo tiver
-          opções. Acrescente " · Contato" no fim da linha pra campos que devem ser cadastrados no
-          Contato em vez do Lead (ex: "Telefone (telefone) · Contato") — sem o sufixo, o campo vai
-          pro Lead.
+          opções. Cada campo já entra na linha certa (Lead ou Contato) — mover um campo de entidade
+          é só recortar a linha e colar na outra.
         </p>
       )}
     </section>

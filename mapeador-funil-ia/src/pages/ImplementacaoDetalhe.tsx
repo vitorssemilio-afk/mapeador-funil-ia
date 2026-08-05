@@ -591,14 +591,23 @@ export function ImplementacaoDetalhe() {
       return;
     }
 
+    const campos: { reaproveitado: boolean }[] = data?.campoIds ?? [];
+    const novos = campos.filter((c) => !c.reaproveitado).length;
+    const reaproveitados = campos.filter((c) => c.reaproveitado).length;
+    const resumoCampos =
+      campos.length > 0
+        ? ` ${novos} campo(s) criado(s)${reaproveitados > 0 ? `, ${reaproveitados} já existiam e foram reaproveitados` : ''}.`
+        : '';
+
     if (data?.funil_padrao) {
       setMensagemSucessoKommo(
-        data.funil_padrao.apagado
+        (data.funil_padrao.apagado
           ? `Funil "${funil.nome_funil}" criado no Kommo. O funil padrão da conta também foi apagado.`
-          : `Funil "${funil.nome_funil}" criado no Kommo. Funil padrão não apagado: ${data.funil_padrao.motivo ?? 'motivo desconhecido'}.`,
+          : `Funil "${funil.nome_funil}" criado no Kommo. Funil padrão não apagado: ${data.funil_padrao.motivo ?? 'motivo desconhecido'}.`) +
+          resumoCampos,
       );
     } else {
-      setMensagemSucessoKommo(`Funil "${funil.nome_funil}" criado no Kommo.`);
+      setMensagemSucessoKommo(`Funil "${funil.nome_funil}" criado no Kommo.${resumoCampos}`);
     }
 
     await carregar(implementacao.id);
