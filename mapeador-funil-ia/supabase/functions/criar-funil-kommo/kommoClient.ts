@@ -199,13 +199,18 @@ export async function criarFunilNoKommo(
   const baseUrl = `https://${subdominio}.kommo.com/api/v4`;
 
   // O Kommo sempre cria "Entrada de leads" no início e "Ganho"/"Perdido" no
-  // fim automaticamente — a etapa final "Perdido/Desqualificado" que a IA
-  // sempre inclui (regra 3 do prompt) já é coberta por isso, então não
-  // criamos ela como etapa intermediária duplicada.
-  const etapasIntermediarias = etapas.filter((etapa) => !/perdid|desqualificad/i.test(etapa.nome));
+  // fim automaticamente pra todo pipeline — a etapa final "Perdido/Desqualificado"
+  // que a IA sempre inclui (regra 3 do prompt) já é coberta pelo "Perdido"
+  // nativo, e qualquer etapa que a IA tenha nomeado como fechamento ganho
+  // ("Venda Ganha", "Fechado Ganho", "Negócio Ganho" etc.) já é coberta pelo
+  // "Ganho" nativo — nenhuma das duas deve virar status intermediário
+  // duplicado.
+  const etapasIntermediarias = etapas.filter(
+    (etapa) => !/perdid|desqualificad|\bganh[oa]\b|\bwon\b/i.test(etapa.nome),
+  );
 
   if (etapasIntermediarias.length === 0) {
-    throw new Error('O funil não tem etapas intermediárias além de "Perdido" pra criar no Kommo.');
+    throw new Error('O funil não tem etapas intermediárias além de "Ganho"/"Perdido" pra criar no Kommo.');
   }
 
     // sort/is_main/is_unsorted_on são obrigatórios na API do Kommo (400
