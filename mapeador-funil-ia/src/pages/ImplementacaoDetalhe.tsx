@@ -12,7 +12,10 @@ import type {
   FunilKommoCriacao,
   ImplementacaoCrm,
   ImplementacaoStatus,
+  ImplementacaoStatusHistorico,
 } from '../types/database';
+
+type Aba = 'geral' | 'checklist' | 'credenciais';
 
 type FormGeral = {
   nome_cliente: string;
@@ -90,6 +93,8 @@ export function ImplementacaoDetalhe() {
   const [funisDoMapeamento, setFunisDoMapeamento] = useState<FunilGerado[]>([]);
   const [criacoesKommo, setCriacoesKommo] = useState<Record<string, FunilKommoCriacao>>({});
   const [credencialKommoMeta, setCredencialKommoMeta] = useState<CredencialApiKommoMeta | null>(null);
+  const [historicoStatus, setHistoricoStatus] = useState<ImplementacaoStatusHistorico[]>([]);
+  const [aba, setAba] = useState<Aba>('geral');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -122,6 +127,7 @@ export function ImplementacaoDetalhe() {
       { data: itensData, error: itensError },
       { data: marcadosData, error: marcadosError },
       { data: credenciaisData, error: credenciaisError },
+      { data: historicoData, error: historicoError },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       supabase.from('checklist_grupos_implementacao').select('*').order('ordem', { ascending: true }),
@@ -136,6 +142,11 @@ export function ImplementacaoDetalhe() {
         .select('item_id, marcado, evidencia')
         .eq('implementacao_id', implementacaoId),
       supabase.rpc('listar_credenciais_crm', { p_implementacao_id: implementacaoId }),
+      supabase
+        .from('implementacao_status_historico')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('alterado_em', { ascending: true }),
     ]);
 
     if (implError) {
@@ -156,6 +167,7 @@ export function ImplementacaoDetalhe() {
     }
     setEvidenciaFaltando(new Set());
     if (!credenciaisError) setCredenciais(credenciaisData ?? []);
+    if (!historicoError) setHistoricoStatus(historicoData ?? []);
 
     const funis = await buscarFunisMaisRecentes(implData.mapeamento_id);
     setFunisDoMapeamento(funis);
@@ -187,6 +199,12 @@ export function ImplementacaoDetalhe() {
 
   function itensDoGrupo(grupoId: string): ChecklistItemImplementacao[] {
     return itens.filter((item) => item.grupo_id === grupoId).sort((a, b) => a.ordem - b.ordem);
+  }
+
+  function progressoGrupo(grupoId: string): { feitos: number; total: number } {
+    const doGrupo = itensDoGrupo(grupoId);
+    const feitos = doGrupo.filter((item) => marcados.has(item.id)).length;
+    return { feitos, total: doGrupo.length };
   }
 
   // Base pros itens derivados: sempre logo após os itens globais do template,
@@ -637,472 +655,553 @@ export function ImplementacaoDetalhe() {
 
       {error && <p className="form-error">{error}</p>}
 
-      <form onSubmit={handleSalvarGeral} className="card form-card">
-        <h2>Dados gerais</h2>
-
-        <label className="field">
-          <span>Nome do cliente</span>
-          <input
-            type="text"
-            required
-            value={formGeral.nome_cliente}
-            onChange={(e) => setFormGeral({ ...formGeral, nome_cliente: e.target.value })}
-          />
-        </label>
-
-        <label className="field">
-          <span>Status</span>
-          <select
-            value={formGeral.status}
-            onChange={(e) =>
-              setFormGeral({ ...formGeral, status: e.target.value as ImplementacaoStatus })
-            }
-          >
-            {Object.entries(IMPLEMENTACAO_STATUS_LABELS).map(([valor, label]) => (
-              <option
-                key={valor}
-                value={valor}
-                disabled={gateSemanaUmBloqueado && STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(valor as ImplementacaoStatus)}
-              >
-                {label}
-              </option>
-            ))}
-          </select>
-          {gateSemanaUmBloqueado && (
-            <span className="field-hint">
-              Bloqueado até confirmar o pré-requisito: e-mail da conta Kommo, WhatsApp Corporativo e
-              acesso ao Facebook (campos "Acessos" abaixo).
-            </span>
-          )}
-        </label>
-
-        <label className="field">
-          <span>Consultor responsável</span>
-          <input
-            type="text"
-            value={formGeral.consultor_responsavel}
-            onChange={(e) => setFormGeral({ ...formGeral, consultor_responsavel: e.target.value })}
-          />
-        </label>
-
-        <label className="field">
-          <span>Stakeholder decisor</span>
-          <input
-            type="text"
-            value={formGeral.stakeholder_decisor}
-            onChange={(e) => setFormGeral({ ...formGeral, stakeholder_decisor: e.target.value })}
-          />
-        </label>
-
-        <h3>Acessos</h3>
-
-        <label className="option-checkbox">
-          <input
-            type="checkbox"
-            checked={formGeral.conta_criada_via_v4}
-            onChange={(e) => setFormGeral({ ...formGeral, conta_criada_via_v4: e.target.checked })}
-          />
-          <span>Conta Kommo criada via V4 Company</span>
-        </label>
-
-        <label className="field">
-          <span>E-mail da conta Kommo</span>
-          <input
-            type="email"
-            value={formGeral.email_conta_kommo}
-            onChange={(e) => setFormGeral({ ...formGeral, email_conta_kommo: e.target.value })}
-          />
-        </label>
-
-        <label className="option-checkbox">
-          <input
-            type="checkbox"
-            checked={formGeral.whatsapp_corporativo_confirmado}
-            onChange={(e) =>
-              setFormGeral({ ...formGeral, whatsapp_corporativo_confirmado: e.target.checked })
-            }
-          />
-          <span>WhatsApp Corporativo (business) confirmado</span>
-        </label>
-
-        <label className="option-checkbox">
-          <input
-            type="checkbox"
-            checked={formGeral.acesso_facebook_confirmado}
-            onChange={(e) => setFormGeral({ ...formGeral, acesso_facebook_confirmado: e.target.checked })}
-          />
-          <span>Acesso às credenciais do Facebook confirmado</span>
-        </label>
-
-        <label className="field">
-          <span>Plano contratado</span>
-          <select
-            value={formGeral.plano_contratado}
-            onChange={(e) => setFormGeral({ ...formGeral, plano_contratado: e.target.value })}
-          >
-            <option value="">— Ainda não decidido —</option>
-            <option value="Kommo Basic">Kommo Basic</option>
-            <option value="Kommo PRO">Kommo PRO</option>
-          </select>
-        </label>
-
-        <label className="field">
-          <span>Período contratado</span>
-          <input
-            type="text"
-            placeholder="Ex: Mensal, Anual, 12x"
-            value={formGeral.periodo_contratado}
-            onChange={(e) => setFormGeral({ ...formGeral, periodo_contratado: e.target.value })}
-          />
-        </label>
-
-        <label className="field">
-          <span>Data da decisão do plano</span>
-          <input
-            type="date"
-            value={formGeral.data_decisao_plano}
-            onChange={(e) => setFormGeral({ ...formGeral, data_decisao_plano: e.target.value })}
-          />
-        </label>
-
-        <label className="field">
-          <span>Observações</span>
-          <textarea
-            rows={3}
-            value={formGeral.observacoes}
-            onChange={(e) => setFormGeral({ ...formGeral, observacoes: e.target.value })}
-          />
-        </label>
-
-        <div className="wizard-actions">
-          <span className="field-hint">{salvoRecentemente ? 'Alterações salvas.' : ''}</span>
-          <button type="submit" className="btn btn-primary" disabled={salvandoGeral}>
-            {salvandoGeral ? 'Salvando…' : 'Salvar alterações'}
-          </button>
-        </div>
-      </form>
-
-      <section className="card form-card">
-        <h2>Itens derivados do funil</h2>
-        <p className="field-hint">
-          Gera itens específicos pra Semana 1 (funis, campos, gatilhos) e Semana 2 (automações,
-          mensagens, motivos de perda) a partir do funil já gerado pra este cliente, direto no
-          checklist abaixo — sem precisar montar essa lista na mão. Rodar de novo substitui os
-          itens gerados anteriormente (o que já tinha sido marcado neles se perde).
-        </p>
+      <div className="tabs">
         <button
           type="button"
-          className="btn btn-secondary btn-auto"
-          onClick={handleGerarItensDoFunil}
-          disabled={gerandoItens}
+          className={`tab-button${aba === 'geral' ? ' active' : ''}`}
+          onClick={() => setAba('geral')}
         >
-          {gerandoItens ? 'Gerando…' : 'Gerar itens a partir do funil'}
+          Visão Geral
         </button>
-      </section>
+        <button
+          type="button"
+          className={`tab-button${aba === 'checklist' ? ' active' : ''}`}
+          onClick={() => setAba('checklist')}
+        >
+          Checklist
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'credenciais' ? ' active' : ''}`}
+          onClick={() => setAba('credenciais')}
+        >
+          Credenciais
+        </button>
+      </div>
 
-      <section className="card form-card">
-        <div className="page-header">
-          <h2 style={{ marginBottom: 0 }}>Criar funil no Kommo (API)</h2>
-          {!formCredencialKommo && (
-            <button type="button" className="btn btn-secondary" onClick={abrirFormCredencialKommo}>
-              {credencialKommoMeta ? 'Trocar token' : '+ Cadastrar credencial de API'}
-            </button>
-          )}
-        </div>
-        <p className="field-hint">
-          Cria o pipeline, as etapas e os campos personalizados direto na conta Kommo do cliente,
-          usando o token de longa duração da integração (Kommo → Configurações → Integrações → sua
-          integração → "Token de longa duração"). Diferente das credenciais de acesso acima — esse
-          token nunca fica visível na tela depois de salvo.
-        </p>
+      {aba === 'geral' && (
+        <>
+          <form onSubmit={handleSalvarGeral} className="card form-card">
+            <h2>Dados gerais</h2>
 
-        {credencialKommoMeta && !formCredencialKommo && (
-          <p className="field-hint">
-            Configurado para <code>{credencialKommoMeta.subdominio}.kommo.com</code>.
-          </p>
-        )}
-        {!credencialKommoMeta && !formCredencialKommo && (
-          <p className="field-hint">Nenhuma credencial de API cadastrada ainda.</p>
-        )}
+            <div className="form-grid">
+              <label className="field">
+                <span>Nome do cliente</span>
+                <input
+                  type="text"
+                  required
+                  value={formGeral.nome_cliente}
+                  onChange={(e) => setFormGeral({ ...formGeral, nome_cliente: e.target.value })}
+                />
+              </label>
 
-        {formCredencialKommo && (
-          <form onSubmit={handleSalvarCredencialKommo} className="card form-card">
-            <label className="field">
-              <span>Subdomínio Kommo</span>
+              <label className="field">
+                <span>Status</span>
+                <select
+                  value={formGeral.status}
+                  onChange={(e) =>
+                    setFormGeral({ ...formGeral, status: e.target.value as ImplementacaoStatus })
+                  }
+                >
+                  {Object.entries(IMPLEMENTACAO_STATUS_LABELS).map(([valor, label]) => (
+                    <option
+                      key={valor}
+                      value={valor}
+                      disabled={
+                        gateSemanaUmBloqueado &&
+                        STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(valor as ImplementacaoStatus)
+                      }
+                    >
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {gateSemanaUmBloqueado && (
+                  <span className="field-hint">
+                    Bloqueado até confirmar o pré-requisito: e-mail da conta Kommo, WhatsApp
+                    Corporativo e acesso ao Facebook (campos "Acessos" abaixo).
+                  </span>
+                )}
+              </label>
+
+              <label className="field">
+                <span>Consultor responsável</span>
+                <input
+                  type="text"
+                  value={formGeral.consultor_responsavel}
+                  onChange={(e) => setFormGeral({ ...formGeral, consultor_responsavel: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Stakeholder decisor</span>
+                <input
+                  type="text"
+                  value={formGeral.stakeholder_decisor}
+                  onChange={(e) => setFormGeral({ ...formGeral, stakeholder_decisor: e.target.value })}
+                />
+              </label>
+            </div>
+
+            <h3>Acessos</h3>
+
+            <label className="option-checkbox">
               <input
-                type="text"
-                required
-                placeholder="ex: minhaempresa (de minhaempresa.kommo.com)"
-                value={formCredencialKommo.subdominio}
+                type="checkbox"
+                checked={formGeral.conta_criada_via_v4}
+                onChange={(e) => setFormGeral({ ...formGeral, conta_criada_via_v4: e.target.checked })}
+              />
+              <span>Conta Kommo criada via V4 Company</span>
+            </label>
+
+            <div className="form-grid">
+              <label className="field">
+                <span>E-mail da conta Kommo</span>
+                <input
+                  type="email"
+                  value={formGeral.email_conta_kommo}
+                  onChange={(e) => setFormGeral({ ...formGeral, email_conta_kommo: e.target.value })}
+                />
+              </label>
+            </div>
+
+            <label className="option-checkbox">
+              <input
+                type="checkbox"
+                checked={formGeral.whatsapp_corporativo_confirmado}
                 onChange={(e) =>
-                  setFormCredencialKommo({ ...formCredencialKommo, subdominio: e.target.value })
+                  setFormGeral({ ...formGeral, whatsapp_corporativo_confirmado: e.target.checked })
                 }
               />
+              <span>WhatsApp Corporativo (business) confirmado</span>
             </label>
 
-            <label className="field">
-              <span>Token de longa duração</span>
+            <label className="option-checkbox">
               <input
-                type="text"
-                required
-                value={formCredencialKommo.token}
-                onChange={(e) => setFormCredencialKommo({ ...formCredencialKommo, token: e.target.value })}
+                type="checkbox"
+                checked={formGeral.acesso_facebook_confirmado}
+                onChange={(e) => setFormGeral({ ...formGeral, acesso_facebook_confirmado: e.target.checked })}
               />
+              <span>Acesso às credenciais do Facebook confirmado</span>
             </label>
+
+            <div className="form-grid">
+              <label className="field">
+                <span>Plano contratado</span>
+                <select
+                  value={formGeral.plano_contratado}
+                  onChange={(e) => setFormGeral({ ...formGeral, plano_contratado: e.target.value })}
+                >
+                  <option value="">— Ainda não decidido —</option>
+                  <option value="Kommo Basic">Kommo Basic</option>
+                  <option value="Kommo PRO">Kommo PRO</option>
+                </select>
+              </label>
+
+              <label className="field">
+                <span>Período contratado</span>
+                <input
+                  type="text"
+                  placeholder="Ex: Mensal, Anual, 12x"
+                  value={formGeral.periodo_contratado}
+                  onChange={(e) => setFormGeral({ ...formGeral, periodo_contratado: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Data da decisão do plano</span>
+                <input
+                  type="date"
+                  value={formGeral.data_decisao_plano}
+                  onChange={(e) => setFormGeral({ ...formGeral, data_decisao_plano: e.target.value })}
+                />
+              </label>
+
+              <label className="field field-full">
+                <span>Observações</span>
+                <textarea
+                  rows={3}
+                  value={formGeral.observacoes}
+                  onChange={(e) => setFormGeral({ ...formGeral, observacoes: e.target.value })}
+                />
+              </label>
+            </div>
 
             <div className="wizard-actions">
-              <button type="button" className="btn btn-secondary" onClick={fecharFormCredencialKommo}>
-                Cancelar
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={salvandoCredencialKommo}>
-                {salvandoCredencialKommo ? 'Salvando…' : 'Salvar credencial'}
+              <span className="field-hint">{salvoRecentemente ? 'Alterações salvas.' : ''}</span>
+              <button type="submit" className="btn btn-primary" disabled={salvandoGeral}>
+                {salvandoGeral ? 'Salvando…' : 'Salvar alterações'}
               </button>
             </div>
           </form>
-        )}
 
-        <label className="option-checkbox">
-          <input
-            type="checkbox"
-            checked={apagarFunilPadrao}
-            onChange={(e) => setApagarFunilPadrao(e.target.checked)}
-          />
-          <span>
-            Ao criar, apagar também o funil padrão que o Kommo cria sozinho em conta nova — só
-            some se ele ainda estiver vazio (sem negociações); com dado dentro, não é apagado.
-          </span>
-        </label>
+          {historicoStatus.length > 0 && (
+            <section className="card form-card">
+              <h2>Histórico de status</h2>
+              <p className="field-hint">Data real de quando cada fase foi alcançada.</p>
+              <ul className="historico-status-lista">
+                {historicoStatus.map((h) => (
+                  <li key={h.id} className="historico-status-item">
+                    <span className="historico-status-data">
+                      {new Date(h.alterado_em).toLocaleString('pt-BR')}
+                    </span>
+                    <span>
+                      {h.status_anterior
+                        ? `${IMPLEMENTACAO_STATUS_LABELS[h.status_anterior]} → ${IMPLEMENTACAO_STATUS_LABELS[h.status_novo]}`
+                        : `Implementação iniciada em ${IMPLEMENTACAO_STATUS_LABELS[h.status_novo]}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
-        {mensagemSucessoKommo && <p className="form-info">{mensagemSucessoKommo}</p>}
+          <section className="card form-card">
+            <h2>Itens derivados do funil</h2>
+            <p className="field-hint">
+              Gera itens específicos pra Semana 1 (funis, campos, gatilhos) e Semana 2 (automações,
+              mensagens, motivos de perda) a partir do funil já gerado pra este cliente, direto no
+              checklist abaixo — sem precisar montar essa lista na mão. Rodar de novo substitui os
+              itens gerados anteriormente (o que já tinha sido marcado neles se perde).
+            </p>
+            <button
+              type="button"
+              className="btn btn-secondary btn-auto"
+              onClick={handleGerarItensDoFunil}
+              disabled={gerandoItens}
+            >
+              {gerandoItens ? 'Gerando…' : 'Gerar itens a partir do funil'}
+            </button>
+          </section>
 
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Funil</th>
-                <th>Status no Kommo</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {funisDoMapeamento.map((funil) => {
-                const criacao = criacoesKommo[funil.id];
-                return (
-                  <tr key={funil.id}>
-                    <td>{funil.nome_funil}</td>
+          <section className="card form-card">
+            <div className="page-header">
+              <h2 style={{ marginBottom: 0 }}>Criar funil no Kommo (API)</h2>
+              {!formCredencialKommo && (
+                <button type="button" className="btn btn-secondary" onClick={abrirFormCredencialKommo}>
+                  {credencialKommoMeta ? 'Trocar token' : '+ Cadastrar credencial de API'}
+                </button>
+              )}
+            </div>
+            <p className="field-hint">
+              Cria o pipeline, as etapas e os campos personalizados direto na conta Kommo do cliente,
+              usando o token de longa duração da integração (Kommo → Configurações → Integrações →
+              sua integração → "Token de longa duração"). Diferente das credenciais de acesso acima
+              — esse token nunca fica visível na tela depois de salvo.
+            </p>
+
+            {credencialKommoMeta && !formCredencialKommo && (
+              <p className="field-hint">
+                Configurado para <code>{credencialKommoMeta.subdominio}.kommo.com</code>.
+              </p>
+            )}
+            {!credencialKommoMeta && !formCredencialKommo && (
+              <p className="field-hint">Nenhuma credencial de API cadastrada ainda.</p>
+            )}
+
+            {formCredencialKommo && (
+              <form onSubmit={handleSalvarCredencialKommo} className="card form-card">
+                <label className="field">
+                  <span>Subdomínio Kommo</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="ex: minhaempresa (de minhaempresa.kommo.com)"
+                    value={formCredencialKommo.subdominio}
+                    onChange={(e) =>
+                      setFormCredencialKommo({ ...formCredencialKommo, subdominio: e.target.value })
+                    }
+                  />
+                </label>
+
+                <label className="field">
+                  <span>Token de longa duração</span>
+                  <input
+                    type="text"
+                    required
+                    value={formCredencialKommo.token}
+                    onChange={(e) =>
+                      setFormCredencialKommo({ ...formCredencialKommo, token: e.target.value })
+                    }
+                  />
+                </label>
+
+                <div className="wizard-actions">
+                  <button type="button" className="btn btn-secondary" onClick={fecharFormCredencialKommo}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary" disabled={salvandoCredencialKommo}>
+                    {salvandoCredencialKommo ? 'Salvando…' : 'Salvar credencial'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <label className="option-checkbox">
+              <input
+                type="checkbox"
+                checked={apagarFunilPadrao}
+                onChange={(e) => setApagarFunilPadrao(e.target.checked)}
+              />
+              <span>
+                Ao criar, apagar também o funil padrão que o Kommo cria sozinho em conta nova — só
+                some se ele ainda estiver vazio (sem negociações); com dado dentro, não é apagado.
+              </span>
+            </label>
+
+            {mensagemSucessoKommo && <p className="form-info">{mensagemSucessoKommo}</p>}
+
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Funil</th>
+                    <th>Status no Kommo</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {funisDoMapeamento.map((funil) => {
+                    const criacao = criacoesKommo[funil.id];
+                    return (
+                      <tr key={funil.id}>
+                        <td>{funil.nome_funil}</td>
+                        <td>
+                          {criacao
+                            ? `Criado (pipeline ${criacao.kommo_pipeline_id}) em ${new Date(criacao.criado_em).toLocaleString('pt-BR')}`
+                            : 'Ainda não criado'}
+                        </td>
+                        <td className="table-actions">
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => handleCriarFunilNoKommo(funil)}
+                            disabled={criandoFunilId === funil.id || !credencialKommoMeta}
+                            title={
+                              !credencialKommoMeta ? 'Cadastre a credencial de API acima primeiro' : undefined
+                            }
+                          >
+                            {criandoFunilId === funil.id
+                              ? 'Criando…'
+                              : criacao
+                                ? 'Criar de novo'
+                                : 'Criar no Kommo'}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {funisDoMapeamento.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="field-hint">
+                        O mapeamento de origem ainda não tem funil gerado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+
+      {aba === 'checklist' &&
+        grupos.map((grupo) => {
+          const { feitos, total } = progressoGrupo(grupo.id);
+          const completo = total > 0 && feitos === total;
+          const percentual = total > 0 ? Math.round((feitos / total) * 100) : 0;
+          return (
+            <section key={grupo.id} className="card form-card">
+              <div className="page-header">
+                <h2 style={{ marginBottom: 0 }}>{grupo.titulo}</h2>
+                {total > 0 && (
+                  <div className="checklist-progress">
+                    <div className="checklist-progress-bar">
+                      <div
+                        className={`checklist-progress-bar-fill${completo ? ' complete' : ''}`}
+                        style={{ width: `${percentual}%` }}
+                      />
+                    </div>
+                    <span className="checklist-progress-count">
+                      {feitos}/{total}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="options-list">
+                {itensDoGrupo(grupo.id).map((item) =>
+                  item.requer_evidencia ? (
+                    <div key={item.id} className="option-checkbox-wrap">
+                      <label className="option-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={marcados.has(item.id)}
+                          onChange={() => handleToggleItem(item)}
+                        />
+                        <span>
+                          {item.texto}
+                          {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        className="option-livre-input evidencia-input"
+                        placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
+                        value={evidencias[item.id] ?? ''}
+                        onChange={(e) => handleEvidenciaChange(item.id, e.target.value)}
+                        onBlur={() => handleEvidenciaBlur(item)}
+                      />
+                      {evidenciaFaltando.has(item.id) && (
+                        <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
+                      )}
+                    </div>
+                  ) : (
+                    <label key={item.id} className="option-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={marcados.has(item.id)}
+                        onChange={() => handleToggleItem(item)}
+                      />
+                      <span>
+                        {item.texto}
+                        {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
+                      </span>
+                    </label>
+                  ),
+                )}
+                {itensDoGrupo(grupo.id).length === 0 && (
+                  <p className="field-hint">Nenhum item cadastrado neste grupo.</p>
+                )}
+              </div>
+            </section>
+          );
+        })}
+
+      {aba === 'credenciais' && (
+        <section className="card form-card">
+          <div className="page-header">
+            <h2 style={{ marginBottom: 0 }}>Credenciais de acesso do cliente no CRM</h2>
+            {!formCredencial && (
+              <button type="button" className="btn btn-primary" onClick={abrirNovaCredencial}>
+                + Nova credencial
+              </button>
+            )}
+          </div>
+          <p className="field-hint">
+            As senhas ficam criptografadas no banco — só aparecem em texto quando você clica em
+            "Revelar".
+          </p>
+
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Login</th>
+                  <th>Senha</th>
+                  <th>Observações</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {credenciais.map((credencial) => (
+                  <tr key={credencial.id}>
+                    <td>{credencial.login}</td>
                     <td>
-                      {criacao
-                        ? `Criado (pipeline ${criacao.kommo_pipeline_id}) em ${new Date(criacao.criado_em).toLocaleString('pt-BR')}`
-                        : 'Ainda não criado'}
+                      {reveladas[credencial.id] ? <code>{reveladas[credencial.id]}</code> : '••••••••'}
                     </td>
+                    <td>{credencial.observacoes || '—'}</td>
                     <td className="table-actions">
+                      {reveladas[credencial.id] ? (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleEsconderSenha(credencial.id)}
+                        >
+                          Esconder
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleRevelarSenha(credencial.id)}
+                          disabled={revelando === credencial.id}
+                        >
+                          {revelando === credencial.id ? 'Revelando…' : 'Revelar'}
+                        </button>
+                      )}{' '}
                       <button
                         type="button"
                         className="btn btn-secondary"
-                        onClick={() => handleCriarFunilNoKommo(funil)}
-                        disabled={criandoFunilId === funil.id || !credencialKommoMeta}
-                        title={!credencialKommoMeta ? 'Cadastre a credencial de API acima primeiro' : undefined}
+                        onClick={() => abrirEdicaoCredencial(credencial)}
                       >
-                        {criandoFunilId === funil.id
-                          ? 'Criando…'
-                          : criacao
-                            ? 'Criar de novo'
-                            : 'Criar no Kommo'}
+                        Editar
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => handleExcluirCredencial(credencial)}
+                      >
+                        Excluir
                       </button>
                     </td>
                   </tr>
-                );
-              })}
-              {funisDoMapeamento.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="field-hint">
-                    O mapeamento de origem ainda não tem funil gerado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {grupos.map((grupo) => (
-        <section key={grupo.id} className="card form-card">
-          <h2>{grupo.titulo}</h2>
-          <div className="options-list">
-            {itensDoGrupo(grupo.id).map((item) =>
-              item.requer_evidencia ? (
-                <div key={item.id} className="option-checkbox-wrap">
-                  <label className="option-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={marcados.has(item.id)}
-                      onChange={() => handleToggleItem(item)}
-                    />
-                    <span>
-                      {item.texto}
-                      {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    className="option-livre-input evidencia-input"
-                    placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
-                    value={evidencias[item.id] ?? ''}
-                    onChange={(e) => handleEvidenciaChange(item.id, e.target.value)}
-                    onBlur={() => handleEvidenciaBlur(item)}
-                  />
-                  {evidenciaFaltando.has(item.id) && (
-                    <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
-                  )}
-                </div>
-              ) : (
-                <label key={item.id} className="option-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={marcados.has(item.id)}
-                    onChange={() => handleToggleItem(item)}
-                  />
-                  <span>
-                    {item.texto}
-                    {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
-                  </span>
-                </label>
-              ),
-            )}
-            {itensDoGrupo(grupo.id).length === 0 && (
-              <p className="field-hint">Nenhum item cadastrado neste grupo.</p>
-            )}
+                ))}
+                {credenciais.length === 0 && !formCredencial && (
+                  <tr>
+                    <td colSpan={4} className="field-hint">
+                      Nenhuma credencial cadastrada ainda.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
-        </section>
-      ))}
 
-      <section className="card form-card">
-        <div className="page-header">
-          <h2 style={{ marginBottom: 0 }}>Credenciais de acesso do cliente no CRM</h2>
-          {!formCredencial && (
-            <button type="button" className="btn btn-primary" onClick={abrirNovaCredencial}>
-              + Nova credencial
-            </button>
+          {formCredencial && (
+            <form onSubmit={handleSalvarCredencial} className="card form-card">
+              <h3>{formCredencial.id ? 'Editar credencial' : 'Nova credencial'}</h3>
+
+              <label className="field">
+                <span>Login / e-mail</span>
+                <input
+                  type="text"
+                  required
+                  value={formCredencial.login}
+                  onChange={(e) => setFormCredencial({ ...formCredencial, login: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Senha</span>
+                <input
+                  type="text"
+                  required
+                  value={formCredencial.senha}
+                  onChange={(e) => setFormCredencial({ ...formCredencial, senha: e.target.value })}
+                />
+              </label>
+
+              <label className="field">
+                <span>Observações (opcional)</span>
+                <input
+                  type="text"
+                  value={formCredencial.observacoes}
+                  onChange={(e) => setFormCredencial({ ...formCredencial, observacoes: e.target.value })}
+                />
+              </label>
+
+              <div className="wizard-actions">
+                <button type="button" className="btn btn-secondary" onClick={fecharFormCredencial}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={salvandoCredencial}>
+                  {salvandoCredencial ? 'Salvando…' : 'Salvar credencial'}
+                </button>
+              </div>
+            </form>
           )}
-        </div>
-        <p className="field-hint">
-          As senhas ficam criptografadas no banco — só aparecem em texto quando você clica em
-          "Revelar".
-        </p>
-
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Login</th>
-                <th>Senha</th>
-                <th>Observações</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {credenciais.map((credencial) => (
-                <tr key={credencial.id}>
-                  <td>{credencial.login}</td>
-                  <td>
-                    {reveladas[credencial.id] ? (
-                      <code>{reveladas[credencial.id]}</code>
-                    ) : (
-                      '••••••••'
-                    )}
-                  </td>
-                  <td>{credencial.observacoes || '—'}</td>
-                  <td className="table-actions">
-                    {reveladas[credencial.id] ? (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => handleEsconderSenha(credencial.id)}
-                      >
-                        Esconder
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => handleRevelarSenha(credencial.id)}
-                        disabled={revelando === credencial.id}
-                      >
-                        {revelando === credencial.id ? 'Revelando…' : 'Revelar'}
-                      </button>
-                    )}{' '}
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => abrirEdicaoCredencial(credencial)}
-                    >
-                      Editar
-                    </button>{' '}
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => handleExcluirCredencial(credencial)}
-                    >
-                      Excluir
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {credenciais.length === 0 && !formCredencial && (
-                <tr>
-                  <td colSpan={4} className="field-hint">
-                    Nenhuma credencial cadastrada ainda.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {formCredencial && (
-          <form onSubmit={handleSalvarCredencial} className="card form-card">
-            <h3>{formCredencial.id ? 'Editar credencial' : 'Nova credencial'}</h3>
-
-            <label className="field">
-              <span>Login / e-mail</span>
-              <input
-                type="text"
-                required
-                value={formCredencial.login}
-                onChange={(e) => setFormCredencial({ ...formCredencial, login: e.target.value })}
-              />
-            </label>
-
-            <label className="field">
-              <span>Senha</span>
-              <input
-                type="text"
-                required
-                value={formCredencial.senha}
-                onChange={(e) => setFormCredencial({ ...formCredencial, senha: e.target.value })}
-              />
-            </label>
-
-            <label className="field">
-              <span>Observações (opcional)</span>
-              <input
-                type="text"
-                value={formCredencial.observacoes}
-                onChange={(e) => setFormCredencial({ ...formCredencial, observacoes: e.target.value })}
-              />
-            </label>
-
-            <div className="wizard-actions">
-              <button type="button" className="btn btn-secondary" onClick={fecharFormCredencial}>
-                Cancelar
-              </button>
-              <button type="submit" className="btn btn-primary" disabled={salvandoCredencial}>
-                {salvandoCredencial ? 'Salvando…' : 'Salvar credencial'}
-              </button>
-            </div>
-          </form>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }

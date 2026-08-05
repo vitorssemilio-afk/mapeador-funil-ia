@@ -365,6 +365,105 @@ a {
   gap: 18px;
 }
 
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px 20px;
+}
+
+.form-grid .field-full {
+  grid-column: 1 / -1;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 20px;
+}
+
+.tab-button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.tab-button:hover {
+  color: var(--color-text);
+}
+
+.tab-button.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
+.checklist-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checklist-progress-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.checklist-progress-bar {
+  flex: 1;
+  min-width: 80px;
+  max-width: 160px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.checklist-progress-bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.checklist-progress-bar-fill.complete {
+  background: var(--color-success);
+}
+
+.historico-status-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.historico-status-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-text);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.historico-status-item:last-child {
+  border-bottom: none;
+}
+
+.historico-status-data {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 .field {
   display: flex;
   flex-direction: column;

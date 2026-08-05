@@ -181,6 +181,14 @@ export type ImplementacaoCrm = {
   updated_at: string;
 };
 
+export type ImplementacaoStatusHistorico = {
+  id: string;
+  implementacao_id: string;
+  status_anterior: ImplementacaoStatus | null;
+  status_novo: ImplementacaoStatus;
+  alterado_em: string;
+};
+
 export type ChecklistGrupoImplementacao = {
   id: string;
   chave: string;
@@ -266,6 +274,19 @@ export type FunilKommoCriacao = {
   kommo_campos_ids: { id: number; nome: string }[];
   criado_em: string;
   updated_at: string;
+};
+
+export type MapeamentoRespostaFlat = {
+  mapeamento_id: string;
+  nome_negocio: string;
+  mapeamento_status: MapeamentoStatus;
+  mapeamento_criado_em: string;
+  bloco_titulo: string;
+  pergunta_id: string;
+  pergunta_label: string;
+  pergunta_tipo: PerguntaTipo;
+  resposta_bruta: unknown;
+  resposta_texto: string | null;
 };
 
 export type Database = {
@@ -361,9 +382,19 @@ export type Database = {
         Update: Partial<CredencialApiKommoRow>;
         Relationships: [];
       };
+      implementacao_status_historico: {
+        Row: ImplementacaoStatusHistorico;
+        Insert: Partial<ImplementacaoStatusHistorico> &
+          Pick<ImplementacaoStatusHistorico, 'implementacao_id' | 'status_novo'>;
+        Update: Partial<ImplementacaoStatusHistorico>;
+        Relationships: [];
+      };
     };
     Views: {
-      [_ in never]: never;
+      mapeamentos_respostas_flat: {
+        Row: MapeamentoRespostaFlat;
+        Relationships: [];
+      };
     };
     Functions: {
       public_get_mapeamento: {
