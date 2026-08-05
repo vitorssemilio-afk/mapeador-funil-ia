@@ -106,9 +106,23 @@ export async function criarFunilNoKommo(
     throw new Error('O funil não tem etapas intermediárias além de "Perdido" pra criar no Kommo.');
   }
 
+    // sort/is_main/is_unsorted_on são obrigatórios na API do Kommo (400
+  // FieldMissing se omitidos), mesmo não tendo default óbvio no dashboard.
+  // is_main=false e is_unsorted_on=false pra não mexer no pipeline
+  // principal nem na captação automática de leads da conta; sort é
+  // calculado a partir da quantidade de pipelines já existentes, só pra
+  // esse aparecer depois dos demais na listagem.
+  const pipelinesExistentes = await kommoRequest<{
+    _embedded?: { pipelines?: unknown[] };
+  }>(baseUrl, token, '/leads/pipelines');
+  const proximoSort = ((pipelinesExistentes._embedded?.pipelines?.length ?? 0) + 1) * 10;
+
   const pipelinePayload = [
     {
       name: nomeFunil,
+      sort: proximoSort,
+      is_main: false,
+      is_unsorted_on: false,
       _embedded: {
         statuses: etapasIntermediarias.map((etapa, index) => ({
           name: etapa.nome,
