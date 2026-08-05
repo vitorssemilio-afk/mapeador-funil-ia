@@ -3,8 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { FunilDetalhado } from '../components/funil/FunilDetalhado';
 import { StatusBadge } from '../components/StatusBadge';
 import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
+import { ResumoWizard } from '../components/wizard/ResumoWizard';
 import { useAuth } from '../contexts/AuthContext';
+import type { BlocoFormulario } from '../data/formSchema';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
+import { carregarFormSchema } from '../lib/formSchemaService';
 import { supabase } from '../lib/supabaseClient';
 import type {
   EtapaFunil,
@@ -42,6 +45,8 @@ export function Mapeamento() {
   const [excluindo, setExcluindo] = useState(false);
   const [implementacaoExistente, setImplementacaoExistente] = useState<ImplementacaoCrm | null>(null);
   const [iniciandoImplementacao, setIniciandoImplementacao] = useState(false);
+  const [blocosFormulario, setBlocosFormulario] = useState<BlocoFormulario[]>([]);
+  const [mostrarRespostas, setMostrarRespostas] = useState(false);
 
   async function carregarFunis(mapeamentoId: string, versaoAlvo?: number) {
     const { data: versoesData, error: versoesError } = await supabase
@@ -131,6 +136,15 @@ export function Mapeamento() {
         .maybeSingle();
 
       if (!cancelled) setImplementacaoExistente(implementacaoData ?? null);
+
+      if (mapeamentoData.status === 'concluido') {
+        try {
+          const blocos = await carregarFormSchema();
+          if (!cancelled) setBlocosFormulario(blocos);
+        } catch {
+          // se não der pra carregar o schema, a seção de respostas simplesmente não aparece
+        }
+      }
 
       if (!cancelled) setLoading(false);
     }
@@ -548,6 +562,26 @@ export function Mapeamento() {
             />
           ))}
         </>
+      )}
+
+      {mapeamento.status === 'concluido' && blocosFormulario.length > 0 && (
+        <section className="card form-card">
+          <button
+            type="button"
+            className="btn btn-secondary btn-auto"
+            onClick={() => setMostrarRespostas((v) => !v)}
+          >
+            {mostrarRespostas ? 'Ocultar respostas do formulário' : 'Ver respostas do formulário'}
+          </button>
+          {mostrarRespostas && (
+            <ResumoWizard
+              blocos={blocosFormulario}
+              respostas={mapeamento.respostas}
+              titulo="Respostas do formulário"
+              mensagem="Essas foram as respostas usadas para gerar o funil."
+            />
+          )}
+        </section>
       )}
 
       {mapeamento.status === 'concluido' && funis.length > 0 && (
