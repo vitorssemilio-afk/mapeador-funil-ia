@@ -6,6 +6,7 @@
   --color-border-strong: rgba(255, 255, 255, 0.18);
   --color-text: #f4f4f6;
   --color-text-muted: rgba(244, 244, 246, 0.6);
+  --color-placeholder: rgba(244, 244, 246, 0.32);
   --color-accent: #d42a42;
   --color-accent-hover: #b81f35;
   --color-accent-soft: rgba(212, 42, 66, 0.16);
@@ -24,6 +25,31 @@
   --shadow-accent: 0 1px 2px rgba(212, 42, 66, 0.35), 0 4px 14px rgba(212, 42, 66, 0.28);
   font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --color-bg: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f0f0f2;
+  --color-border: rgba(0, 0, 0, 0.09);
+  --color-border-strong: rgba(0, 0, 0, 0.16);
+  --color-text: #17171b;
+  --color-text-muted: rgba(23, 23, 27, 0.62);
+  --color-placeholder: rgba(23, 23, 27, 0.32);
+  --color-accent: #d42a42;
+  --color-accent-hover: #b81f35;
+  --color-accent-soft: rgba(212, 42, 66, 0.1);
+  --color-info: #2563eb;
+  --color-info-soft: rgba(37, 99, 235, 0.1);
+  --color-success: #059669;
+  --color-success-soft: rgba(5, 150, 105, 0.1);
+  --color-warning: #b45309;
+  --color-warning-soft: rgba(180, 83, 9, 0.1);
+  --color-danger: #dc2626;
+  --color-danger-soft: rgba(220, 38, 38, 0.1);
+  --shadow-card: 0 1px 2px rgba(23, 23, 27, 0.06), 0 4px 14px rgba(23, 23, 27, 0.06);
+  --shadow-card-hover: 0 6px 16px rgba(23, 23, 27, 0.08), 0 16px 32px rgba(23, 23, 27, 0.08);
+  color-scheme: light;
 }
 
 * {
@@ -181,10 +207,34 @@ a {
   color: var(--color-text-muted);
 }
 
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.theme-toggle:hover {
+  color: var(--color-text);
+  background: var(--color-border);
+}
+
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
 .app-main {
   flex: 1;
   width: 100%;
-  max-width: 1080px;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 36px 28px 72px;
 }
@@ -373,7 +423,7 @@ a {
 
 .field input::placeholder,
 .field textarea::placeholder {
-  color: rgba(244, 244, 246, 0.32);
+  color: var(--color-placeholder);
 }
 
 .field legend {
@@ -1195,4 +1245,65 @@ a {
   font-size: 14px;
   color: var(--color-text);
   white-space: pre-wrap;
+}
+
+
+/* ── Responsivo (mobile) ── */
+@media (max-width: 640px) {
+  .topbar {
+    padding: 0 16px;
+    height: auto;
+    min-height: 56px;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .topbar-left {
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+
+  .topbar-brand {
+    font-size: 13px;
+  }
+
+  .topbar-nav {
+    flex-wrap: wrap;
+  }
+
+  .topbar-user {
+    gap: 8px;
+  }
+
+  .topbar-email {
+    display: none;
+  }
+
+  .app-main {
+    padding: 20px 16px 48px;
+  }
+
+  .card {
+    padding: 18px 16px;
+  }
+
+  .page-header {
+    flex-wrap: wrap;
+  }
+
+  .wizard-actions {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .wizard-actions .btn {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .relatorio-toolbar {
+    flex-wrap: wrap;
+  }
 }
