@@ -69,6 +69,34 @@ function grupoSugereAvancoStatus(chave: string, statusAtual: ImplementacaoStatus
   return chave === statusAtual || (chave === 'criterios_sucesso' && statusAtual === 'semana_4');
 }
 
+// Ordem das fases, pra saber se um grupo de checklist já pode ser
+// preenchido ou se ainda está à frente do status atual da implementação.
+const ORDEM_STATUS: Record<ImplementacaoStatus, number> = {
+  pre_requisito: 0,
+  semana_1: 1,
+  semana_2: 2,
+  semana_3: 3,
+  semana_4: 4,
+  concluida: 5,
+  cancelada: 99,
+};
+
+// "criterios_sucesso" não é uma fase em si — libera junto com "semana_4".
+const GRUPO_STATUS_REQUERIDO: Partial<Record<string, ImplementacaoStatus>> = {
+  pre_requisito: 'pre_requisito',
+  semana_1: 'semana_1',
+  semana_2: 'semana_2',
+  semana_3: 'semana_3',
+  semana_4: 'semana_4',
+  criterios_sucesso: 'semana_4',
+};
+
+function grupoBloqueado(chave: string, statusAtual: ImplementacaoStatus): boolean {
+  const statusRequerido = GRUPO_STATUS_REQUERIDO[chave];
+  if (!statusRequerido) return false;
+  return ORDEM_STATUS[statusAtual] < ORDEM_STATUS[statusRequerido];
+}
+
 function preRequisitoCompleto(form: FormGeral): boolean {
   return (
     form.email_conta_kommo.trim().length > 0 &&
@@ -1048,10 +1076,14 @@ export function ImplementacaoDetalhe() {
           const { feitos, total } = progressoGrupo(grupo.id);
           const completo = total > 0 && feitos === total;
           const percentual = total > 0 ? Math.round((feitos / total) * 100) : 0;
+          const travado = grupoBloqueado(grupo.chave, implementacao.status);
           return (
-            <section key={grupo.id} className="card form-card">
+            <section key={grupo.id} className={`card form-card${travado ? ' checklist-grupo-travado' : ''}`}>
               <div className="page-header">
-                <h2 style={{ marginBottom: 0 }}>{grupo.titulo}</h2>
+                <h2 style={{ marginBottom: 0 }}>
+                  {grupo.titulo}
+                  {travado && <span className="checklist-travado-badge">Bloqueado</span>}
+                </h2>
                 {total > 0 && (
                   <div className="checklist-progress">
                     <div className="checklist-progress-bar">
@@ -1066,7 +1098,14 @@ export function ImplementacaoDetalhe() {
                   </div>
                 )}
               </div>
-              {completo && grupoSugereAvancoStatus(grupo.chave, implementacao.status) && (
+              {travado && GRUPO_STATUS_REQUERIDO[grupo.chave] && (
+                <p className="field-hint">
+                  Disponível quando o status da implementação chegar em "
+                  {IMPLEMENTACAO_STATUS_LABELS[GRUPO_STATUS_REQUERIDO[grupo.chave]!]}" (aba Visão
+                  Geral).
+                </p>
+              )}
+              {!travado && completo && grupoSugereAvancoStatus(grupo.chave, implementacao.status) && (
                 (() => {
                   const proximo = PROXIMO_STATUS[implementacao.status];
                   if (!proximo) return null;
@@ -1104,6 +1143,7 @@ export function ImplementacaoDetalhe() {
                           type="checkbox"
                           checked={marcados.has(item.id)}
                           onChange={() => handleToggleItem(item)}
+                          disabled={travado}
                         />
                         <span>
                           {item.texto}
@@ -1117,6 +1157,7 @@ export function ImplementacaoDetalhe() {
                         value={evidencias[item.id] ?? ''}
                         onChange={(e) => handleEvidenciaChange(item.id, e.target.value)}
                         onBlur={() => handleEvidenciaBlur(item)}
+                        disabled={travado}
                       />
                       {evidenciaFaltando.has(item.id) && (
                         <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
@@ -1128,6 +1169,7 @@ export function ImplementacaoDetalhe() {
                         type="checkbox"
                         checked={marcados.has(item.id)}
                         onChange={() => handleToggleItem(item)}
+                        disabled={travado}
                       />
                       <span>
                         {item.texto}
