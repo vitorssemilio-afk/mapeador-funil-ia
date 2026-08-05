@@ -234,6 +234,35 @@ export type CredencialCrmRow = {
   updated_at: string;
 };
 
+// Mesmo padrão de CredencialCrmRow: só existe pra tipar o `.delete()` da
+// tabela credenciais_api_kommo, nunca lida/gravada direto pelo client.
+export type CredencialApiKommoRow = {
+  id: string;
+  implementacao_id: string;
+  subdominio: string;
+  token_criptografado: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CredencialApiKommoMeta = {
+  subdominio: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type FunilKommoCriacao = {
+  id: string;
+  funil_gerado_id: string;
+  implementacao_id: string;
+  user_id: string;
+  kommo_pipeline_id: number;
+  kommo_status_ids: { id: number; nome: string }[];
+  kommo_campos_ids: { id: number; nome: string }[];
+  criado_em: string;
+  updated_at: string;
+};
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: '13';
@@ -313,6 +342,20 @@ export type Database = {
         Update: Partial<CredencialCrmRow>;
         Relationships: [];
       };
+      funis_kommo_criacoes: {
+        Row: FunilKommoCriacao;
+        Insert: Partial<FunilKommoCriacao> &
+          Pick<FunilKommoCriacao, 'funil_gerado_id' | 'implementacao_id' | 'user_id' | 'kommo_pipeline_id'>;
+        Update: Partial<FunilKommoCriacao>;
+        Relationships: [];
+      };
+      credenciais_api_kommo: {
+        Row: CredencialApiKommoRow;
+        Insert: Partial<CredencialApiKommoRow> &
+          Pick<CredencialApiKommoRow, 'implementacao_id' | 'subdominio' | 'token_criptografado'>;
+        Update: Partial<CredencialApiKommoRow>;
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -355,6 +398,18 @@ export type Database = {
       revelar_credencial_crm: {
         Args: { p_id: string };
         Returns: CredencialCrmRevelada[];
+      };
+      salvar_credencial_api_kommo: {
+        Args: { p_implementacao_id: string; p_subdominio: string; p_token: string };
+        Returns: string;
+      };
+      obter_credencial_api_kommo_meta: {
+        Args: { p_implementacao_id: string };
+        Returns: CredencialApiKommoMeta[];
+      };
+      obter_credencial_api_kommo: {
+        Args: { p_implementacao_id: string };
+        Returns: { subdominio: string; token: string }[];
       };
     };
     Enums: {

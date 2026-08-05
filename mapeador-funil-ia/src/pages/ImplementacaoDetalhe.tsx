@@ -6,8 +6,10 @@ import { supabase } from '../lib/supabaseClient';
 import type {
   ChecklistGrupoImplementacao,
   ChecklistItemImplementacao,
+  CredencialApiKommoMeta,
   CredencialCrmListada,
   FunilGerado,
+  FunilKommoCriacao,
   ImplementacaoCrm,
   ImplementacaoStatus,
 } from '../types/database';
@@ -35,6 +37,11 @@ type FormCredencial = {
 };
 
 const FORM_CREDENCIAL_VAZIO: FormCredencial = { id: null, login: '', senha: '', observacoes: '' };
+
+type FormCredencialKommo = {
+  subdominio: string;
+  token: string;
+};
 
 const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
   'semana_1',
@@ -80,6 +87,9 @@ export function ImplementacaoDetalhe() {
   const [evidencias, setEvidencias] = useState<Record<string, string>>({});
   const [evidenciaFaltando, setEvidenciaFaltando] = useState<Set<string>>(new Set());
   const [credenciais, setCredenciais] = useState<CredencialCrmListada[]>([]);
+  const [funisDoMapeamento, setFunisDoMapeamento] = useState<FunilGerado[]>([]);
+  const [criacoesKommo, setCriacoesKommo] = useState<Record<string, FunilKommoCriacao>>({});
+  const [credencialKommoMeta, setCredencialKommoMeta] = useState<CredencialApiKommoMeta | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +102,10 @@ export function ImplementacaoDetalhe() {
   const [salvandoCredencial, setSalvandoCredencial] = useState(false);
   const [reveladas, setReveladas] = useState<Record<string, string>>({});
   const [revelando, setRevelando] = useState<string | null>(null);
+
+  const [formCredencialKommo, setFormCredencialKommo] = useState<FormCredencialKommo | null>(null);
+  const [salvandoCredencialKommo, setSalvandoCredencialKommo] = useState(false);
+  const [criandoFunilId, setCriandoFunilId] = useState<string | null>(null);
 
   const [excluindo, setExcluindo] = useState(false);
   const [gerandoItens, setGerandoItens] = useState(false);
@@ -140,6 +154,27 @@ export function ImplementacaoDetalhe() {
     }
     setEvidenciaFaltando(new Set());
     if (!credenciaisError) setCredenciais(credenciaisData ?? []);
+
+    const funis = await buscarFunisMaisRecentes(implData.mapeamento_id);
+    setFunisDoMapeamento(funis);
+
+    const [{ data: criacoesData }, { data: credKommoData }] = await Promise.all([
+      funis.length > 0
+        ? supabase
+            .from('funis_kommo_criacoes')
+            .select('*')
+            .in(
+              'funil_gerado_id',
+              funis.map((f) => f.id),
+            )
+        : Promise.resolve({ data: [] as FunilKommoCriacao[] }),
+      supabase.rpc('obter_credencial_api_kommo_meta', { p_implementacao_id: implementacaoId }),
+    ]);
+
+    setCriacoesKommo(
+      Object.fromEntries((criacoesData ?? []).map((c) => [c.funil_gerado_id, c])),
+    );
+    setCredencialKommoMeta(credKommoData?.[0] ?? null);
 
     setLoading(false);
   }
@@ -484,6 +519,73 @@ export function ImplementacaoDetalhe() {
     else setCredenciais((prev) => prev.filter((c) => c.id !== credencial.id));
   }
 
+  function abrirFormCredencialKommo() {
+    setFormCredencialKommo({
+      subdominio: credencialKommoMeta?.subdominio ?? '',
+      token: '',
+    });
+  }
+
+  function fecharFormCredencialKommo() {
+    setFormCredencialKommo(null);
+  }
+
+  async function handleSalvarCredencialKommo(e: FormEvent) {
+    e.preventDefault();
+    if (!implementacao || !formCredencialKommo) return;
+    if (!formCredencialKommo.subdominio.trim() || !formCredencialKommo.token.trim()) return;
+
+    setSalvandoCredencialKommo(true);
+    const { error: saveError } = await supabase.rpc('salvar_credencial_api_kommo', {
+      p_implementacao_id: implementacao.id,
+      p_subdominio: formCredencialKommo.subdominio.trim(),
+      p_token: formCredencialKommo.token.trim(),
+    });
+    setSalvandoCredencialKommo(false);
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    fecharFormCredencialKommo();
+    carregar(implementacao.id);
+  }
+
+  async function handleCriarFunilNoKommo(funil: FunilGerado) {
+    if (!implementacao) return;
+
+    const jaCriado = criacoesKommo[funil.id];
+    if (jaCriado) {
+      const confirmar = window.confirm(
+        `O funil "${funil.nome_funil}" já foi criado no Kommo (pipeline ${jaCriado.kommo_pipeline_id}) em ${new Date(jaCriado.criado_em).toLocaleString('pt-BR')}. Criar de novo cria um pipeline NOVO e separado na conta do cliente — não atualiza o existente. Continuar mesmo assim?`,
+      );
+      if (!confirmar) return;
+    } else if (
+      !window.confirm(
+        `Confirma a criação do funil "${funil.nome_funil}" direto na conta Kommo do cliente? Isso grava o pipeline, as etapas e os campos personalizados de verdade — revise o funil antes de confirmar.`,
+      )
+    ) {
+      return;
+    }
+
+    setCriandoFunilId(funil.id);
+    setError(null);
+
+    const { data, error: invokeError } = await supabase.functions.invoke('criar-funil-kommo', {
+      body: { implementacao_id: implementacao.id, funil_id: funil.id, confirmar: Boolean(jaCriado) },
+    });
+
+    setCriandoFunilId(null);
+
+    if (invokeError || data?.error) {
+      setError(data?.message ?? data?.error ?? invokeError?.message ?? 'Falha ao criar o funil no Kommo.');
+      return;
+    }
+
+    await carregar(implementacao.id);
+  }
+
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error && !implementacao) return <p className="form-error">{error}</p>;
   if (!implementacao || !formGeral) return <p className="form-error">Implementação não encontrada.</p>;
@@ -669,6 +771,117 @@ export function ImplementacaoDetalhe() {
         >
           {gerandoItens ? 'Gerando…' : 'Gerar itens a partir do funil'}
         </button>
+      </section>
+
+      <section className="card form-card">
+        <div className="page-header">
+          <h2 style={{ marginBottom: 0 }}>Criar funil no Kommo (API)</h2>
+          {!formCredencialKommo && (
+            <button type="button" className="btn btn-secondary" onClick={abrirFormCredencialKommo}>
+              {credencialKommoMeta ? 'Trocar token' : '+ Cadastrar credencial de API'}
+            </button>
+          )}
+        </div>
+        <p className="field-hint">
+          Cria o pipeline, as etapas e os campos personalizados direto na conta Kommo do cliente,
+          usando o token de longa duração da integração (Kommo → Configurações → Integrações → sua
+          integração → "Token de longa duração"). Diferente das credenciais de acesso acima — esse
+          token nunca fica visível na tela depois de salvo.
+        </p>
+
+        {credencialKommoMeta && !formCredencialKommo && (
+          <p className="field-hint">
+            Configurado para <code>{credencialKommoMeta.subdominio}.kommo.com</code>.
+          </p>
+        )}
+        {!credencialKommoMeta && !formCredencialKommo && (
+          <p className="field-hint">Nenhuma credencial de API cadastrada ainda.</p>
+        )}
+
+        {formCredencialKommo && (
+          <form onSubmit={handleSalvarCredencialKommo} className="card form-card">
+            <label className="field">
+              <span>Subdomínio Kommo</span>
+              <input
+                type="text"
+                required
+                placeholder="ex: minhaempresa (de minhaempresa.kommo.com)"
+                value={formCredencialKommo.subdominio}
+                onChange={(e) =>
+                  setFormCredencialKommo({ ...formCredencialKommo, subdominio: e.target.value })
+                }
+              />
+            </label>
+
+            <label className="field">
+              <span>Token de longa duração</span>
+              <input
+                type="text"
+                required
+                value={formCredencialKommo.token}
+                onChange={(e) => setFormCredencialKommo({ ...formCredencialKommo, token: e.target.value })}
+              />
+            </label>
+
+            <div className="wizard-actions">
+              <button type="button" className="btn btn-secondary" onClick={fecharFormCredencialKommo}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={salvandoCredencialKommo}>
+                {salvandoCredencialKommo ? 'Salvando…' : 'Salvar credencial'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Funil</th>
+                <th>Status no Kommo</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {funisDoMapeamento.map((funil) => {
+                const criacao = criacoesKommo[funil.id];
+                return (
+                  <tr key={funil.id}>
+                    <td>{funil.nome_funil}</td>
+                    <td>
+                      {criacao
+                        ? `Criado (pipeline ${criacao.kommo_pipeline_id}) em ${new Date(criacao.criado_em).toLocaleString('pt-BR')}`
+                        : 'Ainda não criado'}
+                    </td>
+                    <td className="table-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => handleCriarFunilNoKommo(funil)}
+                        disabled={criandoFunilId === funil.id || !credencialKommoMeta}
+                        title={!credencialKommoMeta ? 'Cadastre a credencial de API acima primeiro' : undefined}
+                      >
+                        {criandoFunilId === funil.id
+                          ? 'Criando…'
+                          : criacao
+                            ? 'Criar de novo'
+                            : 'Criar no Kommo'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {funisDoMapeamento.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="field-hint">
+                    O mapeamento de origem ainda não tem funil gerado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {grupos.map((grupo) => (
