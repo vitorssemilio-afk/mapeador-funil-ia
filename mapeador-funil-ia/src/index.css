@@ -787,6 +787,17 @@ a {
   padding: 9px 13px;
 }
 
+.form-info-com-acao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+}
+
+.form-info-com-acao .btn {
+  font-weight: 600;
+}
+
 /* ── Auth screen ── */
 .auth-screen {
   min-height: 100vh;
