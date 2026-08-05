@@ -123,7 +123,16 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
   }
 
   function handleAdicionarEtapa() {
-    commit([...funil.etapas, { ...ETAPA_VAZIA }]);
+    // Entra antes de "Perdido/Desqualificado" se ela for a última etapa
+    // (a IA sempre inclui essa etapa no final) — senão a etapa nova nasceria
+    // depois do "Perdido", fora de ordem.
+    const ultima = funil.etapas[funil.etapas.length - 1];
+    const indiceInsercao =
+      ultima && /perdid|desqualificad/i.test(ultima.nome) ? funil.etapas.length - 1 : funil.etapas.length;
+
+    const novasEtapas = [...funil.etapas];
+    novasEtapas.splice(indiceInsercao, 0, { ...ETAPA_VAZIA });
+    commit(novasEtapas);
   }
 
   function handleRemoverEtapa(etapaIndex: number) {
@@ -131,6 +140,14 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
     const nome = funil.etapas[etapaIndex].nome || `Etapa ${etapaIndex + 1}`;
     if (!window.confirm(`Remover a etapa "${nome}"? Essa ação não pode ser desfeita.`)) return;
     commit(funil.etapas.filter((_, i) => i !== etapaIndex));
+  }
+
+  function handleMoverEtapa(etapaIndex: number, direcao: -1 | 1) {
+    const novoIndex = etapaIndex + direcao;
+    if (novoIndex < 0 || novoIndex >= funil.etapas.length) return;
+    const novasEtapas = [...funil.etapas];
+    [novasEtapas[etapaIndex], novasEtapas[novoIndex]] = [novasEtapas[novoIndex], novasEtapas[etapaIndex]];
+    commit(novasEtapas);
   }
 
   return (
@@ -155,12 +172,34 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
               {funil.etapas.map((etapa, i) => (
                 <th key={i}>
                   <div className="etapa-nome-cell">
+                    {!somenteLeitura && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-mover-etapa"
+                        title="Mover etapa pra esquerda"
+                        disabled={i === 0}
+                        onClick={() => handleMoverEtapa(i, -1)}
+                      >
+                        ‹
+                      </button>
+                    )}
                     <input
                       className="etapa-nome-input"
                       value={etapa.nome}
                       onChange={(e) => handleNomeEtapaChange(i, e.target.value)}
                       readOnly={somenteLeitura}
                     />
+                    {!somenteLeitura && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-mover-etapa"
+                        title="Mover etapa pra direita"
+                        disabled={i === funil.etapas.length - 1}
+                        onClick={() => handleMoverEtapa(i, 1)}
+                      >
+                        ›
+                      </button>
+                    )}
                     {!somenteLeitura && funil.etapas.length > 1 && (
                       <button
                         type="button"
