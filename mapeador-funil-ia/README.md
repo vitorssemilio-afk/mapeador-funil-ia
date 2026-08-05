@@ -3,7 +3,7 @@
 ## Setup
 
 1. Crie um projeto no [Supabase](https://supabase.com).
-2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0010) no SQL Editor do Supabase, ou `supabase db push` via CLI. A migration `0006` usa o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-la.
+2. Rode as migrations em `supabase/migrations/` **em ordem** (0001 até 0012) no SQL Editor do Supabase, ou `supabase db push` via CLI. As migrations `0006` e `0012` usam o [Supabase Vault](https://supabase.com/docs/guides/database/vault) pra criptografia — se o seu projeto não tiver a extensão habilitada, ative em Database → Extensions → `supabase_vault` antes de rodá-las.
 3. Copie `.env.example` para `.env.local` e preencha com a URL e a anon key do seu projeto.
 4. Ative Email/Password em Authentication → Providers no painel do Supabase.
 
@@ -49,6 +49,10 @@ npm run dev
 - `implementacao_checklist_marcado` — quais itens estão marcados em cada implementação
 - `credenciais_crm` — login/senha do cliente no CRM, sempre criptografados (ver seção
   "Implementação de CRM" abaixo)
+- `credenciais_api_kommo` — subdomínio + token de longa duração da API do Kommo por
+  implementação, sempre criptografado (ver seção "Criação automática do funil no Kommo" abaixo)
+- `funis_kommo_criacoes` — registro do pipeline/etapas/campos já criados de fato na conta Kommo do
+  cliente para cada funil gerado
 
 Todas as tabelas têm RLS habilitado: cada usuário só acessa seus próprios registros. As exceções
 são as tabelas pensadas pra serem compartilhadas entre todo o time: `campos_padrao`,
@@ -187,6 +191,49 @@ usando uma chave gerada uma única vez e guardada no [Supabase Vault](https://su
 
 Se o projeto Supabase não tiver o Vault habilitado, ative em **Database → Extensions →
 `supabase_vault`** antes de rodar a migration `0006`.
+
+### Criação automática do funil no Kommo (API)
+
+Fecha o loop entre o funil que a IA desenha e o CRM de verdade: depois de validar o funil gerado,
+o botão **"Criar no Kommo"** (na seção "Criar funil no Kommo (API)" da tela de implementação) cria
+o pipeline, as etapas e os campos personalizados direto na conta Kommo do cliente — sem digitar
+nada manualmente na interface do Kommo.
+
+- **Credencial de API** (diferente de "Credenciais de acesso do cliente no CRM" acima, que é
+  login/senha pra um humano entrar no Kommo): é o **token de longa duração** da integração
+  (Kommo → Configurações → Integrações → sua integração → "Token de longa duração") mais o
+  subdomínio da conta (`minhaempresa` de `minhaempresa.kommo.com`). Cadastrado uma vez por
+  implementação, criptografado do mesmo jeito que `credenciais_crm` (`pgcrypto` + Supabase Vault,
+  chave própria `kommo_api_key`) — a tabela `credenciais_api_kommo` não tem policy de
+  select/insert/update, só as funções `salvar_credencial_api_kommo` /
+  `obter_credencial_api_kommo_meta` (usada pela tela, nunca devolve o token) /
+  `obter_credencial_api_kommo` (devolve o token em texto puro — só deve ser chamada
+  server-side, pela Edge Function abaixo).
+- **Edge Function `criar-funil-kommo`**: recebe `implementacao_id` + `funil_id`, busca o funil já
+  gerado (`funis_gerados`) e a credencial da implementação, e chama a API do Kommo (`POST
+  /leads/pipelines` pra criar o pipeline com as etapas, `POST /leads/custom_fields` pros campos).
+  As etapas viram os status intermediários do pipeline (o Kommo já cria "Entrada de leads" e
+  "Ganho"/"Perdido" automaticamente — por isso a etapa final "Perdido/Desqualificado" que a IA
+  sempre inclui no funil não é recriada como status duplicado). Os campos `campos_obrigatorios` /
+  `campos_desejaveis` de todas as etapas são unificados por nome (obrigatório em qualquer etapa
+  vence sobre desejável) antes de criar, já que no Kommo o campo personalizado é por entidade
+  (lead), não por etapa.
+- **Mapeamento de tipo**: `lista_suspensa → select`, `texto_curto → text`, `texto_longo →
+  textarea`, `numero → numeric`, `data → date`, `checkbox → checkbox`, `telefone → text`
+  (simplificação — o Kommo não tem um tipo "telefone" simples pra campo de lead).
+- **Registro e proteção contra recriação**: cada criação bem-sucedida grava uma linha em
+  `funis_kommo_criacoes` (pipeline/status/campos criados). Clicar em "Criar no Kommo" de novo pra
+  um funil já criado pede confirmação explícita — recriar gera um pipeline **novo e separado** na
+  conta do cliente, não atualiza o existente.
+
+Deploy:
+
+```bash
+supabase functions deploy criar-funil-kommo
+```
+
+Não precisa de nenhum secret novo — a função usa `SUPABASE_URL`/`SUPABASE_ANON_KEY` (já
+disponíveis no runtime, como a `gerar-funil`) e busca o token do Kommo no banco por RPC.
 
 ## Relatório em PDF (`/mapeamento/:id/relatorio`)
 
