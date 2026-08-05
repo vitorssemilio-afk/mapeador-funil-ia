@@ -5,6 +5,22 @@ import type { EtapaFunil, FunilGerado } from '../../types/database';
 
 const AUTOSAVE_DELAY_MS = 1000;
 
+const ETAPA_VAZIA: EtapaFunil = {
+  nome: 'Nova etapa',
+  objetivo: '',
+  gatilho_entrada: '',
+  gatilho_saida: '',
+  tarefas: [],
+  campos_obrigatorios: [],
+  campos_desejaveis: [],
+  sla: '',
+  regras_negocio: [],
+  regras_perda: [],
+  responsavel: '',
+  automacao: [],
+  script_sugerido: null,
+};
+
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 type Props = {
@@ -75,6 +91,17 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
     );
   }
 
+  function handleAdicionarEtapa() {
+    commit([...funil.etapas, { ...ETAPA_VAZIA }]);
+  }
+
+  function handleRemoverEtapa(etapaIndex: number) {
+    if (funil.etapas.length <= 1) return;
+    const nome = funil.etapas[etapaIndex].nome || `Etapa ${etapaIndex + 1}`;
+    if (!window.confirm(`Remover a etapa "${nome}"? Essa ação não pode ser desfeita.`)) return;
+    commit(funil.etapas.filter((_, i) => i !== etapaIndex));
+  }
+
   return (
     <section className="card funil-detalhado">
       <div className="funil-detalhado-header">
@@ -96,14 +123,33 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
               <th className="campo-label-cell">Etapa</th>
               {funil.etapas.map((etapa, i) => (
                 <th key={i}>
-                  <input
-                    className="etapa-nome-input"
-                    value={etapa.nome}
-                    onChange={(e) => handleNomeEtapaChange(i, e.target.value)}
-                    readOnly={somenteLeitura}
-                  />
+                  <div className="etapa-nome-cell">
+                    <input
+                      className="etapa-nome-input"
+                      value={etapa.nome}
+                      onChange={(e) => handleNomeEtapaChange(i, e.target.value)}
+                      readOnly={somenteLeitura}
+                    />
+                    {!somenteLeitura && funil.etapas.length > 1 && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-remover-etapa"
+                        title="Remover etapa"
+                        onClick={() => handleRemoverEtapa(i)}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
                 </th>
               ))}
+              {!somenteLeitura && (
+                <th>
+                  <button type="button" className="btn btn-secondary btn-auto" onClick={handleAdicionarEtapa}>
+                    + Etapa
+                  </button>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -125,6 +171,7 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
                     />
                   </td>
                 ))}
+                {!somenteLeitura && <td />}
               </tr>
             ))}
           </tbody>
@@ -134,8 +181,10 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
       {funil.etapas.length > 0 && (
         <p className="field-hint funil-estruturado-hint">
           Campos Obrigatórios/Desejáveis: uma linha por campo, no formato "Nome (tipo)" — ex:
-          "Telefone (telefone)" — ou "Nome (lista_suspensa: opção 1, opção 2)" quando o tipo tiver
-          opções.
+          "Orçamento (numero)" — ou "Nome (lista_suspensa: opção 1, opção 2)" quando o tipo tiver
+          opções. Acrescente " · Contato" no fim da linha pra campos que devem ser cadastrados no
+          Contato em vez do Lead (ex: "Telefone (telefone) · Contato") — sem o sufixo, o campo vai
+          pro Lead.
         </p>
       )}
     </section>

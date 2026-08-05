@@ -6,6 +6,7 @@ export type CampoEtapaInput = {
   nome: string;
   tipo: string;
   opcoes?: string[];
+  entidade?: 'LEAD' | 'CONTATO';
 };
 
 export type EtapaFunilInput = {
@@ -17,7 +18,13 @@ export type EtapaFunilInput = {
 export interface KommoCriacaoResultado {
   pipelineId: number;
   statusIds: { id: number; nome: string }[];
-  campoIds: { id: number; nome: string }[];
+  campoIds: { id: number; nome: string; entidade: 'LEAD' | 'CONTATO' }[];
+}
+
+export interface ApagarFunilPadraoResultado {
+  apagado: boolean;
+  pipelineId?: number;
+  motivo?: string;
 }
 
 // Vocabulário de tipo usado no JSON gerado pela IA (mesmo de campos_padrao)
@@ -29,13 +36,19 @@ const TIPO_CAMPO_KOMMO: Record<string, string> = {
   numero: 'numeric',
   data: 'date',
   checkbox: 'checkbox',
-  // Kommo não tem um tipo "telefone" simples pra custom field de lead (o
-  // telefone "de verdade" vive no contato, como multitext com código de
-  // país); simplificação: cai como texto.
+  // Kommo não tem um tipo "telefone" simples pra custom field genérico (o
+  // telefone "de verdade" no Kommo é um multitext com código de país
+  // específico do contato); simplificação: cai como texto.
   telefone: 'text',
 };
 
 const TIPOS_COM_OPCOES = new Set(['select', 'multiselect', 'radiobutton']);
+
+// entidade -> caminho da API de custom fields correspondente.
+const ENTIDADE_PATH: Record<'LEAD' | 'CONTATO', string> = {
+  LEAD: '/leads/custom_fields',
+  CONTATO: '/contacts/custom_fields',
+};
 
 async function kommoRequest<T>(
   baseUrl: string,
@@ -66,26 +79,67 @@ async function kommoRequest<T>(
   return body as T;
 }
 
-/** Junta campos_obrigatorios/desejaveis de todas as etapas, sem repetir nome (obrigatório vence). */
-function deduplicarCampos(
-  etapas: EtapaFunilInput[],
-): { nome: string; tipo: string; opcoes?: string[]; obrigatorio: boolean }[] {
-  const mapa = new Map<string, { nome: string; tipo: string; opcoes?: string[]; obrigatorio: boolean }>();
+type CampoDeduplicado = {
+  nome: string;
+  tipo: string;
+  opcoes?: string[];
+  entidade: 'LEAD' | 'CONTATO';
+  obrigatorio: boolean;
+};
 
-  for (const etapa of etapas) {
-    for (const campo of etapa.campos_obrigatorios ?? []) {
-      const chave = campo.nome.trim().toLowerCase();
-      mapa.set(chave, { nome: campo.nome.trim(), tipo: campo.tipo, opcoes: campo.opcoes, obrigatorio: true });
-    }
-    for (const campo of etapa.campos_desejaveis ?? []) {
-      const chave = campo.nome.trim().toLowerCase();
-      if (!mapa.has(chave)) {
-        mapa.set(chave, { nome: campo.nome.trim(), tipo: campo.tipo, opcoes: campo.opcoes, obrigatorio: false });
-      }
+/**
+ * Junta campos_obrigatorios/desejaveis de todas as etapas, sem repetir nome
+ * dentro da mesma entidade (obrigatório vence sobre desejável). Campos sem
+ * "entidade" definida (funis gerados antes desse campo existir) caem em LEAD.
+ */
+function deduplicarCampos(etapas: EtapaFunilInput[]): CampoDeduplicado[] {
+  const mapa = new Map<string, CampoDeduplicado>();
+
+  function registrar(campo: CampoEtapaInput, obrigatorio: boolean) {
+    const entidade = campo.entidade === 'CONTATO' ? 'CONTATO' : 'LEAD';
+    const chave = `${entidade}:${campo.nome.trim().toLowerCase()}`;
+    const existente = mapa.get(chave);
+    if (!existente || (obrigatorio && !existente.obrigatorio)) {
+      mapa.set(chave, { nome: campo.nome.trim(), tipo: campo.tipo, opcoes: campo.opcoes, entidade, obrigatorio });
     }
   }
 
+  for (const etapa of etapas) {
+    for (const campo of etapa.campos_obrigatorios ?? []) registrar(campo, true);
+    for (const campo of etapa.campos_desejaveis ?? []) registrar(campo, false);
+  }
+
   return [...mapa.values()];
+}
+
+async function criarCamposDaEntidade(
+  baseUrl: string,
+  token: string,
+  entidade: 'LEAD' | 'CONTATO',
+  campos: CampoDeduplicado[],
+): Promise<{ id: number; name: string; entidade: 'LEAD' | 'CONTATO' }[]> {
+  if (campos.length === 0) return [];
+
+  const payload = campos.map((campo) => {
+    const tipoKommo = TIPO_CAMPO_KOMMO[campo.tipo] ?? 'text';
+    return {
+      name: campo.nome,
+      type: tipoKommo,
+      is_required: campo.obrigatorio,
+      ...(campo.opcoes && campo.opcoes.length > 0 && TIPOS_COM_OPCOES.has(tipoKommo)
+        ? { enums: campo.opcoes.map((valor, i) => ({ value: valor, sort: (i + 1) * 10 })) }
+        : {}),
+    };
+  });
+
+  const data = await kommoRequest<{ _embedded?: { custom_fields?: { id: number; name: string }[] } }>(
+    baseUrl,
+    token,
+    ENTIDADE_PATH[entidade],
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+
+  return (data._embedded?.custom_fields ?? []).map((c) => ({ ...c, entidade }));
 }
 
 export async function criarFunilNoKommo(
@@ -144,31 +198,62 @@ export async function criarFunilNoKommo(
   }
 
   const camposUnicos = deduplicarCampos(etapasIntermediarias);
-  let camposCriados: { id: number; name: string }[] = [];
+  const camposLead = camposUnicos.filter((c) => c.entidade === 'LEAD');
+  const camposContato = camposUnicos.filter((c) => c.entidade === 'CONTATO');
 
-  if (camposUnicos.length > 0) {
-    const camposPayload = camposUnicos.map((campo) => {
-      const tipoKommo = TIPO_CAMPO_KOMMO[campo.tipo] ?? 'text';
-      return {
-        name: campo.nome,
-        type: tipoKommo,
-        is_required: campo.obrigatorio,
-        ...(campo.opcoes && campo.opcoes.length > 0 && TIPOS_COM_OPCOES.has(tipoKommo)
-          ? { enums: campo.opcoes.map((valor, i) => ({ value: valor, sort: (i + 1) * 10 })) }
-          : {}),
-      };
-    });
-
-    const camposData = await kommoRequest<{
-      _embedded?: { custom_fields?: { id: number; name: string }[] };
-    }>(baseUrl, token, '/leads/custom_fields', { method: 'POST', body: JSON.stringify(camposPayload) });
-
-    camposCriados = camposData._embedded?.custom_fields ?? [];
-  }
+  const [criadosLead, criadosContato] = await Promise.all([
+    criarCamposDaEntidade(baseUrl, token, 'LEAD', camposLead),
+    criarCamposDaEntidade(baseUrl, token, 'CONTATO', camposContato),
+  ]);
 
   return {
     pipelineId: pipeline.id,
     statusIds: (pipeline._embedded?.statuses ?? []).map((s) => ({ id: s.id, nome: s.name })),
-    campoIds: camposCriados.map((c) => ({ id: c.id, nome: c.name })),
+    campoIds: [...criadosLead, ...criadosContato].map((c) => ({
+      id: c.id,
+      nome: c.name,
+      entidade: c.entidade,
+    })),
   };
+}
+
+/**
+ * Apaga o pipeline padrão que o Kommo cria sozinho em toda conta nova
+ * (is_main=true) — SOMENTE se ele ainda não tiver nenhuma negociação, pra
+ * nunca destruir dado real do cliente. Se a conta já tiver mais de um
+ * pipeline, ou o "principal" já tiver leads, não faz nada (não é erro,
+ * só não há o que limpar com segurança).
+ */
+export async function apagarFunilPadraoSeVazio(
+  subdominio: string,
+  token: string,
+): Promise<ApagarFunilPadraoResultado> {
+  const baseUrl = `https://${subdominio}.kommo.com/api/v4`;
+
+  const pipelinesData = await kommoRequest<{
+    _embedded?: { pipelines?: { id: number; name: string; is_main: boolean }[] };
+  }>(baseUrl, token, '/leads/pipelines');
+
+  const principal = (pipelinesData._embedded?.pipelines ?? []).find((p) => p.is_main);
+  if (!principal) {
+    return { apagado: false, motivo: 'Nenhum pipeline principal encontrado na conta.' };
+  }
+
+  const leadsData = await kommoRequest<{ _embedded?: { leads?: unknown[] } }>(
+    baseUrl,
+    token,
+    `/leads?filter[pipeline_id]=${principal.id}&limit=1`,
+  ).catch(() => ({ _embedded: { leads: [] } }));
+
+  if ((leadsData._embedded?.leads?.length ?? 0) > 0) {
+    return {
+      apagado: false,
+      pipelineId: principal.id,
+      motivo: `O funil principal "${principal.name}" já tem negociações — não foi apagado por segurança.`,
+    };
+  }
+
+  await kommoRequest(baseUrl, token, `/leads/pipelines/${principal.id}`, { method: 'DELETE' });
+
+  return { apagado: true, pipelineId: principal.id };
 }

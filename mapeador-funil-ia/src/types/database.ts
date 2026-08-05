@@ -35,6 +35,11 @@ export type CampoEtapa = {
   nome: string;
   tipo: TipoCampo | string;
   opcoes?: string[];
+  // Em qual entidade do CRM esse campo deve ser criado — LEAD (a negociação
+  // em si) ou CONTATO (a pessoa, dado que se repete entre negociações
+  // diferentes, ex: telefone, CPF, e-mail). Ausente = LEAD, pra manter
+  // compatibilidade com funis gerados antes desse campo existir.
+  entidade?: 'LEAD' | 'CONTATO';
 };
 
 export type EtapaFunil = {

@@ -51,22 +51,25 @@ function isTipoCampo(valor: string): valor is TipoCampo {
 }
 
 // Formata um CampoEtapa como uma linha editável de texto: "Nome (tipo)" ou,
-// pra lista_suspensa, "Nome (lista_suspensa: opção1, opção2)". Dados
-// legados (funis gerados antes desta mudança) guardam string pura — nesse
-// caso a linha é o próprio texto.
+// pra lista_suspensa, "Nome (lista_suspensa: opção1, opção2)". Quando o
+// campo é de CONTATO (não LEAD, o padrão), aparece um sufixo " · Contato" —
+// omitido pra LEAD, já que é a entidade mais comum e não vale poluir a
+// leitura. Dados legados (funis gerados antes desta mudança) guardam
+// string pura — nesse caso a linha é o próprio texto.
 export function formatCampoEtapaLinha(item: CampoEtapa | string): string {
   if (typeof item === 'string') return item;
   const opcoes = item.tipo === 'lista_suspensa' && item.opcoes?.length ? `: ${item.opcoes.join(', ')}` : '';
-  return `${item.nome} (${item.tipo}${opcoes})`;
+  const entidade = item.entidade === 'CONTATO' ? ' · Contato' : '';
+  return `${item.nome} (${item.tipo}${opcoes})${entidade}`;
 }
 
-const LINHA_CAMPO_ESTRUTURADO = /^(.*?)\s*\(([a-z_]+)(?::\s*(.+))?\)\s*$/;
+const LINHA_CAMPO_ESTRUTURADO = /^(.*?)\s*\(([a-z_]+)(?::\s*(.+))?\)\s*(?:·\s*(contato|lead))?\s*$/i;
 
 export function parseCampoEtapaLinha(linha: string): CampoEtapa {
   const match = linha.match(LINHA_CAMPO_ESTRUTURADO);
   if (!match) return { nome: linha.trim(), tipo: 'texto_curto' };
 
-  const [, nome, tipoRaw, opcoesRaw] = match;
+  const [, nome, tipoRaw, opcoesRaw, entidadeRaw] = match;
   const tipo: TipoCampo = isTipoCampo(tipoRaw) ? tipoRaw : 'texto_curto';
   const opcoes = opcoesRaw
     ? opcoesRaw
@@ -74,11 +77,13 @@ export function parseCampoEtapaLinha(linha: string): CampoEtapa {
         .map((o) => o.trim())
         .filter(Boolean)
     : undefined;
+  const entidade = entidadeRaw?.toLowerCase() === 'contato' ? 'CONTATO' : undefined;
 
   return {
     nome: nome.trim() || linha.trim(),
     tipo,
     ...(opcoes && opcoes.length > 0 ? { opcoes } : {}),
+    ...(entidade ? { entidade } : {}),
   };
 }
 
@@ -87,7 +92,8 @@ export function formatCampoEtapaLabel(item: CampoEtapa | string): string {
   if (typeof item === 'string') return item;
   const tipoLabel = TIPO_CAMPO_LABELS[item.tipo as TipoCampo] ?? item.tipo;
   const opcoes = item.opcoes?.length ? ` (${item.opcoes.join(', ')})` : '';
-  return `${item.nome} · ${tipoLabel}${opcoes}`;
+  const entidade = item.entidade === 'CONTATO' ? ' — Contato' : '';
+  return `${item.nome} · ${tipoLabel}${opcoes}${entidade}`;
 }
 
 export function valorEtapaParaTexto(

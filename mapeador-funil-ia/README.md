@@ -211,20 +211,33 @@ nada manualmente na interface do Kommo.
   server-side, pela Edge Function abaixo).
 - **Edge Function `criar-funil-kommo`**: recebe `implementacao_id` + `funil_id`, busca o funil já
   gerado (`funis_gerados`) e a credencial da implementação, e chama a API do Kommo (`POST
-  /leads/pipelines` pra criar o pipeline com as etapas, `POST /leads/custom_fields` pros campos).
-  As etapas viram os status intermediários do pipeline (o Kommo já cria "Entrada de leads" e
-  "Ganho"/"Perdido" automaticamente — por isso a etapa final "Perdido/Desqualificado" que a IA
-  sempre inclui no funil não é recriada como status duplicado). Os campos `campos_obrigatorios` /
-  `campos_desejaveis` de todas as etapas são unificados por nome (obrigatório em qualquer etapa
-  vence sobre desejável) antes de criar, já que no Kommo o campo personalizado é por entidade
-  (lead), não por etapa.
+  /leads/pipelines` pra criar o pipeline com as etapas, `sort`/`is_main`/`is_unsorted_on` são
+  obrigatórios pra API mesmo sem default óbvio no dashboard — manda `is_main: false` e
+  `is_unsorted_on: false` pra não mexer no pipeline principal nem na captação automática de leads
+  da conta). As etapas viram os status intermediários do pipeline (o Kommo já cria "Entrada de
+  leads" e "Ganho"/"Perdido" automaticamente — por isso a etapa final "Perdido/Desqualificado" que
+  a IA sempre inclui no funil não é recriada como status duplicado).
+- **Campos por entidade (Lead vs Contato)**: cada campo (`campos_obrigatorios`/`campos_desejaveis`)
+  tem um `entidade: "LEAD" | "CONTATO"` — a IA já classifica isso ao gerar (regra 2 do
+  `SYSTEM_PROMPT`: CONTATO pra dado da pessoa que se repete entre negociações, como
+  Telefone/E-mail/CPF; LEAD pra dado específico da negociação, como Orçamento/Origem). Editável na
+  tabela do funil acrescentando " · Contato" no fim da linha (sem o sufixo, cai em LEAD — inclusive
+  pra funis gerados antes desse campo existir). Os campos são unificados por nome dentro de cada
+  entidade (obrigatório em qualquer etapa vence sobre desejável) e criados em paralelo via `POST
+  /leads/custom_fields` e `POST /contacts/custom_fields`.
 - **Mapeamento de tipo**: `lista_suspensa → select`, `texto_curto → text`, `texto_longo →
   textarea`, `numero → numeric`, `data → date`, `checkbox → checkbox`, `telefone → text`
-  (simplificação — o Kommo não tem um tipo "telefone" simples pra campo de lead).
+  (simplificação — o Kommo não tem um tipo "telefone" simples pra campo personalizado).
 - **Registro e proteção contra recriação**: cada criação bem-sucedida grava uma linha em
   `funis_kommo_criacoes` (pipeline/status/campos criados). Clicar em "Criar no Kommo" de novo pra
   um funil já criado pede confirmação explícita — recriar gera um pipeline **novo e separado** na
   conta do cliente, não atualiza o existente.
+- **Apagar o funil padrão da conta**: checkbox "Ao criar, apagar também o funil padrão que o Kommo
+  cria sozinho em conta nova" — toda conta Kommo nova já vem com um pipeline de exemplo
+  (`is_main: true`). Se marcado, depois de criar o funil de verdade a função busca esse pipeline
+  principal e só apaga se ele **não tiver nenhuma negociação** (`GET /leads?filter[pipeline_id]=`);
+  se já tiver dado, não apaga e devolve o motivo — nunca destrutivo por padrão, e desmarcado é o
+  padrão.
 
 Deploy:
 
@@ -300,12 +313,18 @@ Fase 1 da evolução pedida pela V4 Company: o JSON que a IA devolve ficou mais 
 sair "pronto pra configurar" no CRM, não só descrito.
 
 - **Campos estruturados**: `campos_obrigatorios`/`campos_desejaveis` de cada etapa deixaram de ser
-  texto solto e viraram objetos `{ nome, tipo, opcoes? }` — o mesmo vocabulário de tipo já usado em
-  `campos_padrao` (`lista_suspensa`, `texto_curto`, `texto_longo`, `numero`, `data`, `checkbox`,
-  `telefone`). Na tabela editável (`FunilDetalhado`), cada campo é uma linha no formato `Nome
-  (tipo)` ou `Nome (lista_suspensa: opção 1, opção 2)` — editar é só editar o texto, o parser
-  reconstrói o objeto ao salvar. Dados de funis gerados antes dessa mudança (string solta) continuam
-  sendo exibidos normalmente, sem precisar migrar nada.
+  texto solto e viraram objetos `{ nome, tipo, opcoes?, entidade? }` — o mesmo vocabulário de tipo já
+  usado em `campos_padrao` (`lista_suspensa`, `texto_curto`, `texto_longo`, `numero`, `data`,
+  `checkbox`, `telefone`), mais `entidade` (`LEAD` ou `CONTATO`, ver seção "Criação automática do
+  funil no Kommo" abaixo). Na tabela editável (`FunilDetalhado`), cada campo é uma linha no formato
+  `Nome (tipo)` ou `Nome (lista_suspensa: opção 1, opção 2)`, com " · Contato" opcional no fim —
+  editar é só editar o texto, o parser reconstrói o objeto ao salvar. Dados de funis gerados antes
+  dessa mudança (string solta, ou objeto sem `entidade`) continuam sendo exibidos normalmente, sem
+  precisar migrar nada (`entidade` ausente = LEAD).
+- **Adicionar/remover etapa**: o botão "+ Etapa" no fim do cabeçalho da tabela acrescenta uma etapa
+  em branco pra preencher; o "×" ao lado do nome de cada etapa remove ela (com confirmação, e só
+  aparece se houver mais de uma etapa — o funil não pode ficar sem nenhuma). Útil pra ajustar o
+  funil gerado pela IA antes de aprovar e criar no Kommo, sem precisar regenerar tudo de novo.
 - **`pontos_para_validar`**: lista de suposições que a IA precisou fazer por falta de informação
   (SLA chutado, campo obrigatório inferido etc.), cada uma identificando o funil/etapa. Vira
   automaticamente a pauta da call de alinhamento com o cliente antes de implementar.
