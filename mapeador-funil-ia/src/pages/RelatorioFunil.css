@@ -334,6 +334,24 @@
   color: var(--color-text-muted);
 }
 
+.relatorio-validar-lista {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.relatorio-validar-item {
+  background: var(--color-accent-soft);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 0 6px 6px 0;
+  padding: 14px 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(244, 244, 246, 0.92);
+}
+
 /* ── Toolbar / print ── */
 @media print {
   .no-print {
@@ -368,6 +386,14 @@
 
   .relatorio-quote {
     margin-top: 14px;
+    break-inside: avoid;
+  }
+
+  .relatorio-validar-lista {
+    overflow-y: visible;
+  }
+
+  .relatorio-validar-item {
     break-inside: avoid;
   }
 

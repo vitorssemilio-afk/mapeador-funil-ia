@@ -1,8 +1,51 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.110.8';
-import { formatRespostasTexto } from '../../../src/data/formatRespostas.ts';
+import { formatRespostasTexto, formatValorPergunta } from '../../../src/data/formatRespostas.ts';
 import type { BlocoFormulario, Pergunta } from '../../../src/data/formSchema.ts';
 import { corsHeaders } from '../_shared/cors.ts';
+import { sincronizarLinhaGoogleSheets } from '../_shared/googleSheets.ts';
 import { gerarFunisComIA } from './ia.ts';
+
+// Não deixa a geração do funil falhar por causa da planilha — a integração
+// com o Sheets é um bônus, o funil em si é o que importa de verdade.
+async function sincronizarComGoogleSheetsSeConfigurado(
+  mapeamento: { id: string; nome_negocio: string; status: string; respostas: unknown; updated_at: string },
+  blocos: BlocoFormulario[],
+): Promise<void> {
+  const serviceAccountRaw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
+  const spreadsheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID');
+  if (!serviceAccountRaw || !spreadsheetId) return;
+
+  try {
+    const credenciais = JSON.parse(serviceAccountRaw);
+    const perguntas = blocos.flatMap((b) => b.perguntas);
+    const respostas = (mapeamento.respostas ?? {}) as Record<string, unknown>;
+
+    const cabecalho = [
+      'ID do Mapeamento',
+      'Nome do Negócio',
+      'Status',
+      'Concluído em',
+      ...perguntas.map((p) => p.label),
+    ];
+    const linha = [
+      mapeamento.id,
+      mapeamento.nome_negocio,
+      mapeamento.status,
+      mapeamento.updated_at,
+      ...perguntas.map((p) => formatValorPergunta(p, respostas)),
+    ];
+
+    await sincronizarLinhaGoogleSheets({
+      credenciais,
+      spreadsheetId,
+      cabecalho,
+      idUnico: mapeamento.id,
+      linha,
+    });
+  } catch (err) {
+    console.error('Falha ao sincronizar com o Google Sheets', err);
+  }
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -208,10 +251,16 @@ Deno.serve(async (req: Request) => {
     console.error('Erro ao salvar geracoes_meta', metaError);
   }
 
-  await supabase
+  const { data: mapeamentoConcluido } = await supabase
     .from('mapeamentos')
     .update({ status: 'concluido', respostas: respostasBase })
-    .eq('id', mapeamentoId);
+    .eq('id', mapeamentoId)
+    .select()
+    .single();
+
+  if (mapeamentoConcluido) {
+    await sincronizarComGoogleSheetsSeConfigurado(mapeamentoConcluido, blocos);
+  }
 
   return jsonResponse({ ok: true, funis: rows });
 });
