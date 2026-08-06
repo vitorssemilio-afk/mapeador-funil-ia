@@ -18,6 +18,7 @@ export function ImplementacaoChecklistAdmin() {
     grupo_id: string;
     texto: string;
     requer_evidencia: boolean;
+    dia_semana: string;
   } | null>(null);
 
   async function carregar() {
@@ -137,7 +138,7 @@ export function ImplementacaoChecklistAdmin() {
   }
 
   function abrirNovoItem(grupoId: string) {
-    setFormItem({ id: null, grupo_id: grupoId, texto: '', requer_evidencia: false });
+    setFormItem({ id: null, grupo_id: grupoId, texto: '', requer_evidencia: false, dia_semana: '' });
   }
 
   function abrirEdicaoItem(item: ChecklistItemImplementacao) {
@@ -146,6 +147,7 @@ export function ImplementacaoChecklistAdmin() {
       grupo_id: item.grupo_id,
       texto: item.texto,
       requer_evidencia: item.requer_evidencia,
+      dia_semana: item.dia_semana ? String(item.dia_semana) : '',
     });
   }
 
@@ -158,11 +160,16 @@ export function ImplementacaoChecklistAdmin() {
     if (!formItem || !formItem.texto.trim()) return;
 
     setSalvando(true);
+    const diaSemana = formItem.dia_semana ? Number(formItem.dia_semana) : null;
 
     if (formItem.id) {
       const { error: updateError } = await supabase
         .from('checklist_itens_implementacao')
-        .update({ texto: formItem.texto.trim(), requer_evidencia: formItem.requer_evidencia })
+        .update({
+          texto: formItem.texto.trim(),
+          requer_evidencia: formItem.requer_evidencia,
+          dia_semana: diaSemana,
+        })
         .eq('id', formItem.id);
 
       setSalvando(false);
@@ -180,6 +187,7 @@ export function ImplementacaoChecklistAdmin() {
         texto: formItem.texto.trim(),
         ordem: proximaOrdem,
         requer_evidencia: formItem.requer_evidencia,
+        dia_semana: diaSemana,
       });
 
       setSalvando(false);
@@ -350,6 +358,9 @@ export function ImplementacaoChecklistAdmin() {
                         {item.requer_evidencia && (
                           <span className="requer-evidencia-badge"> · exige evidência</span>
                         )}
+                        {item.dia_semana && (
+                          <span className="dia-semana-badge"> · dia {item.dia_semana}</span>
+                        )}
                       </td>
                       <td className="table-actions">
                         <button
@@ -417,6 +428,24 @@ export function ImplementacaoChecklistAdmin() {
                   <span>
                     Exige evidência pra marcar (link, print ou nota — pra itens que pedem
                     verificação, não só configuração)
+                  </span>
+                </label>
+                <label className="field">
+                  <span>Dia dentro da semana (1 a 7)</span>
+                  <select
+                    value={formItem.dia_semana}
+                    onChange={(e) => setFormItem({ ...formItem, dia_semana: e.target.value })}
+                  >
+                    <option value="">— Sem prazo definido (não entra na Agenda) —</option>
+                    {[1, 2, 3, 4, 5, 6, 7].map((dia) => (
+                      <option key={dia} value={dia}>
+                        Dia {dia}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="field-hint">
+                    Contado a partir da data em que o cliente entrou nessa semana. Define quando o
+                    item aparece na Agenda diária.
                   </span>
                 </label>
                 <div className="wizard-actions">

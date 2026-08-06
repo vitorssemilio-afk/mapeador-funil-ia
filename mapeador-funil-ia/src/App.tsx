@@ -3,6 +3,7 @@ import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { Agenda } from './pages/Agenda';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { Dashboard } from './pages/Dashboard';
 import { FormularioAdmin } from './pages/FormularioAdmin';
@@ -49,6 +50,7 @@ function App() {
               }
             >
               <Route path="/" element={<Dashboard />} />
+              <Route path="/agenda" element={<Agenda />} />
               <Route path="/novo" element={<NovoMapeamento />} />
               <Route path="/mapeamento/:id" element={<Mapeamento />} />
               <Route path="/campos-padrao" element={<CamposPadrao />} />
