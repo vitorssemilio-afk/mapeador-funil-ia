@@ -180,10 +180,7 @@ function VisaoGeralSlide({
 }
 
 function MetaSlide({ meta }: { meta: GeracaoMeta }) {
-  const temConteudo =
-    meta.pontos_para_validar.length > 0 ||
-    meta.transicoes_entre_funis.length > 0 ||
-    meta.nivel_complexidade;
+  const temConteudo = meta.transicoes_entre_funis.length > 0 || meta.nivel_complexidade;
 
   if (!temConteudo) return null;
 
@@ -205,7 +202,9 @@ function MetaSlide({ meta }: { meta: GeracaoMeta }) {
               )}
             </>
           )}
+        </div>
 
+        <div className="relatorio-col relatorio-col-right">
           {meta.transicoes_entre_funis.length > 0 && (
             <>
               <div className="relatorio-col-title">Transições entre funis</div>
@@ -217,15 +216,28 @@ function MetaSlide({ meta }: { meta: GeracaoMeta }) {
             </>
           )}
         </div>
+      </div>
+    </section>
+  );
+}
 
-        <div className="relatorio-col relatorio-col-right">
-          {meta.pontos_para_validar.length > 0 && (
-            <>
-              <div className="relatorio-col-title">Pontos para validar com o cliente</div>
-              <ItemList items={meta.pontos_para_validar} />
-            </>
-          )}
-        </div>
+function ValidarComClienteSlide({ pontos }: { pontos: string[] }) {
+  if (pontos.length === 0) return null;
+
+  return (
+    <section className="relatorio-slide">
+      <div className="relatorio-eyebrow">Antes de colocar em prática</div>
+      <h2>Para confirmar com você</h2>
+      <p className="relatorio-sub">
+        Montamos esse funil com base no que você nos contou — só faltam confirmar alguns pontos
+        antes de configurar tudo de verdade no CRM:
+      </p>
+      <div className="relatorio-validar-lista">
+        {pontos.map((ponto, i) => (
+          <div key={i} className="relatorio-validar-item">
+            {ponto}
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -357,6 +369,8 @@ export function RelatorioFunil() {
             ))}
           </div>
         ))}
+
+        {geracaoMeta && <ValidarComClienteSlide pontos={geracaoMeta.pontos_para_validar} />}
       </div>
     </div>
   );

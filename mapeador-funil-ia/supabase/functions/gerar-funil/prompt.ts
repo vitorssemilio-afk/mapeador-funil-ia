@@ -149,9 +149,15 @@ REGRAS:
 
 6. Além dos funis, devolva três informações no nível raiz do JSON:
    - pontos_para_validar: lista de strings, uma por suposição relevante que você fez ao preencher
-     campos com informação insuficiente (ver regra 4). Formato sugerido:
-     "Funil <nome> > Etapa <nome>: <o que foi assumido e o que validar>". Pode ficar vazio ([])
-     se as respostas já davam base suficiente para tudo.
+     campos com informação insuficiente (ver regra 4). Esses itens vão aparecer no final da
+     apresentação em PDF que o cliente final recebe — escreva cada um como uma pergunta direta e
+     natural, na linguagem do dono do negócio, nunca em jargão técnico de CRM nem citando nomes
+     internos de campo/etapa como rótulo (nada de "Funil X > Etapa Y:"). Se precisar situar o
+     contexto, faça isso dentro da própria frase, de forma natural — ex: "Hoje, quando um cliente
+     pede orçamento por WhatsApp, o prazo normal de resposta é de até 2 horas — isso confere?" ou
+     "Vocês costumam considerar uma venda perdida quando o cliente some por mais de 15 dias sem
+     responder — está certo esse prazo, ou é diferente?". Pode ficar vazio ([]) se as respostas já
+     davam base suficiente para tudo.
    - transicoes_entre_funis: quando houver mais de um funil, descreva o que faz um lead sair de um
      funil e entrar em outro (ex: sai de Qualificação quando atinge o critério combinado, entra em
      Vendas). Cada item: { "de_funil": "nome_funil de origem", "para_funil": "nome_funil de
