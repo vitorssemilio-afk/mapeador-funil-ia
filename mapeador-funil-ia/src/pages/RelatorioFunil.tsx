@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { formatCampoEtapaLabel } from '../data/etapaCampos';
+import { exportarFunilParaPptx } from '../lib/exportPptx';
 import { supabase } from '../lib/supabaseClient';
 import type { EtapaFunil, FunilGerado, GeracaoMeta, Mapeamento } from '../types/database';
 import './RelatorioFunil.css';
@@ -221,6 +222,27 @@ function MetaSlide({ meta }: { meta: GeracaoMeta }) {
   );
 }
 
+function IndicadoresDashboardSlide({ indicadores }: { indicadores: string[] }) {
+  if (indicadores.length === 0) return null;
+
+  return (
+    <section className="relatorio-slide">
+      <div className="relatorio-eyebrow">Visibilidade do negócio</div>
+      <h2>O que você vai conseguir acompanhar</h2>
+      <p className="relatorio-sub">
+        Com o funil configurado, esses indicadores ficam disponíveis direto no painel do CRM:
+      </p>
+      <div className="relatorio-validar-lista">
+        {indicadores.map((indicador, i) => (
+          <div key={i} className="relatorio-validar-item">
+            {indicador}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ValidarComClienteSlide({ pontos }: { pontos: string[] }) {
   if (pontos.length === 0) return null;
 
@@ -250,6 +272,7 @@ export function RelatorioFunil() {
   const [geracaoMeta, setGeracaoMeta] = useState<GeracaoMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exportandoPptx, setExportandoPptx] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -326,6 +349,16 @@ export function RelatorioFunil() {
 
   const totalEtapas = funis.reduce((soma, f) => soma + f.etapas.length, 0);
 
+  async function handleExportarPptx() {
+    if (!mapeamento) return;
+    setExportandoPptx(true);
+    try {
+      await exportarFunilParaPptx(mapeamento.nome_negocio, funis, geracaoMeta);
+    } finally {
+      setExportandoPptx(false);
+    }
+  }
+
   return (
     <div className="relatorio-viewport">
       <div className="relatorio-toolbar no-print">
@@ -335,6 +368,14 @@ export function RelatorioFunil() {
         <span className="relatorio-toolbar-info">
           {funis.length} funil(is) · {totalEtapas} etapa(s)
         </span>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={handleExportarPptx}
+          disabled={exportandoPptx}
+        >
+          {exportandoPptx ? 'Gerando…' : 'Baixar PPTX'}
+        </button>
         <button type="button" className="btn btn-primary" onClick={() => window.print()}>
           Baixar PDF
         </button>
@@ -360,6 +401,7 @@ export function RelatorioFunil() {
         )}
 
         {geracaoMeta && <MetaSlide meta={geracaoMeta} />}
+        {geracaoMeta && <IndicadoresDashboardSlide indicadores={geracaoMeta.indicadores_dashboard} />}
 
         {funis.map((funil, indice) => (
           <div key={funil.id} style={{ display: 'contents' }}>

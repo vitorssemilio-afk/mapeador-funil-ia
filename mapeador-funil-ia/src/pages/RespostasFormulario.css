@@ -1,0 +1,137 @@
+.respostas-viewport {
+  min-height: 100vh;
+  background: var(--color-bg);
+  padding: 32px 20px 64px;
+}
+
+.respostas-toolbar {
+  max-width: 800px;
+  margin: 0 auto 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.respostas-documento {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #1a1a1a;
+  border-radius: 12px;
+  box-shadow: var(--shadow-card-hover);
+  padding: 56px 64px;
+}
+
+.respostas-cabecalho {
+  margin-bottom: 40px;
+  padding-bottom: 24px;
+  border-bottom: 2px solid #1a1a1a;
+}
+
+.respostas-tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #d42a42;
+  margin-bottom: 10px;
+}
+
+.respostas-cabecalho h1 {
+  font-family: 'Anton', 'Inter', sans-serif;
+  font-weight: 400;
+  font-size: 32px;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.respostas-data {
+  font-size: 13px;
+  color: #6b6b6b;
+  margin-top: 8px;
+}
+
+.respostas-vazio {
+  font-size: 14px;
+  color: #6b6b6b;
+}
+
+.respostas-bloco {
+  margin-bottom: 32px;
+  break-inside: avoid;
+}
+
+.respostas-bloco:last-child {
+  margin-bottom: 0;
+}
+
+.respostas-bloco h2 {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #d42a42;
+  margin: 0 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e2e2e2;
+}
+
+.respostas-lista {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.respostas-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  break-inside: avoid;
+}
+
+.respostas-item dt {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4a4a4a;
+}
+
+.respostas-item dd {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: #1a1a1a;
+  white-space: pre-wrap;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  .respostas-viewport {
+    background: #ffffff;
+    padding: 0;
+  }
+
+  .respostas-documento {
+    max-width: none;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0.6in 0.7in;
+  }
+
+  @page {
+    size: auto;
+    margin: 0.4in;
+  }
+}
