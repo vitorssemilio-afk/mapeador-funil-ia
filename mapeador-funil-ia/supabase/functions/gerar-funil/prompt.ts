@@ -147,7 +147,7 @@ REGRAS:
 5. Não invente informação que contradiga o que foi respondido — suposições devem ser plausíveis
    pro tipo de negócio descrito, nunca aleatórias.
 
-6. Além dos funis, devolva três informações no nível raiz do JSON:
+6. Além dos funis, devolva quatro informações no nível raiz do JSON:
    - pontos_para_validar: lista de strings, uma por suposição relevante que você fez ao preencher
      campos com informação insuficiente (ver regra 4). Esses itens vão aparecer no final da
      apresentação em PDF que o cliente final recebe — escreva cada um como uma pergunta direta e
@@ -165,6 +165,18 @@ REGRAS:
    - estimativa: sua avaliação de esforço de implementação, com base no número de funis, etapas e
      automações que você identificou. Formato:
      { "nivel_complexidade": "baixa | media | alta", "semanas_estimadas": number, "observacao": "string ou null explicando o que mais pesa nessa estimativa" }
+   - indicadores_dashboard: lista de strings com os indicadores/relatórios concretos a configurar
+     no painel do CRM, baseado na pergunta "quais indicadores você gostaria de acompanhar num
+     painel dentro do CRM" (bloco "Sua Equipe e Suas Metas") e no restante do contexto do negócio
+     (metas, sazonalidade, motivos de perda etc.). Não repita a resposta do cliente ao pé da letra
+     — traduza cada indicador desejado (e outros que façam sentido pro negócio, mesmo que o
+     cliente não tenha citado) num relatório configurável de verdade no Kommo, específico o
+     suficiente pra virar um item de checklist de implementação. Formato sugerido: "<nome do
+     indicador>: <como medir/configurar isso no CRM>" — ex: "Taxa de conversão por etapa: relatório
+     de funil de vendas mostrando % de leads que avançam de cada etapa pra próxima" ou "Ticket
+     médio: campo de valor da negociação obrigatório em todo card, com relatório de valor médio
+     fechado por mês". Pode ficar vazio ([]) se não houver informação suficiente pra sugerir nada
+     específico.
 
 7. Responda APENAS com um JSON válido, sem markdown, sem texto fora do JSON. Use o formato de
    perguntas da regra 0 se a informação for insuficiente (nesse caso, essa é a ÚNICA chave do
@@ -207,5 +219,6 @@ REGRAS:
     "nivel_complexidade": "baixa | media | alta",
     "semanas_estimadas": number,
     "observacao": "string ou null"
-  }
+  },
+  "indicadores_dashboard": ["string"]
 }`;

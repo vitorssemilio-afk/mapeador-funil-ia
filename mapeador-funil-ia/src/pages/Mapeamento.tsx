@@ -508,6 +508,7 @@ export function Mapeamento() {
           {geracaoMeta &&
             (geracaoMeta.pontos_para_validar.length > 0 ||
               geracaoMeta.transicoes_entre_funis.length > 0 ||
+              geracaoMeta.indicadores_dashboard.length > 0 ||
               geracaoMeta.nivel_complexidade) && (
               <section className="card geracao-meta-card">
                 {geracaoMeta.nivel_complexidade && (
@@ -550,6 +551,17 @@ export function Mapeamento() {
                     </ul>
                   </div>
                 )}
+
+                {geracaoMeta.indicadores_dashboard.length > 0 && (
+                  <div className="geracao-meta-bloco">
+                    <h3>Indicadores sugeridos para o dashboard no CRM</h3>
+                    <ul className="perguntas-ia-lista">
+                      {geracaoMeta.indicadores_dashboard.map((indicador, i) => (
+                        <li key={i}>{indicador}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </section>
             )}
 
@@ -566,13 +578,23 @@ export function Mapeamento() {
 
       {mapeamento.status === 'concluido' && blocosFormulario.length > 0 && (
         <section className="card form-card">
-          <button
-            type="button"
-            className="btn btn-secondary btn-auto"
-            onClick={() => setMostrarRespostas((v) => !v)}
-          >
-            {mostrarRespostas ? 'Ocultar respostas do formulário' : 'Ver respostas do formulário'}
-          </button>
+          <div className="page-header-actions">
+            <button
+              type="button"
+              className="btn btn-secondary btn-auto"
+              onClick={() => setMostrarRespostas((v) => !v)}
+            >
+              {mostrarRespostas ? 'Ocultar respostas do formulário' : 'Ver respostas do formulário'}
+            </button>
+            <Link
+              to={`/mapeamento/${mapeamento.id}/respostas`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-secondary"
+            >
+              Baixar respostas em PDF
+            </Link>
+          </div>
           {mostrarRespostas && (
             <ResumoWizard
               blocos={blocosFormulario}

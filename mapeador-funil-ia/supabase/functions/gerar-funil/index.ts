@@ -245,6 +245,7 @@ Deno.serve(async (req: Request) => {
     nivel_complexidade: resultado.estimativa?.nivel_complexidade ?? null,
     semanas_estimadas: resultado.estimativa?.semanas_estimadas ?? null,
     observacao_estimativa: resultado.estimativa?.observacao ?? null,
+    indicadores_dashboard: resultado.indicadores_dashboard,
   });
 
   if (metaError) {

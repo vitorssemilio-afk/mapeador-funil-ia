@@ -21,6 +21,7 @@ export type ResultadoIA =
       pontos_para_validar: string[];
       transicoes_entre_funis: TransicaoEntreFunis[];
       estimativa: EstimativaIA | null;
+      indicadores_dashboard: string[];
     }
   | { tipo: 'perguntas'; perguntas: string[] };
 
@@ -134,6 +135,14 @@ function extrairPontosParaValidar(json: Record<string, unknown>): string[] {
   return [];
 }
 
+function extrairIndicadoresDashboard(json: Record<string, unknown>): string[] {
+  const valor = json.indicadores_dashboard;
+  if (Array.isArray(valor) && valor.every((p) => typeof p === 'string')) {
+    return valor as string[];
+  }
+  return [];
+}
+
 function extrairTransicoesEntreFunis(json: Record<string, unknown>): TransicaoEntreFunis[] {
   const valor = json.transicoes_entre_funis;
   if (!Array.isArray(valor)) return [];
@@ -201,6 +210,7 @@ function parseRespostaIA(texto: string): ResultadoIA | null {
     pontos_para_validar: extrairPontosParaValidar(obj),
     transicoes_entre_funis: extrairTransicoesEntreFunis(obj),
     estimativa: extrairEstimativa(obj),
+    indicadores_dashboard: extrairIndicadoresDashboard(obj),
   };
 }
 

@@ -14,6 +14,7 @@ import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
 import { NovoMapeamento } from './pages/NovoMapeamento';
 import { RelatorioFunil } from './pages/RelatorioFunil';
+import { RespostasFormulario } from './pages/RespostasFormulario';
 
 function App() {
   return (
@@ -29,6 +30,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <RelatorioFunil />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/mapeamento/:id/respostas"
+              element={
+                <ProtectedRoute>
+                  <RespostasFormulario />
                 </ProtectedRoute>
               }
             />

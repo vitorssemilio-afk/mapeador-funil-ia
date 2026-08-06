@@ -89,6 +89,7 @@ export type GeracaoMeta = {
   nivel_complexidade: NivelComplexidade | null;
   semanas_estimadas: number | null;
   observacao_estimativa: string | null;
+  indicadores_dashboard: string[];
   created_at: string;
 };
 
