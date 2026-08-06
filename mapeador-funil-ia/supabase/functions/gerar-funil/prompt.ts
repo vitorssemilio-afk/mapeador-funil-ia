@@ -166,17 +166,25 @@ REGRAS:
      automações que você identificou. Formato:
      { "nivel_complexidade": "baixa | media | alta", "semanas_estimadas": number, "observacao": "string ou null explicando o que mais pesa nessa estimativa" }
    - indicadores_dashboard: lista de strings com os indicadores/relatórios concretos a configurar
-     no painel do CRM, baseado na pergunta "quais indicadores você gostaria de acompanhar num
-     painel dentro do CRM" (bloco "Sua Equipe e Suas Metas") e no restante do contexto do negócio
-     (metas, sazonalidade, motivos de perda etc.). Não repita a resposta do cliente ao pé da letra
-     — traduza cada indicador desejado (e outros que façam sentido pro negócio, mesmo que o
-     cliente não tenha citado) num relatório configurável de verdade no Kommo, específico o
-     suficiente pra virar um item de checklist de implementação. Formato sugerido: "<nome do
-     indicador>: <como medir/configurar isso no CRM>" — ex: "Taxa de conversão por etapa: relatório
-     de funil de vendas mostrando % de leads que avançam de cada etapa pra próxima" ou "Ticket
-     médio: campo de valor da negociação obrigatório em todo card, com relatório de valor médio
-     fechado por mês". Pode ficar vazio ([]) se não houver informação suficiente pra sugerir nada
-     específico.
+     no painel de Análises do Kommo, baseado na pergunta "quais indicadores você gostaria de
+     acompanhar num painel dentro do CRM" (bloco "Sua Equipe e Suas Metas") e no restante do
+     contexto do negócio (metas, sazonalidade, motivos de perda etc.). Não repita a resposta do
+     cliente ao pé da letra — traduza cada indicador escolhido (e outros que façam sentido pro
+     negócio, mesmo que o cliente não tenha marcado) num relatório real e configurável do Kommo,
+     usando a nomenclatura oficial dos relatórios de Análises do Kommo sempre que aplicável:
+     "Funil de vendas" (conversão por etapa), "Fontes de leads", "Carga de trabalho da equipe"
+     (leads/tarefas por vendedor), "Metas" (individuais e de equipe), "Previsão de vendas"
+     (forecast), "Relatório de eventos-alvo" (ex: contrato assinado, pagamento confirmado — precisa
+     de campo/automação marcando esse evento), e SLA de resposta configurado via automação com
+     alerta de atraso. Cada item deve dizer o nome do relatório do Kommo + o que exatamente precisa
+     estar configurado no funil (campo, automação ou evento) pra esse relatório funcionar de
+     verdade — específico o suficiente pra virar um item de checklist de implementação. Formato
+     sugerido: "<nome do relatório no Kommo>: <o que precisa estar configurado no funil pra ele
+     funcionar>" — ex: "Funil de vendas: com as etapas já configuradas, esse relatório sai pronto,
+     mostrando % de leads que avançam de cada etapa pra próxima" ou "Metas: cadastrar a meta mensal
+     de vendas do time nas configurações de Metas do Kommo, usando o valor da negociação de cada
+     card fechado como base". Pode ficar vazio ([]) se não houver informação suficiente pra sugerir
+     nada específico.
 
 7. Responda APENAS com um JSON válido, sem markdown, sem texto fora do JSON. Use o formato de
    perguntas da regra 0 se a informação for insuficiente (nesse caso, essa é a ÚNICA chave do
