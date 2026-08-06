@@ -38,7 +38,6 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro | null>(null);
-  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -87,27 +86,6 @@ export function Dashboard() {
 
   function toggleFiltro(novoFiltro: Filtro) {
     setFiltro((atual) => (atual === novoFiltro ? null : novoFiltro));
-  }
-
-  async function handleExcluir(m: Mapeamento) {
-    if (
-      !window.confirm(
-        `Excluir o mapeamento "${m.nome_negocio}"? Essa ação não pode ser desfeita e também apaga os funis gerados a partir dele.`,
-      )
-    ) {
-      return;
-    }
-
-    setExcluindoId(m.id);
-    const { error: deleteError } = await supabase.from('mapeamentos').delete().eq('id', m.id);
-    setExcluindoId(null);
-
-    if (deleteError) {
-      setError(deleteError.message);
-      return;
-    }
-
-    setMapeamentos((prev) => prev.filter((item) => item.id !== m.id));
   }
 
   return (
@@ -201,41 +179,16 @@ export function Dashboard() {
               <p>Nenhum mapeamento nessa situação.</p>
             </div>
           ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Negócio</th>
-                    <th>Status</th>
-                    <th>Criado em</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {mapeamentosFiltrados.map((m) => (
-                    <tr key={m.id}>
-                      <td>{m.nome_negocio}</td>
-                      <td>
-                        <StatusBadge status={m.status} enviadoPeloCliente={m.enviado_pelo_cliente} />
-                      </td>
-                      <td>{new Date(m.created_at).toLocaleDateString('pt-BR')}</td>
-                      <td className="table-actions">
-                        <Link to={`/mapeamento/${m.id}`} className="btn btn-secondary">
-                          Ver
-                        </Link>{' '}
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => handleExcluir(m)}
-                          disabled={excluindoId === m.id}
-                        >
-                          {excluindoId === m.id ? 'Excluindo…' : 'Excluir'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mapeamentos-grid">
+              {mapeamentosFiltrados.map((m) => (
+                <Link key={m.id} to={`/mapeamento/${m.id}`} className="mapeamento-card">
+                  <StatusBadge status={m.status} enviadoPeloCliente={m.enviado_pelo_cliente} />
+                  <span className="mapeamento-card-nome">{m.nome_negocio}</span>
+                  <span className="mapeamento-card-data">
+                    Criado em {new Date(m.created_at).toLocaleDateString('pt-BR')}
+                  </span>
+                </Link>
+              ))}
             </div>
           )}
         </>
