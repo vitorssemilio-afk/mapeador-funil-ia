@@ -459,6 +459,21 @@ a {
   vertical-align: middle;
 }
 
+.badge-danger {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+  vertical-align: middle;
+}
+
 .historico-status-lista {
   display: flex;
   flex-direction: column;

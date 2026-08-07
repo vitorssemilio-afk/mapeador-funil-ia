@@ -178,6 +178,7 @@ export type ImplementacaoCrm = {
   periodo_contratado: string | null;
   data_decisao_plano: string | null;
   observacoes: string | null;
+  codigo_checkpoint: string;
   created_at: string;
   updated_at: string;
 };
@@ -223,6 +224,28 @@ export type ImplementacaoChecklistMarcado = {
   marcado: boolean;
   evidencia: string | null;
   marcado_em: string;
+};
+
+export type UsoDiarioCheckpoint = 'so_kommo' | 'kommo_mais_planilha' | 'voltou_planilha';
+export type FrequenciaUsoCheckpoint = 'diariamente' | 'semanalmente' | 'raramente' | 'nao_uso';
+export type IntencaoManutencaoCheckpoint = 'sim' | 'talvez' | 'nao';
+
+export type CheckpointAdocao = {
+  id: string;
+  implementacao_id: string;
+  uso_diario: UsoDiarioCheckpoint;
+  frequencia_uso: FrequenciaUsoCheckpoint;
+  obstaculo: string | null;
+  intencao_manutencao: IntencaoManutencaoCheckpoint;
+  risco_churn: boolean;
+  respondido_em: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CheckpointPublico = {
+  nome_cliente: string;
+  ja_respondido: boolean;
 };
 
 export type CredencialCrmListada = {
@@ -394,6 +417,13 @@ export type Database = {
         Update: Partial<ImplementacaoStatusHistorico>;
         Relationships: [];
       };
+      checkpoints_adocao: {
+        Row: CheckpointAdocao;
+        Insert: Partial<CheckpointAdocao> &
+          Pick<CheckpointAdocao, 'implementacao_id' | 'uso_diario' | 'frequencia_uso' | 'intencao_manutencao'>;
+        Update: Partial<CheckpointAdocao>;
+        Relationships: [];
+      };
     };
     Views: {
       mapeamentos_respostas_flat: {
@@ -451,6 +481,20 @@ export type Database = {
       obter_credencial_api_kommo: {
         Args: { p_implementacao_id: string };
         Returns: { subdominio: string; token: string }[];
+      };
+      public_get_checkpoint_by_codigo: {
+        Args: { p_codigo: string };
+        Returns: CheckpointPublico[];
+      };
+      public_save_checkpoint: {
+        Args: {
+          p_codigo: string;
+          p_uso_diario: string;
+          p_frequencia_uso: string;
+          p_obstaculo: string | null;
+          p_intencao_manutencao: string;
+        };
+        Returns: undefined;
       };
     };
     Enums: {

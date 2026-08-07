@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { Agenda } from './pages/Agenda';
 import { CamposPadrao } from './pages/CamposPadrao';
+import { CheckpointAdocao } from './pages/CheckpointAdocao';
 import { Dashboard } from './pages/Dashboard';
 import { FormularioAdmin } from './pages/FormularioAdmin';
 import { FormularioPublico } from './pages/FormularioPublico';
@@ -26,6 +27,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/f/:codigo" element={<FormularioPublico />} />
             <Route path="/formulario/:id" element={<FormularioPublico />} />
+            <Route path="/checkpoint/:codigo" element={<CheckpointAdocao />} />
             <Route
               path="/mapeamento/:id/relatorio"
               element={
