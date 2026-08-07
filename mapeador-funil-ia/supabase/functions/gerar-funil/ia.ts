@@ -51,10 +51,11 @@ async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 8192,
+      max_tokens: 32000,
       thinking: { type: 'disabled' },
       system: SYSTEM_PROMPT,
       messages,
+      stream: true,
     }),
   });
 
@@ -63,19 +64,69 @@ async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
     throw new Error(`Anthropic API respondeu ${response.status}: ${errorText}`);
   }
 
-   const data = await response.json();
-  const textBlock = Array.isArray(data.content)
-    ? data.content.find((block: { type?: string; text?: string }) => typeof block?.text === 'string')
-    : undefined;
-  const texto = textBlock?.text;
+  const texto = await lerRespostaStream(response);
 
   if (!texto) {
-    throw new Error(
-      `Resposta da IA não contém texto (stop_reason: ${data.stop_reason ?? 'desconhecido'}). Resposta bruta: ${JSON.stringify(data)}`,
-    );
+    throw new Error('Resposta da IA não contém texto.');
   }
 
-  return texto as string;
+  return texto;
+}
+
+async function lerRespostaStream(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error('Resposta da IA sem corpo para leitura em stream.');
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let texto = '';
+  let stopReason: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const linhas = buffer.split('\n');
+    buffer = linhas.pop() ?? '';
+
+    for (const linha of linhas) {
+      if (!linha.startsWith('data: ')) continue;
+      const dados = linha.slice('data: '.length).trim();
+      if (!dados) continue;
+
+      let evento: Record<string, unknown>;
+      try {
+        evento = JSON.parse(dados);
+      } catch {
+        continue;
+      }
+
+      if (
+        evento.type === 'content_block_delta' &&
+        typeof evento.delta === 'object' &&
+        evento.delta !== null &&
+        (evento.delta as Record<string, unknown>).type === 'text_delta'
+      ) {
+        texto += String((evento.delta as Record<string, unknown>).text ?? '');
+      }
+
+      if (evento.type === 'message_delta' && typeof evento.delta === 'object' && evento.delta !== null) {
+        const delta = evento.delta as Record<string, unknown>;
+        if (typeof delta.stop_reason === 'string') {
+          stopReason = delta.stop_reason;
+        }
+      }
+    }
+  }
+
+  if (stopReason === 'max_tokens') {
+    console.error('Resposta da IA foi cortada por atingir max_tokens.');
+  }
+
+  return texto;
 }
 
 function extrairJson(texto: string): string {
