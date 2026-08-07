@@ -208,6 +208,10 @@ export type ChecklistItemImplementacao = {
   // null = item do template global do POP (compartilhado); preenchido =
   // item derivado automaticamente do funil dessa implementação específica.
   implementacao_id: string | null;
+  // Dia (1-7) dentro da janela de 7 dias corridos do grupo/semana, contado a
+  // partir da entrada da implementação naquele status. Null = sem prazo
+  // definido, o item não aparece na Agenda diária.
+  dia_semana: number | null;
   created_at: string;
   updated_at: string;
 };

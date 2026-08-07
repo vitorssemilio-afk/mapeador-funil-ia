@@ -52,6 +52,7 @@ async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
     body: JSON.stringify({
       model,
       max_tokens: 8192,
+      thinking: { type: 'disabled' },
       system: SYSTEM_PROMPT,
       messages,
     }),
@@ -69,7 +70,9 @@ async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
   const texto = textBlock?.text;
 
   if (!texto) {
-    throw new Error(`Resposta da IA não contém texto. Resposta bruta: ${JSON.stringify(data)}`);
+    throw new Error(
+      `Resposta da IA não contém texto (stop_reason: ${data.stop_reason ?? 'desconhecido'}). Resposta bruta: ${JSON.stringify(data)}`,
+    );
   }
 
   return texto as string;

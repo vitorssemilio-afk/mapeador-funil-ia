@@ -51,6 +51,9 @@ export function Layout() {
             Mapeador de Funil IA
           </NavLink>
           <nav className="topbar-nav">
+            <NavLink to="/agenda" className={navLinkClass}>
+              Agenda
+            </NavLink>
             <NavLink to="/implementacoes" className={navLinkClass}>
               Implementações
             </NavLink>

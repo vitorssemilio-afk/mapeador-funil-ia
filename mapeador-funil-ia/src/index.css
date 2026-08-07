@@ -702,6 +702,37 @@ a {
   color: var(--color-info);
 }
 
+.dia-semana-badge {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.agenda-navegacao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.agenda-dia-atual {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-transform: capitalize;
+}
+
+.agenda-item .field-hint {
+  display: inline;
+}
+
+.agenda-atraso-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-danger);
+}
+
 .field-hint {
   font-size: 13px;
   color: var(--color-text-muted);
