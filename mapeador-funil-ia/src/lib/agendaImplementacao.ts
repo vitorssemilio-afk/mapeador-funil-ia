@@ -65,32 +65,40 @@ export function itensDaAgenda(params: {
   const resultado: ItemAgenda[] = [];
 
   for (const implementacao of implementacoes) {
-    const grupo = grupos.find((g) => g.chave === implementacao.status);
-    if (!grupo) continue;
+    // Semana 1 é dividida em dois grupos de checklist (Sessão 1 e Sessão
+    // 2) que compartilham o mesmo status "semana_1" — os demais status
+    // têm um grupo só, com chave igual ao próprio status.
+    const gruposDoStatus =
+      implementacao.status === 'semana_1'
+        ? grupos.filter((g) => g.chave === 'semana_1_sessao1' || g.chave === 'semana_1_sessao2')
+        : grupos.filter((g) => g.chave === implementacao.status);
+    if (gruposDoStatus.length === 0) continue;
 
     const dataEntrada = dataEntradaStatusAtual(implementacao, historico);
     const marcados = marcadosPorImplementacao.get(implementacao.id) ?? new Set<string>();
 
-    const itensDoGrupo = itens.filter(
-      (item) =>
-        item.grupo_id === grupo.id &&
-        (item.implementacao_id === null || item.implementacao_id === implementacao.id) &&
-        item.dia_semana != null &&
-        !marcados.has(item.id),
-    );
+    for (const grupo of gruposDoStatus) {
+      const itensDoGrupo = itens.filter(
+        (item) =>
+          item.grupo_id === grupo.id &&
+          (item.implementacao_id === null || item.implementacao_id === implementacao.id) &&
+          item.dia_semana != null &&
+          !marcados.has(item.id),
+      );
 
-    for (const item of itensDoGrupo) {
-      const vencimento = calcularVencimento(dataEntrada, item.dia_semana!);
-      const dentroDoAlvo = ehHoje ? vencimento.getTime() <= diaAlvo.getTime() : vencimento.getTime() === diaAlvo.getTime();
-      if (!dentroDoAlvo) continue;
+      for (const item of itensDoGrupo) {
+        const vencimento = calcularVencimento(dataEntrada, item.dia_semana!);
+        const dentroDoAlvo = ehHoje ? vencimento.getTime() <= diaAlvo.getTime() : vencimento.getTime() === diaAlvo.getTime();
+        if (!dentroDoAlvo) continue;
 
-      resultado.push({
-        implementacao,
-        item,
-        grupoTitulo: grupo.titulo,
-        vencimento,
-        diasAtraso: Math.max(0, diferencaEmDias(hoje, vencimento)),
-      });
+        resultado.push({
+          implementacao,
+          item,
+          grupoTitulo: grupo.titulo,
+          vencimento,
+          diasAtraso: Math.max(0, diferencaEmDias(hoje, vencimento)),
+        });
+      }
     }
   }
 

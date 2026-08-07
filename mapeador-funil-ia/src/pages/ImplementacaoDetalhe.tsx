@@ -4,18 +4,41 @@ import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBa
 import { gerarItensDerivados } from '../lib/checklistDerivado';
 import { supabase } from '../lib/supabaseClient';
 import type {
+  CheckpointAdocao,
   ChecklistGrupoImplementacao,
   ChecklistItemImplementacao,
   CredencialApiKommoMeta,
   CredencialCrmListada,
+  FrequenciaUsoCheckpoint,
   FunilGerado,
   FunilKommoCriacao,
   ImplementacaoCrm,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
+  IntencaoManutencaoCheckpoint,
+  UsoDiarioCheckpoint,
 } from '../types/database';
 
-type Aba = 'geral' | 'checklist' | 'credenciais';
+type Aba = 'geral' | 'checklist' | 'credenciais' | 'checkpoint';
+
+const USO_DIARIO_LABELS: Record<UsoDiarioCheckpoint, string> = {
+  so_kommo: 'Só Kommo',
+  kommo_mais_planilha: 'Kommo + planilha ainda',
+  voltou_planilha: 'Voltaram pra planilha',
+};
+
+const FREQUENCIA_USO_LABELS: Record<FrequenciaUsoCheckpoint, string> = {
+  diariamente: 'Diariamente',
+  semanalmente: 'Semanalmente',
+  raramente: 'Raramente',
+  nao_uso: 'Não uso',
+};
+
+const INTENCAO_MANUTENCAO_LABELS: Record<IntencaoManutencaoCheckpoint, string> = {
+  sim: 'Sim',
+  talvez: 'Talvez',
+  nao: 'Não',
+};
 
 type FormGeral = {
   nome_cliente: string;
@@ -66,7 +89,12 @@ const PROXIMO_STATUS: Partial<Record<ImplementacaoStatus, ImplementacaoStatus>> 
 };
 
 function grupoSugereAvancoStatus(chave: string, statusAtual: ImplementacaoStatus): boolean {
-  return chave === statusAtual || (chave === 'criterios_sucesso' && statusAtual === 'semana_4');
+  // Semana 1 é dividida em duas sessões (grupos) — só a segunda sugere
+  // avançar de status, e só depois de checar que a primeira também está
+  // completa (ver uso de `completoSemana1Sessao1` no render do checklist).
+  if (chave === 'semana_1_sessao1') return false;
+  const chaveEfetiva = chave === 'semana_1_sessao2' ? 'semana_1' : chave;
+  return chaveEfetiva === statusAtual || (chaveEfetiva === 'criterios_sucesso' && statusAtual === 'semana_4');
 }
 
 // Ordem das fases, pra saber se um grupo de checklist já pode ser
@@ -84,7 +112,8 @@ const ORDEM_STATUS: Record<ImplementacaoStatus, number> = {
 // "criterios_sucesso" não é uma fase em si — libera junto com "semana_4".
 const GRUPO_STATUS_REQUERIDO: Partial<Record<string, ImplementacaoStatus>> = {
   pre_requisito: 'pre_requisito',
-  semana_1: 'semana_1',
+  semana_1_sessao1: 'semana_1',
+  semana_1_sessao2: 'semana_1',
   semana_2: 'semana_2',
   semana_3: 'semana_3',
   semana_4: 'semana_4',
@@ -137,6 +166,8 @@ export function ImplementacaoDetalhe() {
   const [criacoesKommo, setCriacoesKommo] = useState<Record<string, FunilKommoCriacao>>({});
   const [credencialKommoMeta, setCredencialKommoMeta] = useState<CredencialApiKommoMeta | null>(null);
   const [historicoStatus, setHistoricoStatus] = useState<ImplementacaoStatusHistorico[]>([]);
+  const [checkpointAdocao, setCheckpointAdocao] = useState<CheckpointAdocao | null>(null);
+  const [linkCheckpointCopiado, setLinkCheckpointCopiado] = useState(false);
   const [aba, setAba] = useState<Aba>('geral');
 
   const [loading, setLoading] = useState(true);
@@ -171,6 +202,7 @@ export function ImplementacaoDetalhe() {
       { data: marcadosData, error: marcadosError },
       { data: credenciaisData, error: credenciaisError },
       { data: historicoData, error: historicoError },
+      { data: checkpointData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       supabase.from('checklist_grupos_implementacao').select('*').order('ordem', { ascending: true }),
@@ -190,6 +222,11 @@ export function ImplementacaoDetalhe() {
         .select('*')
         .eq('implementacao_id', implementacaoId)
         .order('alterado_em', { ascending: true }),
+      supabase
+        .from('checkpoints_adocao')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .maybeSingle(),
     ]);
 
     if (implError) {
@@ -211,6 +248,7 @@ export function ImplementacaoDetalhe() {
     setEvidenciaFaltando(new Set());
     if (!credenciaisError) setCredenciais(credenciaisData ?? []);
     if (!historicoError) setHistoricoStatus(historicoData ?? []);
+    setCheckpointAdocao(checkpointData ?? null);
 
     const funis = await buscarFunisMaisRecentes(implData.mapeamento_id);
     setFunisDoMapeamento(funis);
@@ -303,7 +341,7 @@ export function ImplementacaoDetalhe() {
       return;
     }
 
-    const grupoSemana1 = grupos.find((g) => g.chave === 'semana_1');
+    const grupoSemana1 = grupos.find((g) => g.chave === 'semana_1_sessao1');
     const grupoSemana2 = grupos.find((g) => g.chave === 'semana_2');
     if (!grupoSemana1 || !grupoSemana2) {
       setGerandoItens(false);
@@ -638,6 +676,14 @@ export function ImplementacaoDetalhe() {
     carregar(implementacao.id);
   }
 
+  async function handleCopiarLinkCheckpoint() {
+    if (!implementacao) return;
+    const link = `${window.location.origin}/checkpoint/${implementacao.codigo_checkpoint}`;
+    await navigator.clipboard.writeText(link);
+    setLinkCheckpointCopiado(true);
+    setTimeout(() => setLinkCheckpointCopiado(false), 2000);
+  }
+
   async function handleCriarFunilNoKommo(funil: FunilGerado) {
     if (!implementacao) return;
 
@@ -742,6 +788,14 @@ export function ImplementacaoDetalhe() {
           onClick={() => setAba('credenciais')}
         >
           Credenciais
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'checkpoint' ? ' active' : ''}`}
+          onClick={() => setAba('checkpoint')}
+        >
+          Checkpoint 30 dias
+          {checkpointAdocao?.risco_churn && <span className="badge-danger">Risco</span>}
         </button>
       </div>
 
@@ -1077,6 +1131,15 @@ export function ImplementacaoDetalhe() {
           const completo = total > 0 && feitos === total;
           const percentual = total > 0 ? Math.round((feitos / total) * 100) : 0;
           const travado = grupoBloqueado(grupo.chave, implementacao.status);
+          // Semana 1 é dividida em duas sessões — a sugestão de avançar de
+          // status (mostrada junto da Sessão 2) exige as duas completas.
+          const sessao1Completa = (() => {
+            if (grupo.chave !== 'semana_1_sessao2') return true;
+            const grupoSessao1 = grupos.find((g) => g.chave === 'semana_1_sessao1');
+            if (!grupoSessao1) return true;
+            const p = progressoGrupo(grupoSessao1.id);
+            return p.total > 0 && p.feitos === p.total;
+          })();
           return (
             <section key={grupo.id} className={`card form-card${travado ? ' checklist-grupo-travado' : ''}`}>
               <div className="page-header">
@@ -1105,7 +1168,10 @@ export function ImplementacaoDetalhe() {
                   Geral).
                 </p>
               )}
-              {!travado && completo && grupoSugereAvancoStatus(grupo.chave, implementacao.status) && (
+              {!travado &&
+                completo &&
+                sessao1Completa &&
+                grupoSugereAvancoStatus(grupo.chave, implementacao.status) && (
                 (() => {
                   const proximo = PROXIMO_STATUS[implementacao.status];
                   if (!proximo) return null;
@@ -1308,6 +1374,62 @@ export function ImplementacaoDetalhe() {
                 </button>
               </div>
             </form>
+          )}
+        </section>
+      )}
+
+      {aba === 'checkpoint' && (
+        <section className="card form-card">
+          <h2>Checkpoint de Adoção — 30 dias pós-entrega</h2>
+          <p className="field-hint">
+            Instrumento separado do checklist técnico e do NPS: mede se a adoção do Kommo
+            realmente aconteceu depois que o cliente ficou sozinho com a ferramenta, 30 dias após
+            a Semana 4.
+          </p>
+
+          {!checkpointAdocao && (
+            <>
+              <p className="field-hint">
+                Copie o link abaixo e envie para o cliente 30 dias após a entrega (Semana 4).
+              </p>
+              <button type="button" className="btn btn-secondary" onClick={handleCopiarLinkCheckpoint}>
+                {linkCheckpointCopiado ? 'Link copiado!' : 'Copiar link do checkpoint'}
+              </button>
+            </>
+          )}
+
+          {checkpointAdocao && (
+            <>
+              {checkpointAdocao.risco_churn && (
+                <p className="form-error">
+                  Sinal de risco de churn: o cliente respondeu que voltou a usar planilha/WhatsApp
+                  em paralelo ao Kommo. Vale acionar o comercial ou reforçar o acompanhamento.
+                </p>
+              )}
+
+              <ul className="historico-status-lista">
+                <li className="historico-status-item">
+                  <span className="historico-status-data">Uso diário</span>
+                  <span>{USO_DIARIO_LABELS[checkpointAdocao.uso_diario]}</span>
+                </li>
+                <li className="historico-status-item">
+                  <span className="historico-status-data">Frequência de uso dos relatórios</span>
+                  <span>{FREQUENCIA_USO_LABELS[checkpointAdocao.frequencia_uso]}</span>
+                </li>
+                <li className="historico-status-item">
+                  <span className="historico-status-data">Obstáculo relatado</span>
+                  <span>{checkpointAdocao.obstaculo || '—'}</span>
+                </li>
+                <li className="historico-status-item">
+                  <span className="historico-status-data">Contrataria manutenção?</span>
+                  <span>{INTENCAO_MANUTENCAO_LABELS[checkpointAdocao.intencao_manutencao]}</span>
+                </li>
+                <li className="historico-status-item">
+                  <span className="historico-status-data">Respondido em</span>
+                  <span>{new Date(checkpointAdocao.respondido_em).toLocaleString('pt-BR')}</span>
+                </li>
+              </ul>
+            </>
           )}
         </section>
       )}
