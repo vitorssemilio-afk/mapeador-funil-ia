@@ -339,7 +339,7 @@ export function Mapeamento() {
               rel="noopener noreferrer"
               className="btn btn-primary"
             >
-              Gerar relatório em PDF
+              Ver relatório (PDF/PPTX)
             </Link>
           )}
           {!mapeamento.enviado_pelo_cliente && (
