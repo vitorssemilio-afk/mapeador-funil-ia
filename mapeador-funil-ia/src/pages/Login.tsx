@@ -33,9 +33,9 @@ export function Login() {
     <div className="auth-screen">
       <div className="auth-card">
         <span className="auth-logo" aria-hidden="true">
-          M
+          C
         </span>
-        <h1 className="auth-title">Mapeador de Funil IA</h1>
+        <h1 className="auth-title">CRM Flow</h1>
         <p className="auth-subtitle">
           {mode === 'entrar' ? 'Entre na sua conta' : 'Crie sua conta'}
         </p>

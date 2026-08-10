@@ -46,9 +46,9 @@ export function Layout() {
         <div className="topbar-left">
           <NavLink to="/" end className="topbar-brand">
             <span className="brand-mark" aria-hidden="true">
-              M
+              C
             </span>
-            Mapeador de Funil IA
+            CRM Flow
           </NavLink>
           <nav className="topbar-nav">
             <NavLink to="/agenda" className={navLinkClass}>
