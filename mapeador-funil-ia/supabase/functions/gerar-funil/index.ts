@@ -13,7 +13,17 @@ async function sincronizarComGoogleSheetsSeConfigurado(
 ): Promise<void> {
   const serviceAccountRaw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
   const spreadsheetId = Deno.env.get('GOOGLE_SHEETS_SPREADSHEET_ID');
-  if (!serviceAccountRaw || !spreadsheetId) return;
+  if (!serviceAccountRaw || !spreadsheetId) {
+    console.error(
+      `Sincronização com Google Sheets pulada: secret(s) ausente(s) — ${[
+        !serviceAccountRaw && 'GOOGLE_SERVICE_ACCOUNT_JSON',
+        !spreadsheetId && 'GOOGLE_SHEETS_SPREADSHEET_ID',
+      ]
+        .filter(Boolean)
+        .join(', ')}.`,
+    );
+    return;
+  }
 
   try {
     const credenciais = JSON.parse(serviceAccountRaw);
