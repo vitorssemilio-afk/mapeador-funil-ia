@@ -439,6 +439,73 @@ a {
   background: var(--color-success);
 }
 
+/* ── Relatório de Respostas: barras de frequência ── */
+.freq-card {
+  margin-bottom: 20px;
+}
+
+.freq-card-header {
+  margin-bottom: 14px;
+}
+
+.freq-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.freq-card-subtitle {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+}
+
+.freq-bar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.freq-bar-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 240px) 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.freq-bar-label {
+  font-size: 13px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.freq-bar-track {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.freq-bar-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.freq-bar-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  min-width: 84px;
+  text-align: right;
+}
+
 .checklist-grupo-travado {
   opacity: 0.55;
 }

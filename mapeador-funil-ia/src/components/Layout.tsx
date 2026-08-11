@@ -60,6 +60,9 @@ export function Layout() {
             <NavLink to="/formulario" className={navLinkClass}>
               Formulário
             </NavLink>
+            <NavLink to="/relatorio-respostas" className={navLinkClass}>
+              Relatório de Respostas
+            </NavLink>
             <NavLink to="/campos-padrao" className={navLinkClass}>
               Campos Padrão
             </NavLink>

@@ -16,6 +16,7 @@ import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
 import { NovoMapeamento } from './pages/NovoMapeamento';
 import { RelatorioFunil } from './pages/RelatorioFunil';
+import { RelatorioRespostas } from './pages/RelatorioRespostas';
 import { RespostasFormulario } from './pages/RespostasFormulario';
 
 function App() {
@@ -56,6 +57,7 @@ function App() {
               <Route path="/novo" element={<NovoMapeamento />} />
               <Route path="/mapeamento/:id" element={<Mapeamento />} />
               <Route path="/campos-padrao" element={<CamposPadrao />} />
+              <Route path="/relatorio-respostas" element={<RelatorioRespostas />} />
               <Route path="/formulario" element={<FormularioAdmin />} />
               <Route path="/implementacoes" element={<ImplementacoesCrm />} />
               <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
