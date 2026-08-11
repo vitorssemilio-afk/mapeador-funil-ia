@@ -440,8 +440,18 @@ a {
 }
 
 /* ── Relatório de Respostas: barras de frequência ── */
-.freq-card {
-  margin-bottom: 20px;
+.freq-bloco {
+  margin-bottom: 28px;
+}
+
+.freq-bloco h2 {
+  margin-bottom: 14px;
+}
+
+.freq-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 16px;
 }
 
 .freq-card-header {
@@ -492,9 +502,13 @@ a {
 
 .freq-bar-fill {
   height: 100%;
-  background: var(--color-accent);
+  background: var(--color-border-strong);
   border-radius: 999px;
   transition: width 0.2s ease;
+}
+
+.freq-bar-fill-top {
+  background: var(--color-accent);
 }
 
 .freq-bar-count {

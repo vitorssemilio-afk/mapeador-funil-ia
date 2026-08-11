@@ -140,6 +140,8 @@ export function RelatorioRespostas() {
       .filter((bloco) => bloco.resumos.length > 0);
   }, [blocos, linhas]);
 
+  const totalPerguntasAnalisadas = resumosPorBloco.reduce((soma, bloco) => soma + bloco.resumos.length, 0);
+
   return (
     <div className="page">
       <div className="page-header">
@@ -162,61 +164,80 @@ export function RelatorioRespostas() {
         </div>
       )}
 
+      {!loading && !error && totalEnviados > 0 && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span className="stat-value">{totalEnviados}</span>
+            <span className="stat-label">Clientes considerados</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{totalPerguntasAnalisadas}</span>
+            <span className="stat-label">Perguntas analisadas</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{resumosPorBloco.length}</span>
+            <span className="stat-label">Blocos do formulário</span>
+          </div>
+        </div>
+      )}
+
       {!loading &&
         !error &&
         resumosPorBloco.map((bloco) => (
-          <section key={bloco.titulo} className="card form-card">
+          <section key={bloco.titulo} className="freq-bloco">
             <h2>{bloco.titulo}</h2>
-            {bloco.resumos.map((resumo) => (
-              <div key={resumo.pergunta.id} className="freq-card">
-                <div className="freq-card-header">
-                  <p className="freq-card-title">{resumo.pergunta.label}</p>
-                  <p className="freq-card-subtitle">
-                    {resumo.totalRespondentes} de {totalEnviados} responderam
-                  </p>
-                </div>
+            <div className="freq-grid">
+              {bloco.resumos.map((resumo) => (
+                <div key={resumo.pergunta.id} className="card freq-card">
+                  <div className="freq-card-header">
+                    <p className="freq-card-title">{resumo.pergunta.label}</p>
+                    <p className="freq-card-subtitle">
+                      {resumo.totalRespondentes} de {totalEnviados} responderam
+                    </p>
+                  </div>
 
-                {resumo.tipo === 'escolha' ? (
-                  <div className="freq-bar-list">
-                    {resumo.itens.map((item) => {
-                      const maiorContagem = resumo.itens[0]?.contagem ?? 1;
-                      const percentual = Math.round((item.contagem / resumo.totalRespondentes) * 100);
-                      return (
-                        <div key={item.valor} className="freq-bar-row">
-                          <span className="freq-bar-label" title={item.label}>
-                            {item.label}
-                          </span>
-                          <span className="freq-bar-track">
-                            <span
-                              className="freq-bar-fill"
-                              style={{ width: `${(item.contagem / maiorContagem) * 100}%` }}
-                            />
-                          </span>
-                          <span className="freq-bar-count">
-                            {item.contagem} ({percentual}%)
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="stats-grid">
-                    <div className="stat-card">
-                      <span className="stat-value">{formatarNumero(resumo.media)}</span>
-                      <span className="stat-label">Média</span>
+                  {resumo.tipo === 'escolha' ? (
+                    <div className="freq-bar-list">
+                      {resumo.itens.map((item, indice) => {
+                        const maiorContagem = resumo.itens[0]?.contagem ?? 1;
+                        const percentual = Math.round((item.contagem / resumo.totalRespondentes) * 100);
+                        return (
+                          <div key={item.valor} className="freq-bar-row">
+                            <span className="freq-bar-label" title={item.label}>
+                              {item.label}
+                            </span>
+                            <span className="freq-bar-track">
+                              <span
+                                className={`freq-bar-fill${indice === 0 ? ' freq-bar-fill-top' : ''}`}
+                                style={{ width: `${(item.contagem / maiorContagem) * 100}%` }}
+                              />
+                            </span>
+                            <span className="freq-bar-count">
+                              {item.contagem} ({percentual}%)
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="stat-card">
-                      <span className="stat-value">{formatarNumero(resumo.minimo)}</span>
-                      <span className="stat-label">Mínimo</span>
+                  ) : (
+                    <div className="stats-grid">
+                      <div className="stat-card">
+                        <span className="stat-value">{formatarNumero(resumo.media)}</span>
+                        <span className="stat-label">Média</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-value">{formatarNumero(resumo.minimo)}</span>
+                        <span className="stat-label">Mínimo</span>
+                      </div>
+                      <div className="stat-card">
+                        <span className="stat-value">{formatarNumero(resumo.maximo)}</span>
+                        <span className="stat-label">Máximo</span>
+                      </div>
                     </div>
-                    <div className="stat-card">
-                      <span className="stat-value">{formatarNumero(resumo.maximo)}</span>
-                      <span className="stat-label">Máximo</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                  )}
+                </div>
+              ))}
+            </div>
           </section>
         ))}
     </div>
