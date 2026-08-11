@@ -308,6 +308,7 @@ export type MapeamentoRespostaFlat = {
   mapeamento_id: string;
   nome_negocio: string;
   mapeamento_status: MapeamentoStatus;
+  enviado_pelo_cliente: boolean;
   mapeamento_criado_em: string;
   bloco_titulo: string;
   pergunta_id: string;
