@@ -3,6 +3,11 @@
 -- rascunhos ainda em preenchimento — senão um formulário pela metade
 -- distorce a contagem de frequência das opções. A view já achatava as
 -- respostas, só faltava expor essa coluna.
+--
+-- A coluna nova entra no FINAL da lista de select — um `create or replace
+-- view` no Postgres só aceita adicionar colunas no final; inserir no meio
+-- desloca a posição das colunas seguintes e ele recusa com "cannot change
+-- name of view column" (aconteceu numa tentativa anterior desta migration).
 
 create or replace view public.mapeamentos_respostas_flat
 with (security_invoker = true) as
@@ -10,7 +15,6 @@ select
   m.id as mapeamento_id,
   m.nome_negocio,
   m.status as mapeamento_status,
-  m.enviado_pelo_cliente,
   m.created_at as mapeamento_criado_em,
   b.titulo as bloco_titulo,
   p.pergunta_id,
@@ -22,7 +26,8 @@ select
       array_to_string(array(select jsonb_array_elements_text(r.valor)), ', ')
     when jsonb_typeof(r.valor) = 'string' then r.valor #>> '{}'
     else r.valor::text
-  end as resposta_texto
+  end as resposta_texto,
+  m.enviado_pelo_cliente
 from public.mapeamentos m
 cross join lateral jsonb_each(m.respostas) as r(chave, valor)
 join public.perguntas_formulario p on p.pergunta_id = r.chave
