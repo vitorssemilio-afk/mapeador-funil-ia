@@ -87,11 +87,11 @@ export function RelatorioRespostas() {
       try {
         const [schema, { data: linhasData, error: linhasError }, { count }] = await Promise.all([
           carregarFormSchema(),
-          supabase.from('mapeamentos_respostas_flat').select('*').eq('enviado_pelo_cliente', true),
+          supabase.from('mapeamentos_respostas_flat').select('*').eq('mapeamento_status', 'concluido'),
           supabase
             .from('mapeamentos')
             .select('id', { count: 'exact', head: true })
-            .eq('enviado_pelo_cliente', true),
+            .eq('status', 'concluido'),
         ]);
 
         if (cancelled) return;
@@ -148,9 +148,9 @@ export function RelatorioRespostas() {
         <div>
           <h1>Relatório de Respostas</h1>
           <p className="field-hint">
-            Padrões de resposta entre os {totalEnviados} cliente{totalEnviados === 1 ? '' : 's'} que já
-            enviaram o formulário. Só perguntas de múltipla escolha e número entram aqui — texto livre
-            precisa de leitura manual.
+            Padrões de resposta entre os {totalEnviados} mapeamento{totalEnviados === 1 ? '' : 's'} concluído
+            {totalEnviados === 1 ? '' : 's'}. Só perguntas de múltipla escolha e número entram aqui — texto
+            livre precisa de leitura manual.
           </p>
         </div>
       </div>
@@ -160,7 +160,7 @@ export function RelatorioRespostas() {
 
       {!loading && !error && totalEnviados === 0 && (
         <div className="empty-state">
-          <p>Ainda não há formulários enviados pelos clientes pra gerar esse relatório.</p>
+          <p>Ainda não há mapeamentos concluídos pra gerar esse relatório.</p>
         </div>
       )}
 
