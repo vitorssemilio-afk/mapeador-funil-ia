@@ -144,7 +144,7 @@ export function Cronograma() {
                       {fases.map((fase) => {
                         const inicioPx = diaParaPx(fase.inicio, escala);
                         const fimPx = diaParaPx(fase.fim ?? hoje, escala);
-                        const largura = Math.max(PX_POR_DIA * 0.6, fimPx - inicioPx);
+                        const largura = Math.max(PX_POR_DIA, fimPx - inicioPx);
                         return (
                           <div
                             key={fase.status}

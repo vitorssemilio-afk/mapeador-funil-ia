@@ -1369,7 +1369,7 @@ export function ImplementacaoDetalhe() {
                   return (
                     <div key={entrada.item.id} className="gantt-row">
                       <div className="gantt-row-label" title={entrada.item.texto}>
-                        {entrada.item.texto}
+                        <span className="gantt-row-label-texto">{entrada.item.texto}</span>
                       </div>
                       <div className="gantt-row-track" style={{ width: largura }}>
                         <div className="gantt-hoje-tick" style={{ left: hojePx }} />
@@ -1388,7 +1388,7 @@ export function ImplementacaoDetalhe() {
                             style={{
                               left: diaParaPx(fase.inicio, escalaGantt),
                               width: Math.max(
-                                PX_POR_DIA * 0.6,
+                                PX_POR_DIA,
                                 diaParaPx(entrada.vencimento, escalaGantt) - diaParaPx(fase.inicio, escalaGantt),
                               ),
                               background: entrada.diasAtraso > 0 ? '#f87171' : '#fbbf24',
