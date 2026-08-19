@@ -153,3 +153,40 @@ export function calcularEscala(datas: Date[], hoje: Date): EscalaTempo {
 export function diaParaPx(data: Date, escala: EscalaTempo): number {
   return diferencaEmDias(data, escala.inicio) * PX_POR_DIA;
 }
+
+export const ALTURA_RAIA = 32;
+
+export type FaseComRaia = {
+  fase: FaseCronograma;
+  raia: number;
+  left: number;
+  width: number;
+};
+
+// Empacota fases que se sobrepõem no tempo em "raias" verticais dentro da
+// mesma linha, pra nenhuma fase ficar visualmente escondida atrás de outra
+// quando duas aconteceram no mesmo período (ex: entrou na Semana 2 no mesmo
+// dia em que saiu da Semana 1).
+export function empacotarFasesEmRaias(fases: FaseCronograma[], escala: EscalaTempo, hoje: Date): FaseComRaia[] {
+  const fimPorRaia: number[] = [];
+  const resultado: FaseComRaia[] = [];
+
+  for (const fase of fases) {
+    const inicioPx = diaParaPx(fase.inicio, escala);
+    const fimPx = diaParaPx(fase.fim ?? hoje, escala);
+    const largura = Math.max(PX_POR_DIA, fimPx - inicioPx);
+    const direita = inicioPx + largura;
+
+    let raia = fimPorRaia.findIndex((limite) => inicioPx >= limite);
+    if (raia === -1) {
+      raia = fimPorRaia.length;
+      fimPorRaia.push(direita);
+    } else {
+      fimPorRaia[raia] = direita;
+    }
+
+    resultado.push({ fase, raia, left: inicioPx, width: largura });
+  }
+
+  return resultado;
+}

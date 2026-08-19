@@ -3,7 +3,15 @@ import { Link } from 'react-router-dom';
 import { GanttRuler } from '../components/GanttRuler';
 import { ImplementacaoStatusBadge, IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { inicioDoDia } from '../lib/agendaImplementacao';
-import { PX_POR_DIA, calcularEscala, diaParaPx, fasesImplementacao, type FaseCronograma } from '../lib/cronograma';
+import {
+  ALTURA_RAIA,
+  PX_POR_DIA,
+  calcularEscala,
+  diaParaPx,
+  empacotarFasesEmRaias,
+  fasesImplementacao,
+  type FaseCronograma,
+} from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
 import type { ImplementacaoCrm, ImplementacaoStatus, ImplementacaoStatusHistorico } from '../types/database';
 
@@ -133,31 +141,29 @@ export function Cronograma() {
 
               {implementacoes.map((implementacao) => {
                 const fases = fasesPorImplementacao.get(implementacao.id) ?? [];
+                const fasesComRaia = empacotarFasesEmRaias(fases, escala, hoje);
+                const numRaias = Math.max(1, ...fasesComRaia.map((f) => f.raia + 1));
+                const alturaTrack = numRaias * ALTURA_RAIA + 16;
                 return (
                   <div key={implementacao.id} className="gantt-row">
                     <div className="gantt-row-label">
                       <Link to={`/implementacoes/${implementacao.id}`}>{implementacao.nome_cliente}</Link>
                       <ImplementacaoStatusBadge status={implementacao.status} />
                     </div>
-                    <div className="gantt-row-track" style={{ width: larguraTotal }}>
+                    <div className="gantt-row-track" style={{ width: larguraTotal, minHeight: alturaTrack }}>
                       <div className="gantt-hoje-tick" style={{ left: hojePx }} />
-                      {fases.map((fase) => {
-                        const inicioPx = diaParaPx(fase.inicio, escala);
-                        const fimPx = diaParaPx(fase.fim ?? hoje, escala);
-                        const largura = Math.max(PX_POR_DIA, fimPx - inicioPx);
-                        return (
-                          <div
-                            key={fase.status}
-                            className={`gantt-bar${fase.fim === null ? ' gantt-bar-andamento' : ''}`}
-                            style={{ left: inicioPx, width: largura, background: CORES_FASE[fase.status] }}
-                            title={`${fase.titulo}: ${fase.inicio.toLocaleDateString('pt-BR')} — ${
-                              fase.fim ? fase.fim.toLocaleDateString('pt-BR') : 'em andamento'
-                            }`}
-                          >
-                            {fase.titulo}
-                          </div>
-                        );
-                      })}
+                      {fasesComRaia.map(({ fase, raia, left, width }) => (
+                        <div
+                          key={fase.status}
+                          className={`gantt-bar${fase.fim === null ? ' gantt-bar-andamento' : ''}`}
+                          style={{ left, width, top: 8 + raia * ALTURA_RAIA, background: CORES_FASE[fase.status] }}
+                          title={`${fase.titulo}: ${fase.inicio.toLocaleDateString('pt-BR')} — ${
+                            fase.fim ? fase.fim.toLocaleDateString('pt-BR') : 'em andamento'
+                          }`}
+                        >
+                          {fase.titulo}
+                        </div>
+                      ))}
                       {fases.length === 0 && (
                         <span className="field-hint gantt-sem-fase">Sem histórico de fase ainda.</span>
                       )}
