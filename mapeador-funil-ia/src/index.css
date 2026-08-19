@@ -979,6 +979,18 @@ a {
   border-radius: 50%;
 }
 
+.gantt-bar-legenda-externa {
+  position: absolute;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .gantt-sem-fase {
   position: absolute;
   top: 12px;

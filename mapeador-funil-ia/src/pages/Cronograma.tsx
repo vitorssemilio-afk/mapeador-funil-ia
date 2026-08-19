@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GanttRuler } from '../components/GanttRuler';
 import { ImplementacaoStatusBadge, IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
@@ -14,6 +14,10 @@ import {
 } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
 import type { ImplementacaoCrm, ImplementacaoStatus, ImplementacaoStatusHistorico } from '../types/database';
+
+// Abaixo disso o título não cabe legível dentro da barra — sai como um
+// rótulo ao lado dela em vez de cortar o texto.
+const LARGURA_MINIMA_TEXTO_INTERNO = 90;
 
 const CORES_FASE: Record<ImplementacaoStatus, string> = {
   pre_requisito: '#fbbf24',
@@ -152,18 +156,33 @@ export function Cronograma() {
                     </div>
                     <div className="gantt-row-track" style={{ width: larguraTotal, minHeight: alturaTrack }}>
                       <div className="gantt-hoje-tick" style={{ left: hojePx }} />
-                      {fasesComRaia.map(({ fase, raia, left, width }) => (
-                        <div
-                          key={fase.status}
-                          className={`gantt-bar${fase.fim === null ? ' gantt-bar-andamento' : ''}`}
-                          style={{ left, width, top: 8 + raia * ALTURA_RAIA, background: CORES_FASE[fase.status] }}
-                          title={`${fase.titulo}: ${fase.inicio.toLocaleDateString('pt-BR')} — ${
-                            fase.fim ? fase.fim.toLocaleDateString('pt-BR') : 'em andamento'
-                          }`}
-                        >
-                          {fase.titulo}
-                        </div>
-                      ))}
+                      {fasesComRaia.map(({ fase, raia, left, width }) => {
+                        const legendaFora = width < LARGURA_MINIMA_TEXTO_INTERNO;
+                        const titulo = `${fase.titulo}: ${fase.inicio.toLocaleDateString('pt-BR')} — ${
+                          fase.fim ? fase.fim.toLocaleDateString('pt-BR') : 'em andamento'
+                        }`;
+                        const top = 8 + raia * ALTURA_RAIA;
+                        return (
+                          <Fragment key={fase.status}>
+                            <div
+                              className={`gantt-bar${fase.fim === null ? ' gantt-bar-andamento' : ''}`}
+                              style={{ left, width, top, background: CORES_FASE[fase.status] }}
+                              title={titulo}
+                            >
+                              {!legendaFora && fase.titulo}
+                            </div>
+                            {legendaFora && (
+                              <span
+                                className="gantt-bar-legenda-externa"
+                                style={{ left: left + width + 6, top }}
+                                title={titulo}
+                              >
+                                {fase.titulo}
+                              </span>
+                            )}
+                          </Fragment>
+                        );
+                      })}
                       {fases.length === 0 && (
                         <span className="field-hint gantt-sem-fase">Sem histórico de fase ainda.</span>
                       )}
