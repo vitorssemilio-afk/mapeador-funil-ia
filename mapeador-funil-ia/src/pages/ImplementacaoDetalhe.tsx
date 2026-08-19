@@ -1,7 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
+import { inicioDoDia } from '../lib/agendaImplementacao';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import { PX_POR_DIA, calcularEscala, diaParaPx, fasesImplementacao, itensCronograma } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
 import type {
   CheckpointAdocao,
@@ -19,7 +22,7 @@ import type {
   UsoDiarioCheckpoint,
 } from '../types/database';
 
-type Aba = 'geral' | 'checklist' | 'credenciais' | 'checkpoint';
+type Aba = 'geral' | 'checklist' | 'cronograma' | 'credenciais' | 'checkpoint';
 
 const USO_DIARIO_LABELS: Record<UsoDiarioCheckpoint, string> = {
   so_kommo: 'Só Kommo',
@@ -126,6 +129,24 @@ function grupoBloqueado(chave: string, statusAtual: ImplementacaoStatus): boolea
   return ORDEM_STATUS[statusAtual] < ORDEM_STATUS[statusRequerido];
 }
 
+// Converte entre <input type="date"> (YYYY-MM-DD, sem fuso) e timestamptz
+// (marcado_em), usando o fuso local pra não voltar/adiantar um dia na volta.
+function hojeInputDate(): string {
+  const agora = new Date();
+  const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function paraDataInput(iso: string): string {
+  const data = new Date(iso);
+  const local = new Date(data.getTime() - data.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function dataInputParaIso(dataInput: string): string {
+  return new Date(`${dataInput}T12:00:00`).toISOString();
+}
+
 function preRequisitoCompleto(form: FormGeral): boolean {
   return (
     form.email_conta_kommo.trim().length > 0 &&
@@ -159,6 +180,7 @@ export function ImplementacaoDetalhe() {
   const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
   const [itens, setItens] = useState<ChecklistItemImplementacao[]>([]);
   const [marcados, setMarcados] = useState<Set<string>>(new Set());
+  const [dataConclusao, setDataConclusao] = useState<Record<string, string>>({});
   const [evidencias, setEvidencias] = useState<Record<string, string>>({});
   const [evidenciaFaltando, setEvidenciaFaltando] = useState<Set<string>>(new Set());
   const [credenciais, setCredenciais] = useState<CredencialCrmListada[]>([]);
@@ -191,6 +213,42 @@ export function ImplementacaoDetalhe() {
   const [excluindo, setExcluindo] = useState(false);
   const [gerandoItens, setGerandoItens] = useState(false);
 
+  const hoje = useMemo(() => inicioDoDia(new Date()), []);
+
+  const fasesCronograma = useMemo(
+    () => (implementacao ? fasesImplementacao(implementacao, historicoStatus) : []),
+    [implementacao, historicoStatus],
+  );
+
+  const itensGantt = useMemo(() => {
+    if (!implementacao) return [];
+    const marcadosMapa = new Map(
+      itens.map((item) => [
+        item.id,
+        {
+          marcado: marcados.has(item.id),
+          marcadoEm: dataConclusao[item.id] ? `${dataConclusao[item.id]}T12:00:00` : null,
+        },
+      ]),
+    );
+    return itensCronograma({
+      implementacao,
+      grupos,
+      itens,
+      marcados: marcadosMapa,
+      fases: fasesCronograma,
+      hoje,
+    });
+  }, [implementacao, grupos, itens, marcados, dataConclusao, fasesCronograma, hoje]);
+
+  const escalaGantt = useMemo(() => {
+    const datas = [
+      ...fasesCronograma.flatMap((fase) => [fase.inicio, fase.fim ?? hoje]),
+      ...itensGantt.flatMap((entrada) => [entrada.dataConclusao, entrada.vencimento].filter((d): d is Date => d !== null)),
+    ];
+    return calcularEscala(datas, hoje);
+  }, [fasesCronograma, itensGantt, hoje]);
+
   async function carregar(implementacaoId: string) {
     setLoading(true);
     setError(null);
@@ -214,7 +272,7 @@ export function ImplementacaoDetalhe() {
         .order('ordem', { ascending: true }),
       supabase
         .from('implementacao_checklist_marcado')
-        .select('item_id, marcado, evidencia')
+        .select('item_id, marcado, evidencia, marcado_em')
         .eq('implementacao_id', implementacaoId),
       supabase.rpc('listar_credenciais_crm', { p_implementacao_id: implementacaoId }),
       supabase
@@ -243,6 +301,13 @@ export function ImplementacaoDetalhe() {
       setMarcados(new Set((marcadosData ?? []).filter((m) => m.marcado).map((m) => m.item_id)));
       setEvidencias(
         Object.fromEntries((marcadosData ?? []).map((m) => [m.item_id, m.evidencia ?? ''])),
+      );
+      setDataConclusao(
+        Object.fromEntries(
+          (marcadosData ?? [])
+            .filter((m) => m.marcado)
+            .map((m) => [m.item_id, paraDataInput(m.marcado_em)]),
+        ),
       );
     }
     setEvidenciaFaltando(new Set());
@@ -387,15 +452,18 @@ export function ImplementacaoDetalhe() {
     await carregar(implementacao.id);
   }
 
-  async function persistirItem(itemId: string, marcado: boolean) {
+  async function persistirItem(itemId: string, marcado: boolean, dataConclusaoInput?: string) {
     if (!implementacao) return;
+    const marcadoEm = marcado
+      ? dataInputParaIso(dataConclusaoInput ?? dataConclusao[itemId] ?? hojeInputDate())
+      : new Date().toISOString();
     await supabase.from('implementacao_checklist_marcado').upsert(
       {
         implementacao_id: implementacao.id,
         item_id: itemId,
         marcado,
         evidencia: (evidencias[itemId] ?? '').trim() || null,
-        marcado_em: new Date().toISOString(),
+        marcado_em: marcadoEm,
       },
       { onConflict: 'implementacao_id,item_id' },
     );
@@ -427,7 +495,19 @@ export function ImplementacaoDetalhe() {
       return next;
     });
 
-    await persistirItem(item.id, novoMarcado);
+    const dataParaSalvar = novoMarcado ? dataConclusao[item.id] ?? hojeInputDate() : undefined;
+    if (novoMarcado) {
+      setDataConclusao((prev) => (prev[item.id] ? prev : { ...prev, [item.id]: dataParaSalvar! }));
+    }
+
+    await persistirItem(item.id, novoMarcado, dataParaSalvar);
+  }
+
+  async function handleDataConclusaoChange(itemId: string, valor: string) {
+    setDataConclusao((prev) => ({ ...prev, [itemId]: valor }));
+    if (marcados.has(itemId)) {
+      await persistirItem(itemId, true, valor);
+    }
   }
 
   function handleEvidenciaChange(itemId: string, texto: string) {
@@ -781,6 +861,13 @@ export function ImplementacaoDetalhe() {
           onClick={() => setAba('checklist')}
         >
           Checklist
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'cronograma' ? ' active' : ''}`}
+          onClick={() => setAba('cronograma')}
+        >
+          Cronograma
         </button>
         <button
           type="button"
@@ -1201,36 +1288,9 @@ export function ImplementacaoDetalhe() {
                 })()
               )}
               <div className="options-list">
-                {itensDoGrupo(grupo.id).map((item) =>
-                  item.requer_evidencia ? (
-                    <div key={item.id} className="option-checkbox-wrap">
-                      <label className="option-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={marcados.has(item.id)}
-                          onChange={() => handleToggleItem(item)}
-                          disabled={travado}
-                        />
-                        <span>
-                          {item.texto}
-                          {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
-                        </span>
-                      </label>
-                      <input
-                        type="text"
-                        className="option-livre-input evidencia-input"
-                        placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
-                        value={evidencias[item.id] ?? ''}
-                        onChange={(e) => handleEvidenciaChange(item.id, e.target.value)}
-                        onBlur={() => handleEvidenciaBlur(item)}
-                        disabled={travado}
-                      />
-                      {evidenciaFaltando.has(item.id) && (
-                        <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
-                      )}
-                    </div>
-                  ) : (
-                    <label key={item.id} className="option-checkbox">
+                {itensDoGrupo(grupo.id).map((item) => (
+                  <div key={item.id} className="option-checkbox-wrap">
+                    <label className="option-checkbox">
                       <input
                         type="checkbox"
                         checked={marcados.has(item.id)}
@@ -1242,8 +1302,36 @@ export function ImplementacaoDetalhe() {
                         {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
                       </span>
                     </label>
-                  ),
-                )}
+                    {marcados.has(item.id) && (
+                      <label className="data-conclusao-field">
+                        <span className="field-hint">Feito em</span>
+                        <input
+                          type="date"
+                          className="option-livre-input data-conclusao-input"
+                          value={dataConclusao[item.id] ?? hojeInputDate()}
+                          onChange={(e) => handleDataConclusaoChange(item.id, e.target.value)}
+                          disabled={travado}
+                        />
+                      </label>
+                    )}
+                    {item.requer_evidencia && (
+                      <>
+                        <input
+                          type="text"
+                          className="option-livre-input evidencia-input"
+                          placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
+                          value={evidencias[item.id] ?? ''}
+                          onChange={(e) => handleEvidenciaChange(item.id, e.target.value)}
+                          onBlur={() => handleEvidenciaBlur(item)}
+                          disabled={travado}
+                        />
+                        {evidenciaFaltando.has(item.id) && (
+                          <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
                 {itensDoGrupo(grupo.id).length === 0 && (
                   <p className="field-hint">Nenhum item cadastrado neste grupo.</p>
                 )}
@@ -1251,6 +1339,82 @@ export function ImplementacaoDetalhe() {
             </section>
           );
         })}
+
+      {aba === 'cronograma' && (
+        <section className="card form-card">
+          <h2>Cronograma</h2>
+          <p className="field-hint">
+            Uma linha por item do checklist inteiro. Verde = feito, na data real. Laranja/vermelho =
+            pendente, do início da fase até o prazo do item (vermelho se já venceu). Sem barra = fase
+            ainda não alcançada ou item sem dia definido.
+          </p>
+
+          {itensGantt.length === 0 && <p className="field-hint">Nenhum item de checklist cadastrado ainda.</p>}
+
+          {itensGantt.length > 0 && (
+            <div className="gantt-scroll">
+              <div className="gantt-inner" style={{ minWidth: escalaGantt.totalDias * PX_POR_DIA + 220 }}>
+                <div className="gantt-row gantt-row-ruler">
+                  <div className="gantt-row-label" />
+                  <div className="gantt-row-track" style={{ width: escalaGantt.totalDias * PX_POR_DIA }}>
+                    <GanttRuler escala={escalaGantt} />
+                  </div>
+                </div>
+
+                {itensGantt.map((entrada) => {
+                  const fase = fasesCronograma.find((f) => f.status === entrada.grupoStatus);
+                  const largura = escalaGantt.totalDias * PX_POR_DIA;
+                  const hojePx = diaParaPx(hoje, escalaGantt);
+
+                  return (
+                    <div key={entrada.item.id} className="gantt-row">
+                      <div className="gantt-row-label" title={entrada.item.texto}>
+                        {entrada.item.texto}
+                      </div>
+                      <div className="gantt-row-track" style={{ width: largura }}>
+                        <div className="gantt-hoje-tick" style={{ left: hojePx }} />
+
+                        {entrada.feito && entrada.dataConclusao && (
+                          <div
+                            className="gantt-bar gantt-bar-ponto"
+                            style={{ left: diaParaPx(entrada.dataConclusao, escalaGantt) - 4, background: '#34d399' }}
+                            title={`Feito em ${entrada.dataConclusao.toLocaleDateString('pt-BR')}`}
+                          />
+                        )}
+
+                        {!entrada.feito && entrada.vencimento && fase && (
+                          <div
+                            className="gantt-bar"
+                            style={{
+                              left: diaParaPx(fase.inicio, escalaGantt),
+                              width: Math.max(
+                                PX_POR_DIA * 0.6,
+                                diaParaPx(entrada.vencimento, escalaGantt) - diaParaPx(fase.inicio, escalaGantt),
+                              ),
+                              background: entrada.diasAtraso > 0 ? '#f87171' : '#fbbf24',
+                            }}
+                            title={
+                              entrada.diasAtraso > 0
+                                ? `Atrasado há ${entrada.diasAtraso} dia(s) — venceu em ${entrada.vencimento.toLocaleDateString('pt-BR')}`
+                                : `Vence em ${entrada.vencimento.toLocaleDateString('pt-BR')}`
+                            }
+                          />
+                        )}
+
+                        {!entrada.feito && !entrada.vencimento && (
+                          <span className="field-hint gantt-sem-fase">
+                            {fase ? 'Sem dia definido' : 'Fase ainda não alcançada'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       {aba === 'credenciais' && (
         <section className="card form-card">

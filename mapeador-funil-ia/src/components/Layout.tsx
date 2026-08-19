@@ -54,6 +54,9 @@ export function Layout() {
             <NavLink to="/agenda" className={navLinkClass}>
               Agenda
             </NavLink>
+            <NavLink to="/cronograma" className={navLinkClass}>
+              Cronograma
+            </NavLink>
             <NavLink to="/implementacoes" className={navLinkClass}>
               Implementações
             </NavLink>

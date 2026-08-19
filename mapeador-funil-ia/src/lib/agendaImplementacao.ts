@@ -13,13 +13,13 @@ export type ItemAgenda = {
   diasAtraso: number;
 };
 
-function inicioDoDia(data: Date): Date {
+export function inicioDoDia(data: Date): Date {
   const copia = new Date(data);
   copia.setHours(0, 0, 0, 0);
   return copia;
 }
 
-function diferencaEmDias(depois: Date, antes: Date): number {
+export function diferencaEmDias(depois: Date, antes: Date): number {
   const MS_POR_DIA = 24 * 60 * 60 * 1000;
   return Math.round((inicioDoDia(depois).getTime() - inicioDoDia(antes).getTime()) / MS_POR_DIA);
 }

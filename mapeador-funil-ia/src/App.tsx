@@ -6,6 +6,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { Agenda } from './pages/Agenda';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { CheckpointAdocao } from './pages/CheckpointAdocao';
+import { Cronograma } from './pages/Cronograma';
 import { Dashboard } from './pages/Dashboard';
 import { FormularioAdmin } from './pages/FormularioAdmin';
 import { FormularioPublico } from './pages/FormularioPublico';
@@ -54,6 +55,7 @@ function App() {
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/agenda" element={<Agenda />} />
+              <Route path="/cronograma" element={<Cronograma />} />
               <Route path="/novo" element={<NovoMapeamento />} />
               <Route path="/mapeamento/:id" element={<Mapeamento />} />
               <Route path="/campos-padrao" element={<CamposPadrao />} />
