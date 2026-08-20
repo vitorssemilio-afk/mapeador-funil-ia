@@ -41,7 +41,9 @@ export function formatRespostasTexto(
   const partes: string[] = [];
 
   for (const bloco of blocos) {
-    const perguntasVisiveis = bloco.perguntas.filter((p) => perguntaVisivel(p, respostas));
+    const perguntasVisiveis = bloco.perguntas.filter(
+      (p) => perguntaVisivel(p, respostas) && p.incluirNaGeracaoIa !== false,
+    );
     if (perguntasVisiveis.length === 0) continue;
 
     partes.push(`## ${bloco.titulo}`);

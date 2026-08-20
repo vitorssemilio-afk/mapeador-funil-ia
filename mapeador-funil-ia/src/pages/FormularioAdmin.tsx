@@ -30,6 +30,7 @@ type FormPerguntaState = {
   opcoesTexto: string;
   condicaoPerguntaId: string;
   condicaoValores: string[];
+  incluirNaGeracaoIa: boolean;
 };
 
 const FORM_PERGUNTA_VAZIO: Omit<FormPerguntaState, 'bloco_id'> = {
@@ -42,6 +43,7 @@ const FORM_PERGUNTA_VAZIO: Omit<FormPerguntaState, 'bloco_id'> = {
   opcoesTexto: '',
   condicaoPerguntaId: '',
   condicaoValores: [],
+  incluirNaGeracaoIa: true,
 };
 
 // Faixa Unicode de acentos combinantes (U+0300–U+036F), usada após normalize('NFD')
@@ -215,6 +217,7 @@ export function FormularioAdmin() {
       opcoesTexto: formatOpcoesTexto(pergunta.opcoes),
       condicaoPerguntaId: pergunta.condicao_pergunta_id ?? '',
       condicaoValores: pergunta.condicao_valores ?? [],
+      incluirNaGeracaoIa: pergunta.incluir_na_geracao_ia,
     });
   }
 
@@ -255,6 +258,7 @@ export function FormularioAdmin() {
           opcoes,
           condicao_pergunta_id: condicaoPerguntaId,
           condicao_valores: condicaoValores,
+          incluir_na_geracao_ia: formPergunta.incluirNaGeracaoIa,
         })
         .eq('id', formPergunta.id);
 
@@ -284,6 +288,7 @@ export function FormularioAdmin() {
         opcoes,
         condicao_pergunta_id: condicaoPerguntaId,
         condicao_valores: condicaoValores,
+        incluir_na_geracao_ia: formPergunta.incluirNaGeracaoIa,
       });
 
       setSalvando(false);
@@ -434,6 +439,7 @@ export function FormularioAdmin() {
                     <th>Tipo</th>
                     <th>Obrigatória</th>
                     <th>Condição</th>
+                    <th>Usada na IA</th>
                     <th />
                   </tr>
                 </thead>
@@ -444,6 +450,7 @@ export function FormularioAdmin() {
                       <td>{TIPO_LABELS[pergunta.tipo]}</td>
                       <td>{pergunta.obrigatoria ? 'Sim' : '—'}</td>
                       <td className="field-hint">{condicaoLabel(pergunta) ?? '—'}</td>
+                      <td>{pergunta.incluir_na_geracao_ia ? 'Sim' : 'Não'}</td>
                       <td className="table-actions">
                         <button
                           type="button"
@@ -482,7 +489,7 @@ export function FormularioAdmin() {
                   ))}
                   {perguntasDoBloco(bloco.id).length === 0 && (
                     <tr>
-                      <td colSpan={5} className="field-hint">
+                      <td colSpan={6} className="field-hint">
                         Nenhuma pergunta neste bloco ainda.
                       </td>
                     </tr>
@@ -629,6 +636,20 @@ export function FormularioAdmin() {
                     onChange={(e) => setFormPergunta({ ...formPergunta, obrigatoria: e.target.checked })}
                   />
                   <span>Resposta obrigatória</span>
+                </label>
+
+                <label className="option-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={formPergunta.incluirNaGeracaoIa}
+                    onChange={(e) =>
+                      setFormPergunta({ ...formPergunta, incluirNaGeracaoIa: e.target.checked })
+                    }
+                  />
+                  <span>
+                    Usar essa resposta na geração do funil por IA — desmarque pra coletar a
+                    informação sem influenciar o funil gerado
+                  </span>
                 </label>
 
                 <div className="wizard-actions">

@@ -27,6 +27,9 @@ export type Pergunta = {
   prefixo?: string;
   obrigatoria?: boolean;
   condicao?: CondicaoPergunta;
+  // false = não entra no texto passado pro prompt de geração do funil por
+  // IA (mas continua sendo coletada normalmente do cliente).
+  incluirNaGeracaoIa?: boolean;
 };
 
 export type BlocoFormulario = {
