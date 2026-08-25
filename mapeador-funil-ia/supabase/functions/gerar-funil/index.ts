@@ -93,6 +93,7 @@ async function carregarBlocosFormulario(
           obrigatoria: boolean;
           condicao_pergunta_id: string | null;
           condicao_valores: string[] | null;
+          incluir_na_geracao_ia: boolean;
         }): Pergunta => ({
           id: p.pergunta_id,
           tipo: p.tipo,
@@ -104,6 +105,7 @@ async function carregarBlocosFormulario(
           condicao: p.condicao_pergunta_id
             ? { perguntaId: p.condicao_pergunta_id, valores: p.condicao_valores ?? [] }
             : undefined,
+          incluirNaGeracaoIa: p.incluir_na_geracao_ia,
         }),
       ),
   }));

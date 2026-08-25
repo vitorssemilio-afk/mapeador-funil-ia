@@ -149,6 +149,9 @@ export type PerguntaFormularioRow = {
   obrigatoria: boolean;
   condicao_pergunta_id: string | null;
   condicao_valores: string[] | null;
+  // false = a resposta continua sendo coletada normalmente, mas não entra no
+  // texto passado pro prompt de geração do funil por IA.
+  incluir_na_geracao_ia: boolean;
   created_at: string;
   updated_at: string;
 };
