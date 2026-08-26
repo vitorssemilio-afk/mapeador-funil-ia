@@ -45,9 +45,7 @@ export function Layout() {
       <header className="topbar">
         <div className="topbar-left">
           <NavLink to="/" end className="topbar-brand">
-            <span className="brand-mark" aria-hidden="true">
-              C
-            </span>
+            <img src="/favicon.svg" alt="" className="brand-mark" />
             CRM Flow
           </NavLink>
           <nav className="topbar-nav">

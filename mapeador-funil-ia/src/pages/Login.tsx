@@ -38,9 +38,7 @@ export function Login() {
   return (
     <div className="auth-screen">
       <div className="auth-card">
-        <span className="auth-logo" aria-hidden="true">
-          C
-        </span>
+        <img src="/favicon.svg" alt="" className="auth-logo" />
         <h1 className="auth-title">CRM Flow</h1>
         <p className="auth-subtitle">
           {mode === 'entrar' ? 'Entre na sua conta' : 'Crie sua conta'}
