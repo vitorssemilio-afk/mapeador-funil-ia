@@ -169,6 +169,13 @@ a {
   flex-shrink: 0;
 }
 
+img.brand-mark {
+  width: 26px;
+  padding: 0;
+  background: transparent;
+  object-fit: cover;
+}
+
 .topbar-nav {
   display: flex;
   align-items: center;
@@ -1146,6 +1153,12 @@ a {
   font-size: 17px;
   box-shadow: var(--shadow-accent);
   margin-bottom: 20px;
+}
+
+img.auth-logo {
+  padding: 0;
+  background: transparent;
+  object-fit: cover;
 }
 
 .auth-title {
