@@ -17,6 +17,12 @@ export function Login() {
     e.preventDefault();
     setError(null);
     setInfo(null);
+
+    if (mode === 'cadastrar' && !email.trim().toLowerCase().endsWith('@v4company.com')) {
+      setError('O cadastro é permitido apenas para e-mails do domínio @v4company.com.');
+      return;
+    }
+
     setSubmitting(true);
 
     const result = mode === 'entrar' ? await signIn(email, password) : await signUp(email, password);
