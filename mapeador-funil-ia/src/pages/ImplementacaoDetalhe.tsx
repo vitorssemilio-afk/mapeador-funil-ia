@@ -315,7 +315,15 @@ export function ImplementacaoDetalhe() {
     if (!historicoError) setHistoricoStatus(historicoData ?? []);
     setCheckpointAdocao(checkpointData ?? null);
 
-    const funis = await buscarFunisMaisRecentes(implData.mapeamento_id);
+    const { data: posVendaData } = await supabase
+      .from('mapeamentos')
+      .select('id')
+      .eq('mapeamento_origem_id', implData.mapeamento_id)
+      .eq('tipo', 'pos_venda');
+
+    const idsMapeamentos = [implData.mapeamento_id, ...(posVendaData ?? []).map((m) => m.id)];
+    const funisPorMapeamento = await Promise.all(idsMapeamentos.map(buscarFunisMaisRecentes));
+    const funis = funisPorMapeamento.flat();
     setFunisDoMapeamento(funis);
 
     const [{ data: criacoesData }, { data: credKommoData }] = await Promise.all([

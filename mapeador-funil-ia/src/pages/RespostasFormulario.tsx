@@ -37,7 +37,7 @@ export function RespostasFormulario() {
       }
 
       try {
-        const blocosData = await carregarFormSchema();
+        const blocosData = await carregarFormSchema(mapeamentoData.tipo);
         if (!cancelled) setBlocos(blocosData);
       } catch (schemaError) {
         if (!cancelled) {

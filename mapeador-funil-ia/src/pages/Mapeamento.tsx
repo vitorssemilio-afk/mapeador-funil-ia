@@ -47,6 +47,8 @@ export function Mapeamento() {
   const [iniciandoImplementacao, setIniciandoImplementacao] = useState(false);
   const [blocosFormulario, setBlocosFormulario] = useState<BlocoFormulario[]>([]);
   const [mostrarRespostas, setMostrarRespostas] = useState(false);
+  const [posVendaExistente, setPosVendaExistente] = useState<MapeamentoType | null>(null);
+  const [criandoPosVenda, setCriandoPosVenda] = useState(false);
 
   async function carregarFunis(mapeamentoId: string, versaoAlvo?: number) {
     const { data: versoesData, error: versoesError } = await supabase
@@ -137,9 +139,20 @@ export function Mapeamento() {
 
       if (!cancelled) setImplementacaoExistente(implementacaoData ?? null);
 
+      if (mapeamentoData.tipo === 'vendas') {
+        const { data: posVendaData } = await supabase
+          .from('mapeamentos')
+          .select('*')
+          .eq('mapeamento_origem_id', mapeamentoId)
+          .eq('tipo', 'pos_venda')
+          .maybeSingle();
+
+        if (!cancelled) setPosVendaExistente(posVendaData ?? null);
+      }
+
       if (mapeamentoData.status === 'concluido') {
         try {
-          const blocos = await carregarFormSchema();
+          const blocos = await carregarFormSchema(mapeamentoData.tipo);
           if (!cancelled) setBlocosFormulario(blocos);
         } catch {
           // se não der pra carregar o schema, a seção de respostas simplesmente não aparece
@@ -250,6 +263,8 @@ export function Mapeamento() {
         nome_negocio: `${mapeamento.nome_negocio} (cópia)`,
         status: 'em_preenchimento',
         respostas: mapeamento.respostas,
+        tipo: mapeamento.tipo,
+        mapeamento_origem_id: mapeamento.mapeamento_origem_id,
       })
       .select()
       .single();
@@ -258,6 +273,33 @@ export function Mapeamento() {
 
     if (dupError) {
       setError(dupError.message);
+      return;
+    }
+
+    navigate(`/mapeamento/${data.id}`);
+  }
+
+  async function handleGerarPosVenda() {
+    if (!mapeamento || !user) return;
+    setCriandoPosVenda(true);
+
+    const { data, error: insertError } = await supabase
+      .from('mapeamentos')
+      .insert({
+        user_id: user.id,
+        nome_negocio: mapeamento.nome_negocio,
+        status: 'em_preenchimento',
+        respostas: {},
+        tipo: 'pos_venda',
+        mapeamento_origem_id: mapeamento.id,
+      })
+      .select()
+      .single();
+
+    setCriandoPosVenda(false);
+
+    if (insertError) {
+      setError(insertError.message);
       return;
     }
 
@@ -330,8 +372,34 @@ export function Mapeamento() {
         <div>
           <h1>{mapeamento.nome_negocio}</h1>
           <StatusBadge status={mapeamento.status} enviadoPeloCliente={mapeamento.enviado_pelo_cliente} />
+          {mapeamento.tipo === 'pos_venda' && mapeamento.mapeamento_origem_id && (
+            <p className="field-hint">
+              Formulário de pós-venda —{' '}
+              <Link to={`/mapeamento/${mapeamento.mapeamento_origem_id}`}>ver mapeamento de vendas</Link>
+            </p>
+          )}
         </div>
         <div className="page-header-actions">
+          {mapeamento.tipo === 'vendas' &&
+            mapeamento.status === 'concluido' &&
+            (posVendaExistente ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => navigate(`/mapeamento/${posVendaExistente.id}`)}
+              >
+                Ver formulário de pós-venda
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleGerarPosVenda}
+                disabled={criandoPosVenda}
+              >
+                {criandoPosVenda ? 'Gerando…' : 'Gerar formulário de pós-venda'}
+              </button>
+            ))}
           {funis.length > 0 && (
             <Link
               to={`/mapeamento/${mapeamento.id}/relatorio`}
@@ -365,7 +433,8 @@ export function Mapeamento() {
           >
             {duplicando ? 'Duplicando…' : 'Duplicar como novo mapeamento'}
           </button>
-          {mapeamento.status === 'concluido' &&
+          {mapeamento.tipo === 'vendas' &&
+            mapeamento.status === 'concluido' &&
             (implementacaoExistente ? (
               <button
                 type="button"

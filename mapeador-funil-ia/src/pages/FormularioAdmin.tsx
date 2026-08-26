@@ -2,10 +2,16 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import type {
   BlocoFormularioRow,
+  MapeamentoTipo,
   OpcaoPergunta,
   PerguntaFormularioRow,
   PerguntaTipo,
 } from '../types/database';
+
+const FORMULARIO_TIPO_LABELS: Record<MapeamentoTipo, string> = {
+  vendas: 'Vendas',
+  pos_venda: 'Pós-venda',
+};
 
 const TIPO_LABELS: Record<PerguntaTipo, string> = {
   texto_curto: 'Texto curto',
@@ -102,6 +108,7 @@ export function FormularioAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [tipoAtivo, setTipoAtivo] = useState<MapeamentoTipo>('vendas');
 
   const [mostrarFormBloco, setMostrarFormBloco] = useState(false);
   const [tituloNovoBloco, setTituloNovoBloco] = useState('');
@@ -135,15 +142,22 @@ export function FormularioAdmin() {
     return perguntas.filter((p) => p.bloco_id === blocoId).sort((a, b) => a.ordem - b.ordem);
   }
 
+  const blocosDoTipo = blocos.filter((b) => b.formulario_tipo === tipoAtivo);
+
+  function tipoDoBloco(blocoId: string): MapeamentoTipo | undefined {
+    return blocos.find((b) => b.id === blocoId)?.formulario_tipo;
+  }
+
   async function handleCriarBloco(e: FormEvent) {
     e.preventDefault();
     if (!tituloNovoBloco.trim()) return;
 
     setSalvando(true);
-    const proximaOrdem = blocos.length > 0 ? Math.max(...blocos.map((b) => b.ordem)) + 1 : 0;
+    const proximaOrdem =
+      blocosDoTipo.length > 0 ? Math.max(...blocosDoTipo.map((b) => b.ordem)) + 1 : 0;
     const { error: insertError } = await supabase
       .from('blocos_formulario')
-      .insert({ titulo: tituloNovoBloco.trim(), ordem: proximaOrdem });
+      .insert({ titulo: tituloNovoBloco.trim(), ordem: proximaOrdem, formulario_tipo: tipoAtivo });
     setSalvando(false);
 
     if (insertError) {
@@ -170,7 +184,7 @@ export function FormularioAdmin() {
   }
 
   async function handleMoverBloco(bloco: BlocoFormularioRow, direcao: -1 | 1) {
-    const ordenados = [...blocos].sort((a, b) => a.ordem - b.ordem);
+    const ordenados = [...blocosDoTipo].sort((a, b) => a.ordem - b.ordem);
     const index = ordenados.findIndex((b) => b.id === bloco.id);
     const vizinho = ordenados[index + direcao];
     if (!vizinho) return;
@@ -333,7 +347,7 @@ export function FormularioAdmin() {
     else carregar();
   }
 
-  const blocosOrdenados = [...blocos].sort((a, b) => a.ordem - b.ordem);
+  const blocosOrdenados = [...blocosDoTipo].sort((a, b) => a.ordem - b.ordem);
 
   return (
     <div className="page">
@@ -351,6 +365,23 @@ export function FormularioAdmin() {
             + Novo bloco
           </button>
         )}
+      </div>
+
+      <div className="page-header-actions">
+        {(Object.entries(FORMULARIO_TIPO_LABELS) as [MapeamentoTipo, string][]).map(([valor, label]) => (
+          <button
+            key={valor}
+            type="button"
+            className={valor === tipoAtivo ? 'btn btn-primary' : 'btn btn-secondary'}
+            onClick={() => {
+              setTipoAtivo(valor);
+              setMostrarFormBloco(false);
+              fecharFormPergunta();
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {error && <p className="form-error">{error}</p>}
@@ -586,7 +617,8 @@ export function FormularioAdmin() {
                         (p) =>
                           TIPOS_COM_CONDICAO.includes(p.tipo) &&
                           p.id !== formPergunta.id &&
-                          (p.opcoes?.length ?? 0) > 0,
+                          (p.opcoes?.length ?? 0) > 0 &&
+                          tipoDoBloco(p.bloco_id) === tipoDoBloco(formPergunta.bloco_id),
                       )
                       .map((p) => (
                         <option key={p.id} value={p.pergunta_id}>

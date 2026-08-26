@@ -1,9 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.110.8';
 import { formatRespostasTexto, formatValorPergunta } from '../../../src/data/formatRespostas.ts';
-import type { BlocoFormulario, Pergunta } from '../../../src/data/formSchema.ts';
+import type { BlocoFormulario, FormularioTipo, Pergunta } from '../../../src/data/formSchema.ts';
+import type { EtapaFunil } from '../../../src/types/database.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { sincronizarLinhaGoogleSheets } from '../_shared/googleSheets.ts';
 import { gerarFunisComIA } from './ia.ts';
+import { SYSTEM_PROMPT, SYSTEM_PROMPT_POS_VENDA } from './prompt.ts';
 
 // Não deixa a geração do funil falhar por causa da planilha — a integração
 // com o Sheets é um bônus, o funil em si é o que importa de verdade.
@@ -66,10 +68,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 async function carregarBlocosFormulario(
   supabase: ReturnType<typeof createClient>,
+  tipo: FormularioTipo,
 ): Promise<BlocoFormulario[]> {
   const { data: blocosRows } = await supabase
     .from('blocos_formulario')
     .select('id, titulo, ordem')
+    .eq('formulario_tipo', tipo)
     .order('ordem', { ascending: true });
 
   const { data: perguntasRows } = await supabase
@@ -109,6 +113,17 @@ async function carregarBlocosFormulario(
         }),
       ),
   }));
+}
+
+function formatFunisResumoTexto(
+  funis: { nome_funil: string; tipo_funil: string; etapas: EtapaFunil[] }[],
+): string {
+  return funis
+    .map((funil) => {
+      const etapas = funil.etapas.map((e) => `  - ${e.nome}: ${e.objetivo}`).join('\n');
+      return `### ${funil.nome_funil} (${funil.tipo_funil})\n${etapas}`;
+    })
+    .join('\n\n');
 }
 
 function formatCamposPadraoTexto(
@@ -167,7 +182,8 @@ Deno.serve(async (req: Request) => {
 
   await supabase.from('mapeamentos').update({ status: 'processando_ia' }).eq('id', mapeamentoId);
 
-  const blocos = await carregarBlocosFormulario(supabase);
+  const tipo: FormularioTipo = (mapeamento.tipo as FormularioTipo | undefined) ?? 'vendas';
+  const blocos = await carregarBlocosFormulario(supabase, tipo);
   const respostasTexto = formatRespostasTexto(
     blocos,
     (mapeamento.respostas ?? {}) as Record<string, unknown>,
@@ -178,6 +194,26 @@ Deno.serve(async (req: Request) => {
     .select('entidade, nome_campo, tipo, opcoes');
   const camposPadraoTexto = formatCamposPadraoTexto(camposPadrao ?? []);
 
+  const systemPrompt = tipo === 'pos_venda' ? SYSTEM_PROMPT_POS_VENDA : SYSTEM_PROMPT;
+
+  let contextoAdicional: string | undefined;
+  if (tipo === 'pos_venda' && mapeamento.mapeamento_origem_id) {
+    const { data: funisVendas } = await supabase
+      .from('funis_gerados')
+      .select('nome_funil, tipo_funil, etapas, versao')
+      .eq('mapeamento_id', mapeamento.mapeamento_origem_id as string)
+      .order('versao', { ascending: false })
+      .limit(20);
+
+    if (funisVendas && funisVendas.length > 0) {
+      const versaoMaisRecente = Math.max(...funisVendas.map((f: { versao: number }) => f.versao));
+      const funisDaVersao = funisVendas.filter(
+        (f: { versao: number }) => f.versao === versaoMaisRecente,
+      );
+      contextoAdicional = `## Funil de vendas já mapeado para este cliente (contexto — a última etapa é o gatilho de entrada do pós-venda)\n${formatFunisResumoTexto(funisDaVersao)}`;
+    }
+  }
+
   let resultado;
   try {
     resultado = await gerarFunisComIA(
@@ -185,6 +221,8 @@ Deno.serve(async (req: Request) => {
       mapeamento.nome_negocio as string,
       camposPadraoTexto,
       instrucoesExtras,
+      systemPrompt,
+      contextoAdicional,
     );
   } catch (iaError) {
     console.error('Erro ao gerar funil com IA', iaError);
@@ -271,7 +309,7 @@ Deno.serve(async (req: Request) => {
     .select()
     .single();
 
-  if (mapeamentoConcluido) {
+  if (mapeamentoConcluido && tipo === 'vendas') {
     await sincronizarComGoogleSheetsSeConfigurado(mapeamentoConcluido, blocos);
   }
 

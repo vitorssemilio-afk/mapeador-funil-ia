@@ -49,6 +49,7 @@ export function Dashboard() {
       const { data, error: fetchError } = await supabase
         .from('mapeamentos')
         .select('*')
+        .eq('tipo', 'vendas')
         .order('created_at', { ascending: false });
 
       if (cancelled) return;
