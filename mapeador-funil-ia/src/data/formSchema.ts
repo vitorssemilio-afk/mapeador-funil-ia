@@ -1,3 +1,5 @@
+export type FormularioTipo = 'vendas' | 'pos_venda';
+
 export type PerguntaTipo =
   | 'texto_curto'
   | 'texto_longo'

@@ -1,10 +1,11 @@
-import type { BlocoFormulario, Pergunta } from '../data/formSchema';
+import type { BlocoFormulario, FormularioTipo, Pergunta } from '../data/formSchema';
 import { supabase } from './supabaseClient';
 
-export async function carregarFormSchema(): Promise<BlocoFormulario[]> {
+export async function carregarFormSchema(tipo: FormularioTipo = 'vendas'): Promise<BlocoFormulario[]> {
   const { data: blocos, error: blocosError } = await supabase
     .from('blocos_formulario')
     .select('*')
+    .eq('formulario_tipo', tipo)
     .order('ordem', { ascending: true });
 
   if (blocosError) throw blocosError;

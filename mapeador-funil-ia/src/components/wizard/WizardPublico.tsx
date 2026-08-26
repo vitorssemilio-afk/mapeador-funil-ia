@@ -57,7 +57,7 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
       setSchemaLoading(true);
       setSchemaError(null);
       try {
-        const data = await carregarFormSchema();
+        const data = await carregarFormSchema(mapeamento.tipo);
         if (!cancelled) setBlocos(data);
       } catch {
         if (!cancelled) setSchemaError('Não foi possível carregar as perguntas do formulário.');
@@ -70,6 +70,7 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

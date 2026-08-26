@@ -59,7 +59,7 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
       setSchemaLoading(true);
       setSchemaError(null);
       try {
-        const data = await carregarFormSchema();
+        const data = await carregarFormSchema(mapeamento.tipo);
         if (cancelled) return;
         setBlocos(data);
         if (!stepInicializado.current) {
@@ -77,6 +77,7 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [iniciarNoResumo]);
 
   useEffect(() => {

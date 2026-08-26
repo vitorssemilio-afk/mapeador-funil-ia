@@ -34,7 +34,7 @@ const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const MAX_TENTATIVAS = 2;
 
-async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
+async function chamarAnthropic(messages: ChatMessage[], systemPrompt: string): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY não configurada nas secrets da função.');
@@ -53,7 +53,7 @@ async function chamarAnthropic(messages: ChatMessage[]): Promise<string> {
       model,
       max_tokens: 32000,
       thinking: { type: 'disabled' },
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages,
       stream: true,
     }),
@@ -273,8 +273,14 @@ export async function gerarFunisComIA(
   nomeNegocio: string,
   camposPadraoTexto?: string,
   instrucoesExtras?: string,
+  systemPrompt: string = SYSTEM_PROMPT,
+  contextoAdicional?: string,
 ): Promise<ResultadoIA> {
   let conteudo = `Negócio: ${nomeNegocio}\n\n${respostasTexto}`;
+
+  if (contextoAdicional) {
+    conteudo += `\n\n${contextoAdicional}`;
+  }
 
   if (camposPadraoTexto) {
     conteudo += `\n\n## Vocabulário de referência (campos já padronizados em outros funis — reaproveite esses nomes quando fizer sentido, em vez de inventar variações)\n${camposPadraoTexto}`;
@@ -287,7 +293,7 @@ export async function gerarFunisComIA(
   const messages: ChatMessage[] = [{ role: 'user', content: conteudo }];
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
-    const textoResposta = await chamarAnthropic(messages);
+    const textoResposta = await chamarAnthropic(messages, systemPrompt);
     const resultado = parseRespostaIA(textoResposta);
     if (resultado) return resultado;
 

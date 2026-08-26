@@ -11,13 +11,18 @@ export function FormularioPublico() {
   const [error, setError] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
 
+  const tituloFormulario =
+    mapeamento?.tipo === 'pos_venda'
+      ? 'Formulário de Pós-venda'
+      : 'Formulário de Diagnóstico Comercial';
+
   useEffect(() => {
     const tituloAnterior = document.title;
-    document.title = 'Formulário de Diagnóstico Comercial';
+    document.title = tituloFormulario;
     return () => {
       document.title = tituloAnterior;
     };
-  }, []);
+  }, [tituloFormulario]);
 
   useEffect(() => {
     if (!id && !codigo) return;
@@ -58,7 +63,7 @@ export function FormularioPublico() {
           <span className="brand-mark" aria-hidden="true">
             V4
           </span>
-          Formulário de Diagnóstico Comercial
+          {tituloFormulario}
         </span>
       </header>
       <main className="app-main">
@@ -82,7 +87,9 @@ export function FormularioPublico() {
                 <div>
                   <h1>{mapeamento.nome_negocio}</h1>
                   <p className="field-hint">
-                    Preencha as perguntas abaixo sobre o seu processo comercial.
+                    {mapeamento.tipo === 'pos_venda'
+                      ? 'Preencha as perguntas abaixo sobre o relacionamento com o cliente depois da venda.'
+                      : 'Preencha as perguntas abaixo sobre o seu processo comercial.'}
                   </p>
                 </div>
               </div>

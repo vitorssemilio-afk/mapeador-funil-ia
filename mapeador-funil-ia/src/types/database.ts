@@ -5,6 +5,8 @@ export type MapeamentoStatus =
   | 'concluido'
   | 'erro';
 
+export type MapeamentoTipo = 'vendas' | 'pos_venda';
+
 export type Mapeamento = {
   id: string;
   user_id: string;
@@ -13,6 +15,8 @@ export type Mapeamento = {
   respostas: Record<string, unknown>;
   enviado_pelo_cliente: boolean;
   codigo_curto: string;
+  tipo: MapeamentoTipo;
+  mapeamento_origem_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -22,6 +26,7 @@ export type MapeamentoPublico = {
   nome_negocio: string;
   respostas: Record<string, unknown>;
   enviado_pelo_cliente: boolean;
+  tipo: MapeamentoTipo;
 };
 
 export type TipoFunil =
@@ -132,6 +137,7 @@ export type BlocoFormularioRow = {
   id: string;
   titulo: string;
   ordem: number;
+  formulario_tipo: MapeamentoTipo;
   created_at: string;
   updated_at: string;
 };
