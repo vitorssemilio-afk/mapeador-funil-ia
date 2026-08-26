@@ -2,9 +2,19 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
+import { useAuth } from '../contexts/AuthContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
-import { PX_POR_DIA, calcularEscala, diaParaPx, fasesImplementacao, itensCronograma } from '../lib/cronograma';
+import {
+  PX_POR_DIA,
+  calcularEscala,
+  diaParaPx,
+  fasesImplementacao,
+  itensCronograma,
+  prazoFaseAtual,
+  prazoGeral,
+  tempoAteReuniao,
+} from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
 import type {
   CheckpointAdocao,
@@ -19,6 +29,7 @@ import type {
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
   IntencaoManutencaoCheckpoint,
+  Mapeamento,
   UsoDiarioCheckpoint,
 } from '../types/database';
 
@@ -175,6 +186,7 @@ function paraFormGeral(impl: ImplementacaoCrm): FormGeral {
 export function ImplementacaoDetalhe() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [implementacao, setImplementacao] = useState<ImplementacaoCrm | null>(null);
   const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
@@ -191,6 +203,16 @@ export function ImplementacaoDetalhe() {
   const [checkpointAdocao, setCheckpointAdocao] = useState<CheckpointAdocao | null>(null);
   const [linkCheckpointCopiado, setLinkCheckpointCopiado] = useState(false);
   const [aba, setAba] = useState<Aba>('geral');
+  const [mapeamentoOrigem, setMapeamentoOrigem] = useState<Pick<
+    Mapeamento,
+    'id' | 'nome_negocio' | 'enviado_em' | 'created_at'
+  > | null>(null);
+  const [posVendaMapeamento, setPosVendaMapeamento] = useState<{
+    id: string;
+    codigo_curto: string;
+  } | null>(null);
+  const [criandoPosVenda, setCriandoPosVenda] = useState(false);
+  const [linkPosVendaCopiado, setLinkPosVendaCopiado] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -218,6 +240,27 @@ export function ImplementacaoDetalhe() {
   const fasesCronograma = useMemo(
     () => (implementacao ? fasesImplementacao(implementacao, historicoStatus) : []),
     [implementacao, historicoStatus],
+  );
+
+  const prazoSemanaAtual = useMemo(
+    () => (implementacao ? prazoFaseAtual(implementacao, historicoStatus, hoje) : null),
+    [implementacao, historicoStatus, hoje],
+  );
+
+  const prazoProcesso = useMemo(
+    () =>
+      implementacao && mapeamentoOrigem
+        ? prazoGeral(implementacao, mapeamentoOrigem, hoje)
+        : null,
+    [implementacao, mapeamentoOrigem, hoje],
+  );
+
+  const tempoReuniao = useMemo(
+    () =>
+      implementacao && mapeamentoOrigem
+        ? tempoAteReuniao(implementacao, historicoStatus, mapeamentoOrigem, hoje)
+        : null,
+    [implementacao, historicoStatus, mapeamentoOrigem, hoje],
   );
 
   const itensGantt = useMemo(() => {
@@ -315,11 +358,21 @@ export function ImplementacaoDetalhe() {
     if (!historicoError) setHistoricoStatus(historicoData ?? []);
     setCheckpointAdocao(checkpointData ?? null);
 
-    const { data: posVendaData } = await supabase
-      .from('mapeamentos')
-      .select('id')
-      .eq('mapeamento_origem_id', implData.mapeamento_id)
-      .eq('tipo', 'pos_venda');
+    const [{ data: mapeamentoOrigemData }, { data: posVendaData }] = await Promise.all([
+      supabase
+        .from('mapeamentos')
+        .select('id, nome_negocio, enviado_em, created_at')
+        .eq('id', implData.mapeamento_id)
+        .single(),
+      supabase
+        .from('mapeamentos')
+        .select('id, codigo_curto')
+        .eq('mapeamento_origem_id', implData.mapeamento_id)
+        .eq('tipo', 'pos_venda'),
+    ]);
+
+    setMapeamentoOrigem(mapeamentoOrigemData ?? null);
+    setPosVendaMapeamento(posVendaData?.[0] ?? null);
 
     const idsMapeamentos = [implData.mapeamento_id, ...(posVendaData ?? []).map((m) => m.id)];
     const funisPorMapeamento = await Promise.all(idsMapeamentos.map(buscarFunisMaisRecentes));
@@ -616,6 +669,41 @@ export function ImplementacaoDetalhe() {
     setFormGeral({ ...formGeral, status: proximo });
   }
 
+  async function handleGerarPosVenda() {
+    if (!implementacao || !mapeamentoOrigem || !user) return;
+    setCriandoPosVenda(true);
+
+    const { data, error: insertError } = await supabase
+      .from('mapeamentos')
+      .insert({
+        user_id: user.id,
+        nome_negocio: mapeamentoOrigem.nome_negocio,
+        status: 'em_preenchimento',
+        respostas: {},
+        tipo: 'pos_venda',
+        mapeamento_origem_id: mapeamentoOrigem.id,
+      })
+      .select('id, codigo_curto')
+      .single();
+
+    setCriandoPosVenda(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    setPosVendaMapeamento(data);
+  }
+
+  async function handleCopiarLinkPosVenda() {
+    if (!posVendaMapeamento) return;
+    const link = `${window.location.origin}/f/${posVendaMapeamento.codigo_curto}`;
+    await navigator.clipboard.writeText(link);
+    setLinkPosVendaCopiado(true);
+    setTimeout(() => setLinkPosVendaCopiado(false), 2000);
+  }
+
   async function handleExcluirImplementacao() {
     if (!implementacao) return;
     if (
@@ -854,6 +942,74 @@ export function ImplementacaoDetalhe() {
       </div>
 
       {error && <p className="form-error">{error}</p>}
+
+      {(prazoSemanaAtual || prazoProcesso || tempoReuniao) && (
+        <div className="stats-grid">
+          {prazoSemanaAtual && (
+            <div className={`stat-card${prazoSemanaAtual.atrasada ? ' stat-card-danger' : ' stat-card-warning'}`}>
+              <span className="stat-value">
+                {prazoSemanaAtual.atrasada
+                  ? `${prazoSemanaAtual.diasAtraso}d atrasada`
+                  : `${prazoSemanaAtual.diasRestantes}d restantes`}
+              </span>
+              <span className="stat-label">
+                Prazo desta semana — até {prazoSemanaAtual.prazo.toLocaleDateString('pt-BR')}
+              </span>
+            </div>
+          )}
+
+          {prazoProcesso && (
+            <div className={`stat-card${prazoProcesso.atrasada ? ' stat-card-danger' : ''}`}>
+              <span className="stat-value">
+                {prazoProcesso.atrasada
+                  ? `${prazoProcesso.diasAtraso}d atrasada`
+                  : `${prazoProcesso.diasRestantes}d restantes`}
+              </span>
+              <span className="stat-label">
+                Conclusão prevista da implementação — {prazoProcesso.prazoConclusao.toLocaleDateString('pt-BR')}
+              </span>
+            </div>
+          )}
+
+          {tempoReuniao && (
+            <div className="stat-card">
+              <span className="stat-value">{tempoReuniao.dias}d</span>
+              <span className="stat-label">
+                {tempoReuniao.concluido
+                  ? 'Da resposta do formulário até a 1ª reunião'
+                  : 'Desde a resposta do formulário, ainda sem 1ª reunião'}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(implementacao.status === 'semana_3' ||
+        implementacao.status === 'semana_4' ||
+        implementacao.status === 'concluida') &&
+        (posVendaMapeamento ? (
+          <div className="form-info form-info-com-acao">
+            <span>O formulário de pós-venda já foi gerado para este cliente.</span>
+            <button type="button" className="btn btn-secondary" onClick={handleCopiarLinkPosVenda}>
+              {linkPosVendaCopiado ? 'Link copiado!' : 'Copiar link de pós-venda'}
+            </button>
+          </div>
+        ) : (
+          <div className="form-info form-info-com-acao">
+            <span>
+              A implementação chegou na Semana 3 — hora de oferecer o formulário de pós-venda pro
+              cliente.
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleGerarPosVenda}
+              disabled={criandoPosVenda || !mapeamentoOrigem || !user}
+            >
+              {criandoPosVenda ? 'Gerando…' : 'Gerar link de pós-venda'}
+            </button>
+          </div>
+        ))}
 
       <div className="tabs">
         <button

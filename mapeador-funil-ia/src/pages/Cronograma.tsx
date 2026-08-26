@@ -10,6 +10,7 @@ import {
   diaParaPx,
   empacotarFasesEmRaias,
   fasesImplementacao,
+  prazoFaseAtual,
   type FaseCronograma,
 } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
@@ -148,11 +149,17 @@ export function Cronograma() {
                 const fasesComRaia = empacotarFasesEmRaias(fases, escala, hoje);
                 const numRaias = Math.max(1, ...fasesComRaia.map((f) => f.raia + 1));
                 const alturaTrack = numRaias * ALTURA_RAIA + 16;
+                const prazoSemana = prazoFaseAtual(implementacao, historico, hoje);
                 return (
                   <div key={implementacao.id} className="gantt-row">
                     <div className="gantt-row-label">
                       <Link to={`/implementacoes/${implementacao.id}`}>{implementacao.nome_cliente}</Link>
                       <ImplementacaoStatusBadge status={implementacao.status} />
+                      {prazoSemana?.atrasada && (
+                        <span className="badge-danger" title={`Prazo da semana era ${prazoSemana.prazo.toLocaleDateString('pt-BR')}`}>
+                          {prazoSemana.diasAtraso}d atrasada
+                        </span>
+                      )}
                     </div>
                     <div className="gantt-row-track" style={{ width: larguraTotal, minHeight: alturaTrack }}>
                       <div className="gantt-hoje-tick" style={{ left: hojePx }} />

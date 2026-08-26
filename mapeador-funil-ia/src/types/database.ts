@@ -17,6 +17,11 @@ export type Mapeamento = {
   codigo_curto: string;
   tipo: MapeamentoTipo;
   mapeamento_origem_id: string | null;
+  // Instante em que o cliente enviou o formulário (enviado_pelo_cliente virou
+  // true) — null se ainda não foi enviado, ou se foi enviado antes desta
+  // coluna existir e não há como saber a data exata (nesse caso, updated_at
+  // é a melhor aproximação disponível).
+  enviado_em: string | null;
   created_at: string;
   updated_at: string;
 };

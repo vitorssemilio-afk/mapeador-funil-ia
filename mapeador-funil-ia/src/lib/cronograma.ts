@@ -1,4 +1,9 @@
-import { calcularVencimento, diferencaEmDias, inicioDoDia } from './agendaImplementacao';
+import {
+  calcularVencimento,
+  dataEntradaStatusAtual,
+  diferencaEmDias,
+  inicioDoDia,
+} from './agendaImplementacao';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import type {
   ChecklistGrupoImplementacao,
@@ -6,6 +11,7 @@ import type {
   ImplementacaoCrm,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
+  Mapeamento,
 } from '../types/database';
 
 export const PX_POR_DIA = 26;
@@ -189,4 +195,130 @@ export function empacotarFasesEmRaias(fases: FaseCronograma[], escala: EscalaTem
   }
 
   return resultado;
+}
+
+// ============================================================
+// Prazos e alertas de atraso
+// ============================================================
+
+// Duração planejada do POP inteiro (pré-requisito + semana_1..4), em dias
+// corridos a partir de quando o cliente respondeu o formulário de
+// mapeamento (não de quando a implementação foi criada — o pré-requisito
+// pode ficar dias parado esperando o kickoff, e isso não deveria "esconder"
+// atraso real do relógio geral).
+export const DURACAO_TOTAL_DIAS = 40;
+
+// Prazo "leve" de cada semana do checklist — combina com o padrão de item
+// numerado de 1 a 7 (dia_semana) já usado na Agenda. A diferença entre a
+// soma das 4 semanas (28) e o total do POP (40) é a folga de segurança do
+// processo como um todo (pré-requisito + qualquer deslize).
+export const PRAZO_DIAS_POR_SEMANA = 7;
+
+const FASES_SEMANAIS: ImplementacaoStatus[] = ['semana_1', 'semana_2', 'semana_3', 'semana_4'];
+
+// Instante em que o relógio dos 40 dias começa a contar: quando o cliente
+// respondeu o formulário de mapeamento (mapeamentos.enviado_em). Mapeamentos
+// enviados antes dessa coluna existir usam updated_at como aproximação (via
+// backfill da migration); sem nenhum dos dois, cai pro created_at do
+// mapeamento como último recurso.
+export function dataInicioProcesso(
+  mapeamento: Pick<Mapeamento, 'enviado_em' | 'created_at'>,
+): Date {
+  return new Date(mapeamento.enviado_em ?? mapeamento.created_at);
+}
+
+export function dataPrevistaConclusao(inicioProcesso: Date): Date {
+  return adicionarDias(inicioProcesso, DURACAO_TOTAL_DIAS);
+}
+
+export type PrazoFase = {
+  prazo: Date;
+  diasRestantes: number;
+  atrasada: boolean;
+  diasAtraso: number;
+};
+
+// Prazo da semana atual (só existe pra semana_1..4 — pré-requisito e estados
+// finais não têm uma janela própria). Conta a partir de quando a
+// implementação de fato entrou nesse status, não do início do processo.
+export function prazoFaseAtual(
+  implementacao: ImplementacaoCrm,
+  historico: ImplementacaoStatusHistorico[],
+  hoje: Date,
+): PrazoFase | null {
+  if (!FASES_SEMANAIS.includes(implementacao.status)) return null;
+
+  const inicioFase = dataEntradaStatusAtual(implementacao, historico);
+  const prazo = adicionarDias(inicioFase, PRAZO_DIAS_POR_SEMANA);
+  const diasRestantes = diferencaEmDias(prazo, hoje);
+
+  return {
+    prazo,
+    diasRestantes,
+    atrasada: diasRestantes < 0,
+    diasAtraso: Math.max(0, -diasRestantes),
+  };
+}
+
+export type PrazoGeral = {
+  inicioProcesso: Date;
+  prazoConclusao: Date;
+  diasRestantes: number;
+  atrasada: boolean;
+  diasAtraso: number;
+};
+
+// Prazo do processo inteiro (os 40 dias corridos), só relevante enquanto a
+// implementação ainda está em andamento — concluída/cancelada não "atrasa"
+// mais.
+export function prazoGeral(
+  implementacao: ImplementacaoCrm,
+  mapeamento: Pick<Mapeamento, 'enviado_em' | 'created_at'>,
+  hoje: Date,
+): PrazoGeral | null {
+  if (implementacao.status === 'concluida' || implementacao.status === 'cancelada') return null;
+
+  const inicioProcesso = dataInicioProcesso(mapeamento);
+  const prazoConclusao = dataPrevistaConclusao(inicioProcesso);
+  const diasRestantes = diferencaEmDias(prazoConclusao, hoje);
+
+  return {
+    inicioProcesso,
+    prazoConclusao,
+    diasRestantes,
+    atrasada: diasRestantes < 0,
+    diasAtraso: Math.max(0, -diasRestantes),
+  };
+}
+
+export type TempoAteReuniao = {
+  dias: number;
+  // false = a implementação ainda está no pré-requisito (tempo ainda
+  // correndo); true = já saiu dele, o número é definitivo.
+  concluido: boolean;
+};
+
+// Quanto tempo levou (ou está levando) entre o cliente responder o
+// formulário e a implementação sair do pré-requisito (proxy pra "primeira
+// reunião" — é o marco que o histórico de fato registra).
+export function tempoAteReuniao(
+  implementacao: ImplementacaoCrm,
+  historico: ImplementacaoStatusHistorico[],
+  mapeamento: Pick<Mapeamento, 'enviado_em' | 'created_at'>,
+  hoje: Date,
+): TempoAteReuniao {
+  const inicioProcesso = dataInicioProcesso(mapeamento);
+
+  const saidaPreRequisito = historico
+    .filter((h) => h.implementacao_id === implementacao.id && h.status_novo !== 'pre_requisito')
+    .sort((a, b) => new Date(a.alterado_em).getTime() - new Date(b.alterado_em).getTime())[0];
+
+  if (saidaPreRequisito) {
+    return {
+      dias: Math.max(0, diferencaEmDias(new Date(saidaPreRequisito.alterado_em), inicioProcesso)),
+      concluido: true,
+    };
+  }
+
+  return { dias: Math.max(0, diferencaEmDias(hoje, inicioProcesso)), concluido: false };
 }
