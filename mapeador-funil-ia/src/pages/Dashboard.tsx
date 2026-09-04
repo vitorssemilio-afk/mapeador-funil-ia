@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import type { Mapeamento } from '../types/database';
+import type { Mapeamento, MapeamentoStatus } from '../types/database';
 
 type Filtro =
   | 'aguardando'
@@ -12,6 +12,18 @@ type Filtro =
   | 'esclarecimento'
   | 'concluido'
   | 'erro';
+
+type PosVendaResumo = {
+  mapeamento_origem_id: string;
+  status: MapeamentoStatus;
+  enviado_pelo_cliente: boolean;
+};
+
+type ImplementacaoSemPosVenda = {
+  id: string;
+  mapeamento_id: string;
+  nome_cliente: string;
+};
 
 function pertenceAoFiltro(m: Mapeamento, filtro: Filtro): boolean {
   switch (filtro) {
@@ -32,9 +44,26 @@ function pertenceAoFiltro(m: Mapeamento, filtro: Filtro): boolean {
   }
 }
 
+function labelPosVenda(pv: PosVendaResumo | undefined): { texto: string; classe: string } {
+  if (!pv) return { texto: 'Pós-venda: não enviado', classe: 'status-em_preenchimento' };
+  if (pv.status === 'em_preenchimento') {
+    return pv.enviado_pelo_cliente
+      ? { texto: 'Pós-venda: cliente respondeu', classe: 'status-concluido' }
+      : { texto: 'Pós-venda: aguardando cliente', classe: 'status-em_preenchimento' };
+  }
+  if (pv.status === 'processando_ia') return { texto: 'Pós-venda: gerando funil', classe: 'status-processando_ia' };
+  if (pv.status === 'aguardando_esclarecimento') {
+    return { texto: 'Pós-venda: IA pediu esclarecimento', classe: 'status-aguardando_esclarecimento' };
+  }
+  if (pv.status === 'concluido') return { texto: 'Pós-venda: concluído', classe: 'status-concluido' };
+  return { texto: 'Pós-venda: erro', classe: 'status-erro' };
+}
+
 export function Dashboard() {
   const { user } = useAuth();
   const [mapeamentos, setMapeamentos] = useState<Mapeamento[]>([]);
+  const [posVendaPorOrigem, setPosVendaPorOrigem] = useState<Map<string, PosVendaResumo>>(new Map());
+  const [implementacoesSemPosVenda, setImplementacoesSemPosVenda] = useState<ImplementacaoSemPosVenda[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<Filtro | null>(null);
@@ -46,11 +75,26 @@ export function Dashboard() {
 
     async function load() {
       setLoading(true);
-      const { data, error: fetchError } = await supabase
-        .from('mapeamentos')
-        .select('*')
-        .eq('tipo', 'vendas')
-        .order('created_at', { ascending: false });
+
+      const [
+        { data, error: fetchError },
+        { data: posVendaData },
+        { data: implementacoesData },
+      ] = await Promise.all([
+        supabase
+          .from('mapeamentos')
+          .select('*')
+          .eq('tipo', 'vendas')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('mapeamentos')
+          .select('mapeamento_origem_id, status, enviado_pelo_cliente')
+          .eq('tipo', 'pos_venda'),
+        supabase
+          .from('implementacoes_crm')
+          .select('id, mapeamento_id, nome_cliente')
+          .in('status', ['semana_3', 'semana_4', 'concluida']),
+      ]);
 
       if (cancelled) return;
 
@@ -59,6 +103,17 @@ export function Dashboard() {
       } else {
         setMapeamentos(data ?? []);
       }
+
+      const mapaPosVenda = new Map<string, PosVendaResumo>(
+        (posVendaData ?? [])
+          .filter((pv): pv is PosVendaResumo => pv.mapeamento_origem_id !== null)
+          .map((pv) => [pv.mapeamento_origem_id, pv]),
+      );
+      setPosVendaPorOrigem(mapaPosVenda);
+      setImplementacoesSemPosVenda(
+        (implementacoesData ?? []).filter((impl) => !mapaPosVenda.has(impl.mapeamento_id)),
+      );
+
       setLoading(false);
     }
 
@@ -100,6 +155,22 @@ export function Dashboard() {
 
       {loading && <p className="page-loading">Carregando…</p>}
       {error && <p className="form-error">{error}</p>}
+
+      {!loading && implementacoesSemPosVenda.length > 0 && (
+        <div className="form-info form-info-com-acao">
+          <span>
+            {implementacoesSemPosVenda.length} cliente
+            {implementacoesSemPosVenda.length === 1 ? '' : 's'} na Semana 3 ou mais da implementação
+            sem formulário de pós-venda enviado:{' '}
+            {implementacoesSemPosVenda.map((impl, i) => (
+              <span key={impl.id}>
+                {i > 0 && ', '}
+                <Link to={`/implementacoes/${impl.id}`}>{impl.nome_cliente}</Link>
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
 
       {!loading && !error && mapeamentos.length === 0 && (
         <div className="empty-state">
@@ -181,15 +252,19 @@ export function Dashboard() {
             </div>
           ) : (
             <div className="mapeamentos-grid">
-              {mapeamentosFiltrados.map((m) => (
-                <Link key={m.id} to={`/mapeamento/${m.id}`} className="mapeamento-card">
-                  <StatusBadge status={m.status} enviadoPeloCliente={m.enviado_pelo_cliente} />
-                  <span className="mapeamento-card-nome">{m.nome_negocio}</span>
-                  <span className="mapeamento-card-data">
-                    Criado em {new Date(m.created_at).toLocaleDateString('pt-BR')}
-                  </span>
-                </Link>
-              ))}
+              {mapeamentosFiltrados.map((m) => {
+                const posVenda = m.status === 'concluido' ? labelPosVenda(posVendaPorOrigem.get(m.id)) : null;
+                return (
+                  <Link key={m.id} to={`/mapeamento/${m.id}`} className="mapeamento-card">
+                    <StatusBadge status={m.status} enviadoPeloCliente={m.enviado_pelo_cliente} />
+                    <span className="mapeamento-card-nome">{m.nome_negocio}</span>
+                    <span className="mapeamento-card-data">
+                      Criado em {new Date(m.created_at).toLocaleDateString('pt-BR')}
+                    </span>
+                    {posVenda && <span className={`status-badge ${posVenda.classe}`}>{posVenda.texto}</span>}
+                  </Link>
+                );
+              })}
             </div>
           )}
         </>
