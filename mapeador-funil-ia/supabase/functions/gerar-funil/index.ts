@@ -198,6 +198,27 @@ Deno.serve(async (req: Request) => {
 
   let contextoAdicional: string | undefined;
   if (tipo === 'pos_venda' && mapeamento.mapeamento_origem_id) {
+    const partesContexto: string[] = [];
+
+    const { data: mapeamentoVendas } = await supabase
+      .from('mapeamentos')
+      .select('respostas')
+      .eq('id', mapeamento.mapeamento_origem_id as string)
+      .maybeSingle();
+
+    if (mapeamentoVendas) {
+      const blocosVendas = await carregarBlocosFormulario(supabase, 'vendas');
+      const respostasVendasTexto = formatRespostasTexto(
+        blocosVendas,
+        (mapeamentoVendas.respostas ?? {}) as Record<string, unknown>,
+      );
+      if (respostasVendasTexto) {
+        partesContexto.push(
+          `## Respostas do formulário de mapeamento de vendas já preenchido por este cliente (use isso — não peça de novo nenhuma informação que já esteja aqui)\n${respostasVendasTexto}`,
+        );
+      }
+    }
+
     const { data: funisVendas } = await supabase
       .from('funis_gerados')
       .select('nome_funil, tipo_funil, etapas, versao')
@@ -210,7 +231,13 @@ Deno.serve(async (req: Request) => {
       const funisDaVersao = funisVendas.filter(
         (f: { versao: number }) => f.versao === versaoMaisRecente,
       );
-      contextoAdicional = `## Funil de vendas já mapeado para este cliente (contexto — a última etapa é o gatilho de entrada do pós-venda)\n${formatFunisResumoTexto(funisDaVersao)}`;
+      partesContexto.push(
+        `## Funil de vendas já mapeado para este cliente (a última etapa é o gatilho de entrada do pós-venda)\n${formatFunisResumoTexto(funisDaVersao)}`,
+      );
+    }
+
+    if (partesContexto.length > 0) {
+      contextoAdicional = partesContexto.join('\n\n');
     }
   }
 
