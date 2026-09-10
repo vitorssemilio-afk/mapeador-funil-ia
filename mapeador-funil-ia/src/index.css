@@ -1810,3 +1810,40 @@ img.auth-logo {
     flex-wrap: wrap;
   }
 }
+
+.observacoes-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.observacao-item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  background: var(--color-surface-raised);
+}
+
+.observacao-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.observacao-item-meta {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.observacao-item-texto {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}

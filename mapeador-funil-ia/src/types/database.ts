@@ -18,6 +18,15 @@ export type Cliente = {
   updated_at: string;
 };
 
+export type ClienteObservacao = {
+  id: string;
+  cliente_id: string;
+  user_id: string | null;
+  autor_email: string | null;
+  texto: string;
+  created_at: string;
+};
+
 export type Mapeamento = {
   id: string;
   user_id: string;
@@ -355,6 +364,12 @@ export type Database = {
         Row: Cliente;
         Insert: Partial<Cliente> & Pick<Cliente, 'nome_empresa'>;
         Update: Partial<Cliente>;
+        Relationships: [];
+      };
+      cliente_observacoes: {
+        Row: ClienteObservacao;
+        Insert: Partial<ClienteObservacao> & Pick<ClienteObservacao, 'cliente_id' | 'texto'>;
+        Update: Partial<ClienteObservacao>;
         Relationships: [];
       };
       mapeamentos: {

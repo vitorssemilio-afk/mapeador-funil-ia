@@ -4,7 +4,17 @@ import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import type { Cliente, ImplementacaoCrm, Mapeamento } from '../types/database';
+import type { Cliente, ClienteObservacao, ImplementacaoCrm, Mapeamento } from '../types/database';
+
+function formatarDataHora(iso: string): string {
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 type FormCliente = {
   nome_empresa: string;
@@ -44,6 +54,11 @@ export function ClienteDetalhe() {
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
   const [iniciandoImplementacao, setIniciandoImplementacao] = useState(false);
 
+  const [observacoes, setObservacoes] = useState<ClienteObservacao[]>([]);
+  const [novaObservacao, setNovaObservacao] = useState('');
+  const [enviandoObservacao, setEnviandoObservacao] = useState(false);
+  const [excluindoObservacaoId, setExcluindoObservacaoId] = useState<string | null>(null);
+
   async function carregar(clienteId: string) {
     setLoading(true);
     setError(null);
@@ -53,6 +68,7 @@ export function ClienteDetalhe() {
       { data: vendasData },
       { data: posVendaData },
       { data: implementacaoData },
+      { data: observacoesData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -78,6 +94,11 @@ export function ClienteDetalhe() {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase
+        .from('cliente_observacoes')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false }),
     ]);
 
     if (clienteError || !clienteData) {
@@ -91,6 +112,7 @@ export function ClienteDetalhe() {
     setMapeamentoVendas(vendasData ?? null);
     setMapeamentoPosVenda(posVendaData ?? null);
     setImplementacao(implementacaoData ?? null);
+    setObservacoes(observacoesData ?? []);
     setLoading(false);
   }
 
@@ -205,6 +227,50 @@ export function ClienteDetalhe() {
     }
 
     navigate(`/implementacoes/${data.id}`);
+  }
+
+  async function handleAdicionarObservacao(e: FormEvent) {
+    e.preventDefault();
+    if (!cliente || !user || !novaObservacao.trim()) return;
+
+    setEnviandoObservacao(true);
+    const { data, error: insertError } = await supabase
+      .from('cliente_observacoes')
+      .insert({
+        cliente_id: cliente.id,
+        user_id: user.id,
+        autor_email: user.email ?? null,
+        texto: novaObservacao.trim(),
+      })
+      .select()
+      .single();
+    setEnviandoObservacao(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    setObservacoes((prev) => [data, ...prev]);
+    setNovaObservacao('');
+  }
+
+  async function handleExcluirObservacao(observacaoId: string) {
+    if (!window.confirm('Excluir esta observação?')) return;
+
+    setExcluindoObservacaoId(observacaoId);
+    const { error: deleteError } = await supabase
+      .from('cliente_observacoes')
+      .delete()
+      .eq('id', observacaoId);
+    setExcluindoObservacaoId(null);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setObservacoes((prev) => prev.filter((o) => o.id !== observacaoId));
   }
 
   if (loading) return <div className="page-loading">Carregando…</div>;
@@ -393,6 +459,61 @@ export function ClienteDetalhe() {
           )}
         </section>
       )}
+
+      <section className="card form-card">
+        <h2>Observações</h2>
+        <p className="field-hint">
+          Histórico livre de contato com o cliente — reuniões marcadas/desmarcadas, combinados,
+          qualquer coisa que valha registrar.
+        </p>
+
+        <form onSubmit={handleAdicionarObservacao}>
+          <label className="field">
+            <span>Nova observação</span>
+            <textarea
+              rows={3}
+              value={novaObservacao}
+              onChange={(e) => setNovaObservacao(e.target.value)}
+              placeholder="Ex: Tentei marcar reunião pro dia 20/09, cliente pediu pra remarcar."
+            />
+          </label>
+          <div className="wizard-actions">
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={enviandoObservacao || !novaObservacao.trim()}
+            >
+              {enviandoObservacao ? 'Salvando…' : 'Adicionar observação'}
+            </button>
+          </div>
+        </form>
+
+        {observacoes.length === 0 ? (
+          <p className="field-hint">Nenhuma observação registrada ainda.</p>
+        ) : (
+          <ul className="observacoes-lista">
+            {observacoes.map((o) => (
+              <li key={o.id} className="observacao-item">
+                <div className="observacao-item-header">
+                  <span className="observacao-item-meta">
+                    {formatarDataHora(o.created_at)}
+                    {o.autor_email ? ` · ${o.autor_email}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    onClick={() => handleExcluirObservacao(o.id)}
+                    disabled={excluindoObservacaoId === o.id}
+                  >
+                    {excluindoObservacaoId === o.id ? 'Excluindo…' : 'Excluir'}
+                  </button>
+                </div>
+                <p className="observacao-item-texto">{o.texto}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
