@@ -27,6 +27,18 @@ export type ClienteObservacao = {
   created_at: string;
 };
 
+export type ClienteArquivo = {
+  id: string;
+  cliente_id: string;
+  nome_arquivo: string;
+  caminho_storage: string;
+  tipo_mime: string | null;
+  tamanho_bytes: number | null;
+  user_id: string | null;
+  autor_email: string | null;
+  created_at: string;
+};
+
 export type Mapeamento = {
   id: string;
   user_id: string;
@@ -370,6 +382,12 @@ export type Database = {
         Row: ClienteObservacao;
         Insert: Partial<ClienteObservacao> & Pick<ClienteObservacao, 'cliente_id' | 'texto'>;
         Update: Partial<ClienteObservacao>;
+        Relationships: [];
+      };
+      cliente_arquivos: {
+        Row: ClienteArquivo;
+        Insert: Partial<ClienteArquivo> & Pick<ClienteArquivo, 'cliente_id' | 'nome_arquivo' | 'caminho_storage'>;
+        Update: Partial<ClienteArquivo>;
         Relationships: [];
       };
       mapeamentos: {
