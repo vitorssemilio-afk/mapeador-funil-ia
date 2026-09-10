@@ -677,6 +677,7 @@ export function ImplementacaoDetalhe() {
       .from('mapeamentos')
       .insert({
         user_id: user.id,
+        cliente_id: implementacao.cliente_id,
         nome_negocio: mapeamentoOrigem.nome_negocio,
         status: 'em_preenchimento',
         respostas: {},
@@ -931,6 +932,12 @@ export function ImplementacaoDetalhe() {
         <div>
           <h1>{implementacao.nome_cliente}</h1>
           <p className="field-hint">
+            {implementacao.cliente_id && (
+              <>
+                <Link to={`/clientes/${implementacao.cliente_id}`}>← Ver cliente</Link>
+                {' · '}
+              </>
+            )}
             <Link to={`/mapeamento/${implementacao.mapeamento_id}`}>Ver mapeamento de origem</Link>
           </p>
         </div>
