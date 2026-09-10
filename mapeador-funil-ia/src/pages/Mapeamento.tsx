@@ -235,6 +235,7 @@ export function Mapeamento() {
       .from('implementacoes_crm')
       .insert({
         mapeamento_id: mapeamento.id,
+        cliente_id: mapeamento.cliente_id,
         user_id: user.id,
         nome_cliente: mapeamento.nome_negocio,
         status: 'pre_requisito',
@@ -260,6 +261,7 @@ export function Mapeamento() {
       .from('mapeamentos')
       .insert({
         user_id: user.id,
+        cliente_id: mapeamento.cliente_id,
         nome_negocio: `${mapeamento.nome_negocio} (cópia)`,
         status: 'em_preenchimento',
         respostas: mapeamento.respostas,
@@ -287,6 +289,7 @@ export function Mapeamento() {
       .from('mapeamentos')
       .insert({
         user_id: user.id,
+        cliente_id: mapeamento.cliente_id,
         nome_negocio: mapeamento.nome_negocio,
         status: 'em_preenchimento',
         respostas: {},
@@ -372,6 +375,11 @@ export function Mapeamento() {
         <div>
           <h1>{mapeamento.nome_negocio}</h1>
           <StatusBadge status={mapeamento.status} enviadoPeloCliente={mapeamento.enviado_pelo_cliente} />
+          {mapeamento.cliente_id && (
+            <p className="field-hint">
+              <Link to={`/clientes/${mapeamento.cliente_id}`}>← Ver cliente</Link>
+            </p>
+          )}
           {mapeamento.tipo === 'pos_venda' && mapeamento.mapeamento_origem_id && (
             <p className="field-hint">
               Formulário de pós-venda —{' '}

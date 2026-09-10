@@ -6,6 +6,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { Agenda } from './pages/Agenda';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { CheckpointAdocao } from './pages/CheckpointAdocao';
+import { ClienteDetalhe } from './pages/ClienteDetalhe';
 import { Cronograma } from './pages/Cronograma';
 import { Dashboard } from './pages/Dashboard';
 import { FormularioAdmin } from './pages/FormularioAdmin';
@@ -15,7 +16,7 @@ import { ImplementacaoDetalhe } from './pages/ImplementacaoDetalhe';
 import { ImplementacoesCrm } from './pages/ImplementacoesCrm';
 import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
-import { NovoMapeamento } from './pages/NovoMapeamento';
+import { NovoCliente } from './pages/NovoCliente';
 import { RelatorioFunil } from './pages/RelatorioFunil';
 import { RelatorioRespostas } from './pages/RelatorioRespostas';
 import { RespostasFormulario } from './pages/RespostasFormulario';
@@ -56,7 +57,8 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/agenda" element={<Agenda />} />
               <Route path="/cronograma" element={<Cronograma />} />
-              <Route path="/novo" element={<NovoMapeamento />} />
+              <Route path="/clientes/novo" element={<NovoCliente />} />
+              <Route path="/clientes/:id" element={<ClienteDetalhe />} />
               <Route path="/mapeamento/:id" element={<Mapeamento />} />
               <Route path="/campos-padrao" element={<CamposPadrao />} />
               <Route path="/relatorio-respostas" element={<RelatorioRespostas />} />

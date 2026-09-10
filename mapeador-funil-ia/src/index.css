@@ -1395,6 +1395,14 @@ img.auth-logo {
   color: var(--color-text-muted);
 }
 
+.mapeamento-card-implementacao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
 .stat-value {
   font-family: 'Anton', 'Inter', sans-serif;
   font-size: 28px;

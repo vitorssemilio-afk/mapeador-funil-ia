@@ -7,9 +7,21 @@ export type MapeamentoStatus =
 
 export type MapeamentoTipo = 'vendas' | 'pos_venda';
 
+export type Cliente = {
+  id: string;
+  nome_empresa: string;
+  nome_contato: string | null;
+  telefone: string | null;
+  email: string | null;
+  segmento: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Mapeamento = {
   id: string;
   user_id: string;
+  cliente_id: string | null;
   nome_negocio: string;
   status: MapeamentoStatus;
   respostas: Record<string, unknown>;
@@ -179,6 +191,7 @@ export type ImplementacaoStatus =
 export type ImplementacaoCrm = {
   id: string;
   mapeamento_id: string;
+  cliente_id: string | null;
   user_id: string;
   nome_cliente: string;
   consultor_responsavel: string | null;
@@ -338,6 +351,12 @@ export type Database = {
   };
   public: {
     Tables: {
+      clientes: {
+        Row: Cliente;
+        Insert: Partial<Cliente> & Pick<Cliente, 'nome_empresa'>;
+        Update: Partial<Cliente>;
+        Relationships: [];
+      };
       mapeamentos: {
         Row: Mapeamento;
         Insert: Partial<Mapeamento> & Pick<Mapeamento, 'nome_negocio' | 'user_id'>;

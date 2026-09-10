@@ -1,22 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { StatusBadge } from '../components/StatusBadge';
+import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import type { Mapeamento, MapeamentoStatus } from '../types/database';
+import type { Cliente, ImplementacaoStatus, MapeamentoStatus } from '../types/database';
 
-type Filtro =
-  | 'aguardando'
-  | 'respondeu'
-  | 'gerando'
-  | 'esclarecimento'
-  | 'concluido'
-  | 'erro';
-
-type PosVendaResumo = {
-  mapeamento_origem_id: string;
+type MapeamentoResumo = {
+  id: string;
+  cliente_id: string | null;
+  tipo: 'vendas' | 'pos_venda';
   status: MapeamentoStatus;
   enviado_pelo_cliente: boolean;
+};
+
+type ImplementacaoResumo = {
+  id: string;
+  cliente_id: string | null;
+  status: ImplementacaoStatus;
 };
 
 type ImplementacaoSemPosVenda = {
@@ -25,48 +25,32 @@ type ImplementacaoSemPosVenda = {
   nome_cliente: string;
 };
 
-function pertenceAoFiltro(m: Mapeamento, filtro: Filtro): boolean {
-  switch (filtro) {
-    case 'aguardando':
-      return m.status === 'em_preenchimento' && !m.enviado_pelo_cliente;
-    case 'respondeu':
-      return m.status === 'em_preenchimento' && m.enviado_pelo_cliente;
-    case 'gerando':
-      return m.status === 'processando_ia';
-    case 'esclarecimento':
-      return m.status === 'aguardando_esclarecimento';
-    case 'concluido':
-      return m.status === 'concluido';
-    case 'erro':
-      return m.status === 'erro';
-    default:
-      return true;
+function labelStatusMapeamento(m: MapeamentoResumo | undefined): { texto: string; classe: string } | null {
+  if (!m) return null;
+  if (m.status === 'em_preenchimento') {
+    return m.enviado_pelo_cliente
+      ? { texto: 'Cliente respondeu', classe: 'status-concluido' }
+      : { texto: 'Aguardando preenchimento', classe: 'status-em_preenchimento' };
   }
-}
-
-function labelPosVenda(pv: PosVendaResumo | undefined): { texto: string; classe: string } {
-  if (!pv) return { texto: 'Pós-venda: não enviado', classe: 'status-em_preenchimento' };
-  if (pv.status === 'em_preenchimento') {
-    return pv.enviado_pelo_cliente
-      ? { texto: 'Pós-venda: cliente respondeu', classe: 'status-concluido' }
-      : { texto: 'Pós-venda: aguardando cliente', classe: 'status-em_preenchimento' };
+  if (m.status === 'processando_ia') return { texto: 'Gerando funil', classe: 'status-processando_ia' };
+  if (m.status === 'aguardando_esclarecimento') {
+    return { texto: 'IA pediu esclarecimento', classe: 'status-aguardando_esclarecimento' };
   }
-  if (pv.status === 'processando_ia') return { texto: 'Pós-venda: gerando funil', classe: 'status-processando_ia' };
-  if (pv.status === 'aguardando_esclarecimento') {
-    return { texto: 'Pós-venda: IA pediu esclarecimento', classe: 'status-aguardando_esclarecimento' };
-  }
-  if (pv.status === 'concluido') return { texto: 'Pós-venda: concluído', classe: 'status-concluido' };
-  return { texto: 'Pós-venda: erro', classe: 'status-erro' };
+  if (m.status === 'concluido') return { texto: 'Funil gerado', classe: 'status-concluido' };
+  return { texto: 'Erro', classe: 'status-erro' };
 }
 
 export function Dashboard() {
   const { user } = useAuth();
-  const [mapeamentos, setMapeamentos] = useState<Mapeamento[]>([]);
-  const [posVendaPorOrigem, setPosVendaPorOrigem] = useState<Map<string, PosVendaResumo>>(new Map());
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [mapeamentosPorCliente, setMapeamentosPorCliente] = useState<Map<string, MapeamentoResumo[]>>(new Map());
+  const [implementacoesPorCliente, setImplementacoesPorCliente] = useState<Map<string, ImplementacaoResumo>>(
+    new Map(),
+  );
   const [implementacoesSemPosVenda, setImplementacoesSemPosVenda] = useState<ImplementacaoSemPosVenda[]>([]);
+  const [busca, setBusca] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filtro, setFiltro] = useState<Filtro | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -77,41 +61,46 @@ export function Dashboard() {
       setLoading(true);
 
       const [
-        { data, error: fetchError },
-        { data: posVendaData },
+        { data: clientesData, error: clientesError },
+        { data: mapeamentosData },
         { data: implementacoesData },
       ] = await Promise.all([
-        supabase
-          .from('mapeamentos')
-          .select('*')
-          .eq('tipo', 'vendas')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('mapeamentos')
-          .select('mapeamento_origem_id, status, enviado_pelo_cliente')
-          .eq('tipo', 'pos_venda'),
-        supabase
-          .from('implementacoes_crm')
-          .select('id, mapeamento_id, nome_cliente')
-          .in('status', ['semana_3', 'semana_4', 'concluida']),
+        supabase.from('clientes').select('*').order('created_at', { ascending: false }),
+        supabase.from('mapeamentos').select('id, cliente_id, tipo, status, enviado_pelo_cliente'),
+        supabase.from('implementacoes_crm').select('id, cliente_id, mapeamento_id, nome_cliente, status'),
       ]);
 
       if (cancelled) return;
 
-      if (fetchError) {
-        setError(fetchError.message);
-      } else {
-        setMapeamentos(data ?? []);
+      if (clientesError) {
+        setError(clientesError.message);
+        setLoading(false);
+        return;
       }
 
-      const mapaPosVenda = new Map<string, PosVendaResumo>(
-        (posVendaData ?? [])
-          .filter((pv): pv is PosVendaResumo => pv.mapeamento_origem_id !== null)
-          .map((pv) => [pv.mapeamento_origem_id, pv]),
-      );
-      setPosVendaPorOrigem(mapaPosVenda);
+      setClientes(clientesData ?? []);
+
+      const mapaMapeamentos = new Map<string, MapeamentoResumo[]>();
+      for (const m of mapeamentosData ?? []) {
+        if (!m.cliente_id) continue;
+        const lista = mapaMapeamentos.get(m.cliente_id) ?? [];
+        lista.push(m as MapeamentoResumo);
+        mapaMapeamentos.set(m.cliente_id, lista);
+      }
+      setMapeamentosPorCliente(mapaMapeamentos);
+
+      const mapaImplementacoes = new Map<string, ImplementacaoResumo>();
+      for (const impl of implementacoesData ?? []) {
+        if (impl.cliente_id) mapaImplementacoes.set(impl.cliente_id, impl as ImplementacaoResumo);
+      }
+      setImplementacoesPorCliente(mapaImplementacoes);
+
       setImplementacoesSemPosVenda(
-        (implementacoesData ?? []).filter((impl) => !mapaPosVenda.has(impl.mapeamento_id)),
+        (implementacoesData ?? []).filter(
+          (impl) =>
+            ['semana_3', 'semana_4', 'concluida'].includes(impl.status) &&
+            !(impl.cliente_id && mapaMapeamentos.get(impl.cliente_id)?.some((m) => m.tipo === 'pos_venda')),
+        ),
       );
 
       setLoading(false);
@@ -123,33 +112,23 @@ export function Dashboard() {
     };
   }, [user]);
 
-  const stats = useMemo(
-    () => ({
-      total: mapeamentos.length,
-      aguardando: mapeamentos.filter((m) => pertenceAoFiltro(m, 'aguardando')).length,
-      respondeu: mapeamentos.filter((m) => pertenceAoFiltro(m, 'respondeu')).length,
-      gerando: mapeamentos.filter((m) => pertenceAoFiltro(m, 'gerando')).length,
-      esclarecimento: mapeamentos.filter((m) => pertenceAoFiltro(m, 'esclarecimento')).length,
-      concluido: mapeamentos.filter((m) => pertenceAoFiltro(m, 'concluido')).length,
-      erro: mapeamentos.filter((m) => pertenceAoFiltro(m, 'erro')).length,
-    }),
-    [mapeamentos],
-  );
-
-  const mapeamentosFiltrados = filtro
-    ? mapeamentos.filter((m) => pertenceAoFiltro(m, filtro))
-    : mapeamentos;
-
-  function toggleFiltro(novoFiltro: Filtro) {
-    setFiltro((atual) => (atual === novoFiltro ? null : novoFiltro));
-  }
+  const clientesFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return clientes;
+    return clientes.filter(
+      (c) =>
+        c.nome_empresa.toLowerCase().includes(termo) ||
+        (c.nome_contato ?? '').toLowerCase().includes(termo) ||
+        (c.segmento ?? '').toLowerCase().includes(termo),
+    );
+  }, [clientes, busca]);
 
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Mapeamentos</h1>
-        <Link to="/novo" className="btn btn-primary">
-          + Novo mapeamento
+        <h1>Clientes</h1>
+        <Link to="/clientes/novo" className="btn btn-primary">
+          + Novo cliente
         </Link>
       </div>
 
@@ -172,96 +151,67 @@ export function Dashboard() {
         </div>
       )}
 
-      {!loading && !error && mapeamentos.length === 0 && (
+      {!loading && !error && clientes.length === 0 && (
         <div className="empty-state">
-          <p>Você ainda não criou nenhum mapeamento de processo.</p>
-          <Link to="/novo" className="btn btn-primary">
-            Criar o primeiro mapeamento
+          <p>Você ainda não cadastrou nenhum cliente.</p>
+          <Link to="/clientes/novo" className="btn btn-primary">
+            Cadastrar o primeiro cliente
           </Link>
         </div>
       )}
 
-      {!loading && mapeamentos.length > 0 && (
+      {!loading && clientes.length > 0 && (
         <>
-          <div className="stats-grid">
-            <button
-              type="button"
-              className={`stat-card${filtro === null ? ' stat-card-active' : ''}`}
-              onClick={() => setFiltro(null)}
-            >
-              <span className="stat-value">{stats.total}</span>
-              <span className="stat-label">Total</span>
-            </button>
-            <button
-              type="button"
-              className={`stat-card stat-card-warning${filtro === 'aguardando' ? ' stat-card-active' : ''}`}
-              onClick={() => toggleFiltro('aguardando')}
-            >
-              <span className="stat-value">{stats.aguardando}</span>
-              <span className="stat-label">Aguardando preenchimento</span>
-            </button>
-            <button
-              type="button"
-              className={`stat-card stat-card-success${filtro === 'respondeu' ? ' stat-card-active' : ''}`}
-              onClick={() => toggleFiltro('respondeu')}
-            >
-              <span className="stat-value">{stats.respondeu}</span>
-              <span className="stat-label">Cliente respondeu</span>
-            </button>
-            <button
-              type="button"
-              className={`stat-card stat-card-info${filtro === 'gerando' ? ' stat-card-active' : ''}`}
-              onClick={() => toggleFiltro('gerando')}
-            >
-              <span className="stat-value">{stats.gerando}</span>
-              <span className="stat-label">Gerando funil</span>
-            </button>
-            {stats.esclarecimento > 0 && (
-              <button
-                type="button"
-                className={`stat-card stat-card-warning${filtro === 'esclarecimento' ? ' stat-card-active' : ''}`}
-                onClick={() => toggleFiltro('esclarecimento')}
-              >
-                <span className="stat-value">{stats.esclarecimento}</span>
-                <span className="stat-label">IA pediu esclarecimento</span>
-              </button>
-            )}
-            <button
-              type="button"
-              className={`stat-card stat-card-success${filtro === 'concluido' ? ' stat-card-active' : ''}`}
-              onClick={() => toggleFiltro('concluido')}
-            >
-              <span className="stat-value">{stats.concluido}</span>
-              <span className="stat-label">Funil gerado</span>
-            </button>
-            {stats.erro > 0 && (
-              <button
-                type="button"
-                className={`stat-card stat-card-danger${filtro === 'erro' ? ' stat-card-active' : ''}`}
-                onClick={() => toggleFiltro('erro')}
-              >
-                <span className="stat-value">{stats.erro}</span>
-                <span className="stat-label">Erro</span>
-              </button>
-            )}
-          </div>
+          <label className="field" style={{ maxWidth: 360 }}>
+            <span>Buscar</span>
+            <input
+              type="text"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Nome da empresa, contato ou segmento"
+            />
+          </label>
 
-          {mapeamentosFiltrados.length === 0 ? (
+          {clientesFiltrados.length === 0 ? (
             <div className="empty-state">
-              <p>Nenhum mapeamento nessa situação.</p>
+              <p>Nenhum cliente encontrado.</p>
             </div>
           ) : (
             <div className="mapeamentos-grid">
-              {mapeamentosFiltrados.map((m) => {
-                const posVenda = m.status === 'concluido' ? labelPosVenda(posVendaPorOrigem.get(m.id)) : null;
+              {clientesFiltrados.map((c) => {
+                const mapeamentosDoCliente = mapeamentosPorCliente.get(c.id) ?? [];
+                const vendas = mapeamentosDoCliente.find((m) => m.tipo === 'vendas');
+                const posVenda = mapeamentosDoCliente.find((m) => m.tipo === 'pos_venda');
+                const implementacao = implementacoesPorCliente.get(c.id);
+                const statusVendas = labelStatusMapeamento(vendas);
+                const statusPosVenda = labelStatusMapeamento(posVenda);
+
                 return (
-                  <Link key={m.id} to={`/mapeamento/${m.id}`} className="mapeamento-card">
-                    <StatusBadge status={m.status} enviadoPeloCliente={m.enviado_pelo_cliente} />
-                    <span className="mapeamento-card-nome">{m.nome_negocio}</span>
-                    <span className="mapeamento-card-data">
-                      Criado em {new Date(m.created_at).toLocaleDateString('pt-BR')}
-                    </span>
-                    {posVenda && <span className={`status-badge ${posVenda.classe}`}>{posVenda.texto}</span>}
+                  <Link key={c.id} to={`/clientes/${c.id}`} className="mapeamento-card">
+                    <span className="mapeamento-card-nome">{c.nome_empresa}</span>
+                    {(c.nome_contato || c.segmento) && (
+                      <span className="mapeamento-card-data">
+                        {[c.nome_contato, c.segmento].filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+
+                    {statusVendas ? (
+                      <span className={`status-badge ${statusVendas.classe}`}>Vendas: {statusVendas.texto}</span>
+                    ) : (
+                      <span className="status-badge status-em_preenchimento">Sem mapeamento de vendas</span>
+                    )}
+
+                    {statusPosVenda && (
+                      <span className={`status-badge ${statusPosVenda.classe}`}>
+                        Pós-venda: {statusPosVenda.texto}
+                      </span>
+                    )}
+
+                    {implementacao && (
+                      <span className="mapeamento-card-implementacao">
+                        Implementação: <ImplementacaoStatusBadge status={implementacao.status} />
+                      </span>
+                    )}
                   </Link>
                 );
               })}
