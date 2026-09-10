@@ -1,10 +1,12 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import type { Cliente, ClienteObservacao, ImplementacaoCrm, Mapeamento } from '../types/database';
+import type { Cliente, ClienteArquivo, ClienteObservacao, ImplementacaoCrm, Mapeamento } from '../types/database';
+
+const BUCKET_ANEXOS = 'cliente-anexos';
 
 function formatarDataHora(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', {
@@ -14,6 +16,13 @@ function formatarDataHora(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function formatarTamanho(bytes: number | null): string {
+  if (bytes == null) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 type FormCliente = {
@@ -59,6 +68,11 @@ export function ClienteDetalhe() {
   const [enviandoObservacao, setEnviandoObservacao] = useState(false);
   const [excluindoObservacaoId, setExcluindoObservacaoId] = useState<string | null>(null);
 
+  const [arquivos, setArquivos] = useState<ClienteArquivo[]>([]);
+  const [enviandoArquivo, setEnviandoArquivo] = useState(false);
+  const [baixandoArquivoId, setBaixandoArquivoId] = useState<string | null>(null);
+  const [excluindoArquivoId, setExcluindoArquivoId] = useState<string | null>(null);
+
   async function carregar(clienteId: string) {
     setLoading(true);
     setError(null);
@@ -69,6 +83,7 @@ export function ClienteDetalhe() {
       { data: posVendaData },
       { data: implementacaoData },
       { data: observacoesData },
+      { data: arquivosData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -99,6 +114,11 @@ export function ClienteDetalhe() {
         .select('*')
         .eq('cliente_id', clienteId)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('cliente_arquivos')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false }),
     ]);
 
     if (clienteError || !clienteData) {
@@ -113,6 +133,7 @@ export function ClienteDetalhe() {
     setMapeamentoPosVenda(posVendaData ?? null);
     setImplementacao(implementacaoData ?? null);
     setObservacoes(observacoesData ?? []);
+    setArquivos(arquivosData ?? []);
     setLoading(false);
   }
 
@@ -271,6 +292,92 @@ export function ClienteDetalhe() {
     }
 
     setObservacoes((prev) => prev.filter((o) => o.id !== observacaoId));
+  }
+
+  async function handleUploadArquivos(e: ChangeEvent<HTMLInputElement>) {
+    const arquivosSelecionados = e.target.files;
+    if (!cliente || !user || !arquivosSelecionados || arquivosSelecionados.length === 0) return;
+
+    setEnviandoArquivo(true);
+    setError(null);
+
+    for (const arquivo of Array.from(arquivosSelecionados)) {
+      const nomeSanitizado = arquivo.name.replace(/[^\w.-]+/g, '_');
+      const caminho = `${cliente.id}/${Date.now()}-${nomeSanitizado}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(BUCKET_ANEXOS)
+        .upload(caminho, arquivo, { contentType: arquivo.type || undefined });
+
+      if (uploadError) {
+        setError(uploadError.message);
+        continue;
+      }
+
+      const { data, error: insertError } = await supabase
+        .from('cliente_arquivos')
+        .insert({
+          cliente_id: cliente.id,
+          nome_arquivo: arquivo.name,
+          caminho_storage: caminho,
+          tipo_mime: arquivo.type || null,
+          tamanho_bytes: arquivo.size,
+          user_id: user.id,
+          autor_email: user.email ?? null,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        setError(insertError.message);
+        continue;
+      }
+
+      setArquivos((prev) => [data, ...prev]);
+    }
+
+    setEnviandoArquivo(false);
+    e.target.value = '';
+  }
+
+  async function handleBaixarArquivo(arquivo: ClienteArquivo) {
+    setBaixandoArquivoId(arquivo.id);
+    const { data, error: signedUrlError } = await supabase.storage
+      .from(BUCKET_ANEXOS)
+      .createSignedUrl(arquivo.caminho_storage, 60);
+    setBaixandoArquivoId(null);
+
+    if (signedUrlError || !data) {
+      setError(signedUrlError?.message ?? 'Não foi possível gerar o link do arquivo.');
+      return;
+    }
+
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  async function handleExcluirArquivo(arquivo: ClienteArquivo) {
+    if (!window.confirm(`Excluir o arquivo "${arquivo.nome_arquivo}"?`)) return;
+
+    setExcluindoArquivoId(arquivo.id);
+    const { error: storageError } = await supabase.storage
+      .from(BUCKET_ANEXOS)
+      .remove([arquivo.caminho_storage]);
+
+    if (storageError) {
+      setExcluindoArquivoId(null);
+      setError(storageError.message);
+      return;
+    }
+
+    const { error: deleteError } = await supabase.from('cliente_arquivos').delete().eq('id', arquivo.id);
+    setExcluindoArquivoId(null);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setArquivos((prev) => prev.filter((a) => a.id !== arquivo.id));
   }
 
   if (loading) return <div className="page-loading">Carregando…</div>;
@@ -459,6 +566,59 @@ export function ClienteDetalhe() {
           )}
         </section>
       )}
+
+      <section className="card form-card">
+        <h2>Anexos</h2>
+        <p className="field-hint">Contratos, prints, propostas — qualquer arquivo relevante desse cliente.</p>
+
+        <label className="btn btn-secondary btn-auto" style={{ cursor: 'pointer' }}>
+          {enviandoArquivo ? 'Enviando…' : '+ Adicionar arquivo'}
+          <input
+            type="file"
+            multiple
+            onChange={handleUploadArquivos}
+            disabled={enviandoArquivo}
+            style={{ display: 'none' }}
+          />
+        </label>
+
+        {arquivos.length === 0 ? (
+          <p className="field-hint">Nenhum arquivo anexado ainda.</p>
+        ) : (
+          <ul className="observacoes-lista">
+            {arquivos.map((a) => (
+              <li key={a.id} className="observacao-item">
+                <div className="observacao-item-header">
+                  <span className="observacao-item-meta">
+                    <strong style={{ color: 'var(--color-text)' }}>{a.nome_arquivo}</strong>
+                    {' · '}
+                    {formatarTamanho(a.tamanho_bytes)} · {formatarDataHora(a.created_at)}
+                    {a.autor_email ? ` · ${a.autor_email}` : ''}
+                  </span>
+                  <span className="table-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => handleBaixarArquivo(a)}
+                      disabled={baixandoArquivoId === a.id}
+                    >
+                      {baixandoArquivoId === a.id ? 'Abrindo…' : 'Baixar'}
+                    </button>{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => handleExcluirArquivo(a)}
+                      disabled={excluindoArquivoId === a.id}
+                    >
+                      {excluindoArquivoId === a.id ? 'Excluindo…' : 'Excluir'}
+                    </button>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="card form-card">
         <h2>Observações</h2>
