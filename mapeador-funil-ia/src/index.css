@@ -1403,6 +1403,24 @@ img.auth-logo {
   color: var(--color-text-muted);
 }
 
+.data-table-row-link {
+  cursor: pointer;
+}
+
+.row-name-link {
+  color: var(--color-text);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.row-name-link:hover {
+  text-decoration: underline;
+}
+
+.dash {
+  color: var(--color-text-muted);
+}
+
 .stat-value {
   font-family: 'Anton', 'Inter', sans-serif;
   font-size: 28px;
