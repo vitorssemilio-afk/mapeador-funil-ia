@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
@@ -42,6 +42,7 @@ function labelStatusMapeamento(m: MapeamentoResumo | undefined): { texto: string
 
 export function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [mapeamentosPorCliente, setMapeamentosPorCliente] = useState<Map<string, MapeamentoResumo[]>>(new Map());
   const [implementacoesPorCliente, setImplementacoesPorCliente] = useState<Map<string, ImplementacaoResumo>>(
@@ -114,13 +115,16 @@ export function Dashboard() {
 
   const clientesFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return clientes;
-    return clientes.filter(
-      (c) =>
-        c.nome_empresa.toLowerCase().includes(termo) ||
-        (c.nome_contato ?? '').toLowerCase().includes(termo) ||
-        (c.segmento ?? '').toLowerCase().includes(termo),
-    );
+    const filtrados = termo
+      ? clientes.filter(
+          (c) =>
+            c.nome_empresa.toLowerCase().includes(termo) ||
+            (c.nome_contato ?? '').toLowerCase().includes(termo) ||
+            (c.segmento ?? '').toLowerCase().includes(termo),
+        )
+      : clientes;
+
+    return [...filtrados].sort((a, b) => a.nome_empresa.localeCompare(b.nome_empresa, 'pt-BR'));
   }, [clientes, busca]);
 
   return (
@@ -177,44 +181,67 @@ export function Dashboard() {
               <p>Nenhum cliente encontrado.</p>
             </div>
           ) : (
-            <div className="mapeamentos-grid">
-              {clientesFiltrados.map((c) => {
-                const mapeamentosDoCliente = mapeamentosPorCliente.get(c.id) ?? [];
-                const vendas = mapeamentosDoCliente.find((m) => m.tipo === 'vendas');
-                const posVenda = mapeamentosDoCliente.find((m) => m.tipo === 'pos_venda');
-                const implementacao = implementacoesPorCliente.get(c.id);
-                const statusVendas = labelStatusMapeamento(vendas);
-                const statusPosVenda = labelStatusMapeamento(posVenda);
+            <div className="table-wrap" style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Vendas</th>
+                    <th>Pós-venda</th>
+                    <th>Implementação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientesFiltrados.map((c) => {
+                    const mapeamentosDoCliente = mapeamentosPorCliente.get(c.id) ?? [];
+                    const vendas = mapeamentosDoCliente.find((m) => m.tipo === 'vendas');
+                    const posVenda = mapeamentosDoCliente.find((m) => m.tipo === 'pos_venda');
+                    const implementacao = implementacoesPorCliente.get(c.id);
+                    const statusVendas = labelStatusMapeamento(vendas);
+                    const statusPosVenda = labelStatusMapeamento(posVenda);
 
-                return (
-                  <Link key={c.id} to={`/clientes/${c.id}`} className="mapeamento-card">
-                    <span className="mapeamento-card-nome">{c.nome_empresa}</span>
-                    {(c.nome_contato || c.segmento) && (
-                      <span className="mapeamento-card-data">
-                        {[c.nome_contato, c.segmento].filter(Boolean).join(' · ')}
-                      </span>
-                    )}
-
-                    {statusVendas ? (
-                      <span className={`status-badge ${statusVendas.classe}`}>Vendas: {statusVendas.texto}</span>
-                    ) : (
-                      <span className="status-badge status-em_preenchimento">Sem mapeamento de vendas</span>
-                    )}
-
-                    {statusPosVenda && (
-                      <span className={`status-badge ${statusPosVenda.classe}`}>
-                        Pós-venda: {statusPosVenda.texto}
-                      </span>
-                    )}
-
-                    {implementacao && (
-                      <span className="mapeamento-card-implementacao">
-                        Implementação: <ImplementacaoStatusBadge status={implementacao.status} />
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
+                    return (
+                      <tr
+                        key={c.id}
+                        className="data-table-row-link"
+                        onClick={() => navigate(`/clientes/${c.id}`)}
+                      >
+                        <td>
+                          <Link to={`/clientes/${c.id}`} className="row-name-link">
+                            {c.nome_empresa}
+                          </Link>
+                          {(c.nome_contato || c.segmento) && (
+                            <span className="mapeamento-card-data" style={{ display: 'block' }}>
+                              {[c.nome_contato, c.segmento].filter(Boolean).join(' · ')}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {statusVendas ? (
+                            <span className={`status-badge ${statusVendas.classe}`}>{statusVendas.texto}</span>
+                          ) : (
+                            <span className="dash">—</span>
+                          )}
+                        </td>
+                        <td>
+                          {statusPosVenda ? (
+                            <span className={`status-badge ${statusPosVenda.classe}`}>{statusPosVenda.texto}</span>
+                          ) : (
+                            <span className="dash">—</span>
+                          )}
+                        </td>
+                        <td>
+                          {implementacao ? (
+                            <ImplementacaoStatusBadge status={implementacao.status} />
+                          ) : (
+                            <span className="dash">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </>
