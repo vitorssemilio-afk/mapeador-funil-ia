@@ -6,6 +6,7 @@ import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
 import { ResumoWizard } from '../components/wizard/ResumoWizard';
 import { useAuth } from '../contexts/AuthContext';
 import type { BlocoFormulario } from '../data/formSchema';
+import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { carregarFormSchema } from '../lib/formSchemaService';
 import { supabase } from '../lib/supabaseClient';
@@ -320,7 +321,8 @@ export function Mapeamento() {
 
     if (fnError) {
       setRegenerando(false);
-      setRegenerarError('Não foi possível gerar uma nova versão. Tente novamente em instantes.');
+      const mensagemDetalhada = await extrairMensagemErroEdgeFunction(fnError);
+      setRegenerarError(mensagemDetalhada ?? 'Não foi possível gerar uma nova versão. Tente novamente em instantes.');
       return;
     }
 

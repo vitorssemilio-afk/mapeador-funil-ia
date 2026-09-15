@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { perguntaVisivel, type BlocoFormulario } from '../../data/formSchema';
+import { extrairMensagemErroEdgeFunction } from '../../lib/edgeFunctionError';
 import { carregarFormSchema } from '../../lib/formSchemaService';
 import { supabase } from '../../lib/supabaseClient';
 import type { Mapeamento } from '../../types/database';
@@ -157,7 +158,8 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
 
     if (fnError) {
       setSubmitting(false);
-      setSubmitError('Não foi possível gerar o funil. Tente novamente em instantes.');
+      const mensagemDetalhada = await extrairMensagemErroEdgeFunction(fnError);
+      setSubmitError(mensagemDetalhada ?? 'Não foi possível gerar o funil. Tente novamente em instantes.');
       return;
     }
 

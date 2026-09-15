@@ -5,6 +5,7 @@ import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBa
 import { useAuth } from '../contexts/AuthContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import {
   PX_POR_DIA,
   calcularEscala,
@@ -894,7 +895,14 @@ export function ImplementacaoDetalhe() {
     setCriandoFunilId(null);
 
     if (invokeError || data?.error) {
-      setError(data?.message ?? data?.error ?? invokeError?.message ?? 'Falha ao criar o funil no Kommo.');
+      const mensagemDetalhada = invokeError ? await extrairMensagemErroEdgeFunction(invokeError) : null;
+      setError(
+        data?.message ??
+          data?.error ??
+          mensagemDetalhada ??
+          invokeError?.message ??
+          'Falha ao criar o funil no Kommo.',
+      );
       return;
     }
 
