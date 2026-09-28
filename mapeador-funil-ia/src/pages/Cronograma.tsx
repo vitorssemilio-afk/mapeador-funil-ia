@@ -21,11 +21,12 @@ import type { ImplementacaoCrm, ImplementacaoStatus, ImplementacaoStatusHistoric
 const LARGURA_MINIMA_TEXTO_INTERNO = 90;
 
 const CORES_FASE: Record<ImplementacaoStatus, string> = {
-  pre_requisito: '#fbbf24',
-  semana_1: '#5b9dff',
-  semana_2: '#8b5cf6',
-  semana_3: '#22d3ee',
-  semana_4: '#34d399',
+  preparacao_crm: '#fbbf24',
+  crm_em_configuracao: '#5b9dff',
+  treinamento_agendado: '#8b5cf6',
+  automacoes: '#22d3ee',
+  entrega: '#34d399',
+  adocao: '#34d399',
   concluida: '#34d399',
   cancelada: '#f87171',
 };
@@ -125,7 +126,15 @@ export function Cronograma() {
       {!loading && implementacoes.length > 0 && (
         <>
           <div className="gantt-legenda">
-            {(['pre_requisito', 'semana_1', 'semana_2', 'semana_3', 'semana_4'] as ImplementacaoStatus[]).map(
+            {(
+              [
+                'preparacao_crm',
+                'crm_em_configuracao',
+                'treinamento_agendado',
+                'automacoes',
+                'entrega',
+              ] as ImplementacaoStatus[]
+            ).map(
               (status) => (
                 <span key={status} className="gantt-legenda-item">
                   <span className="gantt-legenda-cor" style={{ background: CORES_FASE[status] }} />

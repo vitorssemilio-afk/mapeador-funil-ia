@@ -10,7 +10,13 @@ import type {
   ImplementacaoStatusHistorico,
 } from '../types/database';
 
-const STATUS_ATIVOS = ['pre_requisito', 'semana_1', 'semana_2', 'semana_3', 'semana_4'] as const;
+const STATUS_ATIVOS = [
+  'preparacao_crm',
+  'crm_em_configuracao',
+  'treinamento_agendado',
+  'automacoes',
+  'entrega',
+] as const;
 
 function formatarDia(data: Date): string {
   return data.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
