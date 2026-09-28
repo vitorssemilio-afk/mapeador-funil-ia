@@ -4,6 +4,7 @@ import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { funilValidado } from '../lib/statusFluxo';
 import type { Cliente, ClienteArquivo, ClienteObservacao, ImplementacaoCrm, Mapeamento } from '../types/database';
 
 const BUCKET_ANEXOS = 'cliente-anexos';
@@ -235,7 +236,7 @@ export function ClienteDetalhe() {
         cliente_id: cliente.id,
         user_id: user.id,
         nome_cliente: cliente.nome_empresa,
-        status: 'pre_requisito',
+        status: 'preparacao_crm',
       })
       .select()
       .single();
@@ -510,7 +511,7 @@ export function ClienteDetalhe() {
         )}
       </section>
 
-      {mapeamentoVendas?.status === 'concluido' && (
+      {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
           <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
             <h2 style={{ marginBottom: 0 }}>Mapeamento de pós-venda</h2>
@@ -541,7 +542,7 @@ export function ClienteDetalhe() {
         </section>
       )}
 
-      {mapeamentoVendas?.status === 'concluido' && (
+      {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
           <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
             <h2 style={{ marginBottom: 0 }}>Implementação de CRM</h2>

@@ -65,12 +65,12 @@ export function itensDaAgenda(params: {
   const resultado: ItemAgenda[] = [];
 
   for (const implementacao of implementacoes) {
-    // Semana 1 é dividida em dois grupos de checklist (Sessão 1 e Sessão
-    // 2) que compartilham o mesmo status "semana_1" — os demais status
-    // têm um grupo só, com chave igual ao próprio status.
+    // "CRM em configuração" é dividido em dois grupos de checklist (Sessão
+    // 1 e Sessão 2) que compartilham o mesmo status — os demais status têm
+    // um grupo só, com chave igual ao próprio status.
     const gruposDoStatus =
-      implementacao.status === 'semana_1'
-        ? grupos.filter((g) => g.chave === 'semana_1_sessao1' || g.chave === 'semana_1_sessao2')
+      implementacao.status === 'crm_em_configuracao'
+        ? grupos.filter((g) => g.chave === 'crm_em_configuracao_sessao1' || g.chave === 'crm_em_configuracao_sessao2')
         : grupos.filter((g) => g.chave === implementacao.status);
     if (gruposDoStatus.length === 0) continue;
 

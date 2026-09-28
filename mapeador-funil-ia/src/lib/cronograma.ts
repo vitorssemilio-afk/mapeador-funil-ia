@@ -16,23 +16,32 @@ import type {
 
 export const PX_POR_DIA = 26;
 
-// Que status cada grupo de checklist representa — "semana_1" está dividida
-// em duas sessões (chaves diferentes) mas as duas contam pra mesma fase do
-// cronograma. Grupos sem fase própria (ex: "criterios_sucesso", que libera
-// junto com a Semana 4 mas não tem uma janela de tempo exclusiva) retornam
-// null e seus itens não entram no Gantt.
+// Que status cada grupo de checklist representa — "CRM em configuração"
+// está dividido em duas sessões (chaves diferentes) mas as duas contam pra
+// mesma fase do cronograma. Grupos sem fase própria (ex: "criterios_sucesso",
+// que libera junto com "Entrega" mas não tem uma janela de tempo exclusiva)
+// retornam null e seus itens não entram no Gantt.
 function statusDoGrupo(chave: string): ImplementacaoStatus | null {
-  if (chave === 'pre_requisito') return 'pre_requisito';
-  if (chave === 'semana_1' || chave === 'semana_1_sessao1' || chave === 'semana_1_sessao2') return 'semana_1';
-  if (chave === 'semana_2') return 'semana_2';
-  if (chave === 'semana_3') return 'semana_3';
-  if (chave === 'semana_4') return 'semana_4';
+  if (chave === 'preparacao_crm') return 'preparacao_crm';
+  if (chave === 'crm_em_configuracao_sessao1' || chave === 'crm_em_configuracao_sessao2') {
+    return 'crm_em_configuracao';
+  }
+  if (chave === 'treinamento_agendado') return 'treinamento_agendado';
+  if (chave === 'automacoes') return 'automacoes';
+  if (chave === 'entrega') return 'entrega';
   return null;
 }
 
-// Só essas fases têm uma janela de tempo própria — "concluida"/"cancelada"
-// são estados finais, não uma fase com checklist e prazo.
-const FASES_COM_DATA: ImplementacaoStatus[] = ['pre_requisito', 'semana_1', 'semana_2', 'semana_3', 'semana_4'];
+// Só essas fases têm uma janela de tempo própria — "adocao"/"concluida"/
+// "cancelada" são estados finais/de acompanhamento, não uma fase com
+// checklist e prazo semanal.
+const FASES_COM_DATA: ImplementacaoStatus[] = [
+  'preparacao_crm',
+  'crm_em_configuracao',
+  'treinamento_agendado',
+  'automacoes',
+  'entrega',
+];
 
 export function adicionarDias(data: Date, dias: number): Date {
   const copia = new Date(data);
@@ -201,7 +210,7 @@ export function empacotarFasesEmRaias(fases: FaseCronograma[], escala: EscalaTem
 // Prazos e alertas de atraso
 // ============================================================
 
-// Duração planejada do POP inteiro (pré-requisito + semana_1..4), em dias
+// Duração planejada do POP inteiro (preparação + as 4 fases semanais), em dias
 // corridos a partir de quando o cliente respondeu o formulário de
 // mapeamento (não de quando a implementação foi criada — o pré-requisito
 // pode ficar dias parado esperando o kickoff, e isso não deveria "esconder"
@@ -214,7 +223,12 @@ export const DURACAO_TOTAL_DIAS = 40;
 // processo como um todo (pré-requisito + qualquer deslize).
 export const PRAZO_DIAS_POR_SEMANA = 7;
 
-const FASES_SEMANAIS: ImplementacaoStatus[] = ['semana_1', 'semana_2', 'semana_3', 'semana_4'];
+const FASES_SEMANAIS: ImplementacaoStatus[] = [
+  'crm_em_configuracao',
+  'treinamento_agendado',
+  'automacoes',
+  'entrega',
+];
 
 // Instante em que o relógio dos 40 dias começa a contar: quando o cliente
 // respondeu o formulário de mapeamento (mapeamentos.enviado_em). Mapeamentos
@@ -238,7 +252,7 @@ export type PrazoFase = {
   diasAtraso: number;
 };
 
-// Prazo da semana atual (só existe pra semana_1..4 — pré-requisito e estados
+// Prazo da fase atual (só existe pras 4 fases semanais — preparação e estados
 // finais não têm uma janela própria). Conta a partir de quando a
 // implementação de fato entrou nesse status, não do início do processo.
 export function prazoFaseAtual(
@@ -310,7 +324,7 @@ export function tempoAteReuniao(
   const inicioProcesso = dataInicioProcesso(mapeamento);
 
   const saidaPreRequisito = historico
-    .filter((h) => h.implementacao_id === implementacao.id && h.status_novo !== 'pre_requisito')
+    .filter((h) => h.implementacao_id === implementacao.id && h.status_novo !== 'preparacao_crm')
     .sort((a, b) => new Date(a.alterado_em).getTime() - new Date(b.alterado_em).getTime())[0];
 
   if (saidaPreRequisito) {

@@ -6,6 +6,7 @@
 // essas integrações existirem — nunca com valor fictício.
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { prazoFaseAtual, prazoGeral, type PrazoFase, type PrazoGeral } from './cronograma';
+import { funilValidado, MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
 import type {
   Cliente,
   ChecklistItemImplementacao,
@@ -83,7 +84,7 @@ function faseAtualLabel(vendas: Mapeamento | null, implementacao: ImplementacaoC
   if (vendas.status === 'processando_ia') return 'Gerando funil';
   if (vendas.status === 'aguardando_esclarecimento') return 'IA pediu esclarecimento';
   if (vendas.status === 'erro') return 'Erro na geração';
-  return 'Pronto p/ implementação';
+  return MAPEAMENTO_STATUS_LABELS[vendas.status];
 }
 
 function proximaAcaoLabel(params: {
@@ -103,10 +104,13 @@ function proximaAcaoLabel(params: {
   if (vendas.status === 'processando_ia') return 'Aguardando geração do funil';
   if (vendas.status === 'erro') return 'Revisar e tentar gerar o funil de novo';
 
-  // vendas.status === 'concluido' daqui em diante
-  if (!implementacao) return 'Iniciar implementação de CRM';
+  if (!implementacao) {
+    return funilValidado(vendas.status)
+      ? 'Iniciar implementação de CRM'
+      : `Avançar o funil — ${MAPEAMENTO_STATUS_LABELS[vendas.status]}`;
+  }
   if (implementacao.status === 'concluida') return 'Nenhuma — implementação concluída';
-  if (implementacao.status === 'pre_requisito' && !preRequisitoCompleto(implementacao)) {
+  if (implementacao.status === 'preparacao_crm' && !preRequisitoCompleto(implementacao)) {
     return 'Confirmar pré-requisitos (acessos)';
   }
   if (precisaPosVenda) return 'Enviar formulário de pós-venda';
@@ -163,7 +167,7 @@ export function construirResumoClientes(params: {
 
     const precisaPosVenda =
       !!implementacao &&
-      ['semana_3', 'semana_4', 'concluida'].includes(implementacao.status) &&
+      ['automacoes', 'entrega', 'adocao', 'concluida'].includes(implementacao.status) &&
       !posVenda;
 
     return {
@@ -245,7 +249,7 @@ export function construirAlertas(resumos: ClienteResumo[], hoje: Date): AlertaOp
 
     if (
       r.implementacao &&
-      ['semana_3', 'semana_4', 'concluida'].includes(r.implementacao.status) &&
+      ['automacoes', 'entrega', 'adocao', 'concluida'].includes(r.implementacao.status) &&
       !r.posVenda
     ) {
       alertas.push({ ...base, motivo: 'Formulário de pós-venda ainda não enviado', severidade: 'atencao' });

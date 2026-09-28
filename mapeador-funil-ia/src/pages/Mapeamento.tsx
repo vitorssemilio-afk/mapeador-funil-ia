@@ -10,12 +10,19 @@ import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { carregarFormSchema } from '../lib/formSchemaService';
 import { supabase } from '../lib/supabaseClient';
+import {
+  funilJaGerado,
+  funilValidado,
+  MAPEAMENTO_STATUS_LABELS,
+  PROXIMOS_STATUS_MAPEAMENTO,
+} from '../lib/statusFluxo';
 import type {
   EtapaFunil,
   FunilGerado,
   GeracaoMeta,
   ImplementacaoCrm,
   Mapeamento as MapeamentoType,
+  MapeamentoStatus,
 } from '../types/database';
 
 const NIVEL_COMPLEXIDADE_LABELS: Record<string, string> = {
@@ -50,6 +57,7 @@ export function Mapeamento() {
   const [mostrarRespostas, setMostrarRespostas] = useState(false);
   const [posVendaExistente, setPosVendaExistente] = useState<MapeamentoType | null>(null);
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
+  const [alterandoStatus, setAlterandoStatus] = useState(false);
 
   async function carregarFunis(mapeamentoId: string, versaoAlvo?: number) {
     const { data: versoesData, error: versoesError } = await supabase
@@ -125,7 +133,7 @@ export function Mapeamento() {
       setMapeamento(mapeamentoData);
 
       if (
-        mapeamentoData.status === 'concluido' ||
+        funilJaGerado(mapeamentoData.status) ||
         mapeamentoData.status === 'erro' ||
         mapeamentoData.status === 'aguardando_esclarecimento'
       ) {
@@ -151,7 +159,7 @@ export function Mapeamento() {
         if (!cancelled) setPosVendaExistente(posVendaData ?? null);
       }
 
-      if (mapeamentoData.status === 'concluido') {
+      if (funilJaGerado(mapeamentoData.status)) {
         try {
           const blocos = await carregarFormSchema(mapeamentoData.tipo);
           if (!cancelled) setBlocosFormulario(blocos);
@@ -172,9 +180,31 @@ export function Mapeamento() {
   async function handleStatusChange(atualizado: MapeamentoType) {
     setMapeamento(atualizado);
 
-    if (atualizado.status === 'concluido') {
+    if (funilJaGerado(atualizado.status)) {
       await carregarFunis(atualizado.id);
     }
+  }
+
+  async function handleAvancarStatusMapeamento(novoStatus: MapeamentoStatus) {
+    if (!mapeamento) return;
+    setAlterandoStatus(true);
+    setError(null);
+
+    const { data, error: updateError } = await supabase
+      .from('mapeamentos')
+      .update({ status: novoStatus })
+      .eq('id', mapeamento.id)
+      .select()
+      .single();
+
+    setAlterandoStatus(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setMapeamento(data);
   }
 
   function handleVerVersao(versao: number) {
@@ -239,7 +269,7 @@ export function Mapeamento() {
         cliente_id: mapeamento.cliente_id,
         user_id: user.id,
         nome_cliente: mapeamento.nome_negocio,
-        status: 'pre_requisito',
+        status: 'preparacao_crm',
       })
       .select()
       .single();
@@ -391,7 +421,7 @@ export function Mapeamento() {
         </div>
         <div className="page-header-actions">
           {mapeamento.tipo === 'vendas' &&
-            mapeamento.status === 'concluido' &&
+            funilValidado(mapeamento.status) &&
             (posVendaExistente ? (
               <button
                 type="button"
@@ -444,7 +474,7 @@ export function Mapeamento() {
             {duplicando ? 'Duplicando…' : 'Duplicar como novo mapeamento'}
           </button>
           {mapeamento.tipo === 'vendas' &&
-            mapeamento.status === 'concluido' &&
+            funilValidado(mapeamento.status) &&
             (implementacaoExistente ? (
               <button
                 type="button"
@@ -560,7 +590,30 @@ export function Mapeamento() {
         </section>
       )}
 
-      {mapeamento.status === 'concluido' && funis.length === 0 && (
+      {funilJaGerado(mapeamento.status) &&
+        (PROXIMOS_STATUS_MAPEAMENTO[mapeamento.status]?.length ?? 0) > 0 && (
+          <section className="card">
+            <h2>Fluxo do funil</h2>
+            <p className="field-hint">
+              Status atual: <strong>{MAPEAMENTO_STATUS_LABELS[mapeamento.status]}</strong>
+            </p>
+            <div className="page-header-actions">
+              {PROXIMOS_STATUS_MAPEAMENTO[mapeamento.status]?.map((proximo) => (
+                <button
+                  key={proximo}
+                  type="button"
+                  className="btn btn-secondary btn-auto"
+                  onClick={() => handleAvancarStatusMapeamento(proximo)}
+                  disabled={alterandoStatus}
+                >
+                  {MAPEAMENTO_STATUS_LABELS[proximo]}
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+      {funilJaGerado(mapeamento.status) && funis.length === 0 && (
         <section className="card">
           <p className="field-hint">Nenhum funil encontrado para este mapeamento.</p>
         </section>
@@ -655,7 +708,7 @@ export function Mapeamento() {
         </>
       )}
 
-      {mapeamento.status === 'concluido' && blocosFormulario.length > 0 && (
+      {funilJaGerado(mapeamento.status) && blocosFormulario.length > 0 && (
         <section className="card form-card">
           <div className="page-header-actions">
             <button
@@ -685,7 +738,7 @@ export function Mapeamento() {
         </section>
       )}
 
-      {mapeamento.status === 'concluido' && funis.length > 0 && (
+      {funilJaGerado(mapeamento.status) && funis.length > 0 && (
         <section className="card form-card">
           {!mostrarRegenerar ? (
             <>

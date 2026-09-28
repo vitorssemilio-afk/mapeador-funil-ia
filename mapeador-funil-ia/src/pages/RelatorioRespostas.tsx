@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { BlocoFormulario, OpcaoPergunta, Pergunta } from '../data/formSchema';
 import { carregarFormSchema } from '../lib/formSchemaService';
 import { supabase } from '../lib/supabaseClient';
+import { STATUS_COM_FUNIL_GERADO } from '../lib/statusFluxo';
 import type { MapeamentoRespostaFlat } from '../types/database';
 
 type ItemFrequencia = { valor: string; label: string; contagem: number };
@@ -87,11 +88,14 @@ export function RelatorioRespostas() {
       try {
         const [schema, { data: linhasData, error: linhasError }, { count }] = await Promise.all([
           carregarFormSchema(),
-          supabase.from('mapeamentos_respostas_flat').select('*').eq('mapeamento_status', 'concluido'),
+          supabase
+            .from('mapeamentos_respostas_flat')
+            .select('*')
+            .in('mapeamento_status', STATUS_COM_FUNIL_GERADO),
           supabase
             .from('mapeamentos')
             .select('id', { count: 'exact', head: true })
-            .eq('status', 'concluido'),
+            .in('status', STATUS_COM_FUNIL_GERADO),
         ]);
 
         if (cancelled) return;

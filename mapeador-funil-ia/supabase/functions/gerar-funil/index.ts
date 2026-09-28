@@ -331,7 +331,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: mapeamentoConcluido } = await supabase
     .from('mapeamentos')
-    .update({ status: 'concluido', respostas: respostasBase })
+    .update({ status: 'funil_gerado', respostas: respostasBase })
     .eq('id', mapeamentoId)
     .select()
     .single();

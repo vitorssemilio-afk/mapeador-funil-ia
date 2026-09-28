@@ -1,7 +1,24 @@
+// Ciclo de vida do mapeamento (vendas ou pós-venda). Os primeiros 4 valores
+// são escritos automaticamente pelo fluxo de geração via IA
+// (em_preenchimento → processando_ia → funil_gerado, com
+// aguardando_esclarecimento/erro como desvios). Os 5 seguintes são estados
+// manuais, definidos pelo time depois que o funil já existe: revisão
+// interna → pronto para kickoff → kickoff agendado → (ajustes solicitados ⟷
+// funil validado). 'concluido' é um valor LEGADO: existiu antes dessa
+// reorganização (com o significado ambíguo de "a IA terminou"), foi
+// migrado pra 'funil_validado' nos registros existentes e nenhum código
+// novo volta a escrevê-lo — mantido só pra não quebrar o tipo de linhas
+// que por algum motivo ainda o tenham.
 export type MapeamentoStatus =
   | 'em_preenchimento'
   | 'processando_ia'
   | 'aguardando_esclarecimento'
+  | 'funil_gerado'
+  | 'em_revisao_interna'
+  | 'pronto_kickoff'
+  | 'kickoff_agendado'
+  | 'ajustes_solicitados'
+  | 'funil_validado'
   | 'concluido'
   | 'erro';
 
@@ -200,12 +217,18 @@ export type PerguntaFormularioRow = {
   updated_at: string;
 };
 
+// Ciclo de vida da implementação de CRM — fases 10 a 16 do ciclo de vida
+// completo do cliente (as fases 1 a 9 ficam em MapeamentoStatus). Substitui
+// os antigos 'pre_requisito'/'semana_1'..'semana_4' (nomes migrados 1:1,
+// ver migration 0033) por nomes que descrevem o que a fase é, não quando
+// ela acontece.
 export type ImplementacaoStatus =
-  | 'pre_requisito'
-  | 'semana_1'
-  | 'semana_2'
-  | 'semana_3'
-  | 'semana_4'
+  | 'preparacao_crm'
+  | 'crm_em_configuracao'
+  | 'treinamento_agendado'
+  | 'automacoes'
+  | 'entrega'
+  | 'adocao'
   | 'concluida'
   | 'cancelada';
 

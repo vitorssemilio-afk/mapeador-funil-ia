@@ -85,54 +85,58 @@ type FormCredencialKommo = {
 };
 
 const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
-  'semana_1',
-  'semana_2',
-  'semana_3',
-  'semana_4',
+  'crm_em_configuracao',
+  'treinamento_agendado',
+  'automacoes',
+  'entrega',
+  'adocao',
   'concluida',
 ]);
 
 // Pra que grupo de checklist completo sugere avançar o status — e pra qual
 // próximo status. "criterios_sucesso" não é um status em si, então também
-// aponta pra "concluida" junto com o grupo "semana_4".
+// aponta pra "entrega" junto com o grupo "entrega".
 const PROXIMO_STATUS: Partial<Record<ImplementacaoStatus, ImplementacaoStatus>> = {
-  pre_requisito: 'semana_1',
-  semana_1: 'semana_2',
-  semana_2: 'semana_3',
-  semana_3: 'semana_4',
-  semana_4: 'concluida',
+  preparacao_crm: 'crm_em_configuracao',
+  crm_em_configuracao: 'treinamento_agendado',
+  treinamento_agendado: 'automacoes',
+  automacoes: 'entrega',
+  entrega: 'adocao',
+  adocao: 'concluida',
 };
 
 function grupoSugereAvancoStatus(chave: string, statusAtual: ImplementacaoStatus): boolean {
-  // Semana 1 é dividida em duas sessões (grupos) — só a segunda sugere
-  // avançar de status, e só depois de checar que a primeira também está
-  // completa (ver uso de `completoSemana1Sessao1` no render do checklist).
-  if (chave === 'semana_1_sessao1') return false;
-  const chaveEfetiva = chave === 'semana_1_sessao2' ? 'semana_1' : chave;
-  return chaveEfetiva === statusAtual || (chaveEfetiva === 'criterios_sucesso' && statusAtual === 'semana_4');
+  // "CRM em configuração" é dividido em duas sessões (grupos) — só a
+  // segunda sugere avançar de status, e só depois de checar que a primeira
+  // também está completa (ver uso de `completoSemana1Sessao1` no render do
+  // checklist).
+  if (chave === 'crm_em_configuracao_sessao1') return false;
+  const chaveEfetiva = chave === 'crm_em_configuracao_sessao2' ? 'crm_em_configuracao' : chave;
+  return chaveEfetiva === statusAtual || (chaveEfetiva === 'criterios_sucesso' && statusAtual === 'entrega');
 }
 
 // Ordem das fases, pra saber se um grupo de checklist já pode ser
 // preenchido ou se ainda está à frente do status atual da implementação.
 const ORDEM_STATUS: Record<ImplementacaoStatus, number> = {
-  pre_requisito: 0,
-  semana_1: 1,
-  semana_2: 2,
-  semana_3: 3,
-  semana_4: 4,
-  concluida: 5,
+  preparacao_crm: 0,
+  crm_em_configuracao: 1,
+  treinamento_agendado: 2,
+  automacoes: 3,
+  entrega: 4,
+  adocao: 5,
+  concluida: 6,
   cancelada: 99,
 };
 
-// "criterios_sucesso" não é uma fase em si — libera junto com "semana_4".
+// "criterios_sucesso" não é uma fase em si — libera junto com "entrega".
 const GRUPO_STATUS_REQUERIDO: Partial<Record<string, ImplementacaoStatus>> = {
-  pre_requisito: 'pre_requisito',
-  semana_1_sessao1: 'semana_1',
-  semana_1_sessao2: 'semana_1',
-  semana_2: 'semana_2',
-  semana_3: 'semana_3',
-  semana_4: 'semana_4',
-  criterios_sucesso: 'semana_4',
+  preparacao_crm: 'preparacao_crm',
+  crm_em_configuracao_sessao1: 'crm_em_configuracao',
+  crm_em_configuracao_sessao2: 'crm_em_configuracao',
+  treinamento_agendado: 'treinamento_agendado',
+  automacoes: 'automacoes',
+  entrega: 'entrega',
+  criterios_sucesso: 'entrega',
 };
 
 function grupoBloqueado(chave: string, statusAtual: ImplementacaoStatus): boolean {
@@ -468,11 +472,11 @@ export function ImplementacaoDetalhe() {
       return;
     }
 
-    const grupoSemana1 = grupos.find((g) => g.chave === 'semana_1_sessao1');
-    const grupoSemana2 = grupos.find((g) => g.chave === 'semana_2');
+    const grupoSemana1 = grupos.find((g) => g.chave === 'crm_em_configuracao_sessao1');
+    const grupoSemana2 = grupos.find((g) => g.chave === 'treinamento_agendado');
     if (!grupoSemana1 || !grupoSemana2) {
       setGerandoItens(false);
-      setError('Grupos de checklist "Semana 1" / "Semana 2" não encontrados.');
+      setError('Grupos de checklist "CRM em configuração" / "Treinamento agendado" não encontrados.');
       return;
     }
 
@@ -602,12 +606,12 @@ export function ImplementacaoDetalhe() {
     setError(null);
 
     if (
-      implementacao.status === 'pre_requisito' &&
+      implementacao.status === 'preparacao_crm' &&
       STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(formGeral.status) &&
       !preRequisitoCompleto(formGeral)
     ) {
       setError(
-        'Não dá pra avançar pra Semana 1 sem o pré-requisito completo: e-mail da conta Kommo, WhatsApp Corporativo e acesso ao Facebook confirmados.',
+        'Não dá pra avançar pra CRM em configuração sem o pré-requisito completo: e-mail da conta Kommo, WhatsApp Corporativo e acesso ao Facebook confirmados.',
       );
       return;
     }
@@ -932,7 +936,7 @@ export function ImplementacaoDetalhe() {
   if (error && !implementacao) return <p className="form-error">{error}</p>;
   if (!implementacao || !formGeral) return <p className="form-error">Implementação não encontrada.</p>;
 
-  const gateSemanaUmBloqueado = implementacao.status === 'pre_requisito' && !preRequisitoCompleto(formGeral);
+  const gateSemanaUmBloqueado = implementacao.status === 'preparacao_crm' && !preRequisitoCompleto(formGeral);
 
   return (
     <div className="page">
@@ -999,8 +1003,9 @@ export function ImplementacaoDetalhe() {
         </div>
       )}
 
-      {(implementacao.status === 'semana_3' ||
-        implementacao.status === 'semana_4' ||
+      {(implementacao.status === 'automacoes' ||
+        implementacao.status === 'entrega' ||
+        implementacao.status === 'adocao' ||
         implementacao.status === 'concluida') &&
         (posVendaMapeamento ? (
           <div className="form-info form-info-com-acao">
@@ -1400,8 +1405,8 @@ export function ImplementacaoDetalhe() {
           // Semana 1 é dividida em duas sessões — a sugestão de avançar de
           // status (mostrada junto da Sessão 2) exige as duas completas.
           const sessao1Completa = (() => {
-            if (grupo.chave !== 'semana_1_sessao2') return true;
-            const grupoSessao1 = grupos.find((g) => g.chave === 'semana_1_sessao1');
+            if (grupo.chave !== 'crm_em_configuracao_sessao2') return true;
+            const grupoSessao1 = grupos.find((g) => g.chave === 'crm_em_configuracao_sessao1');
             if (!grupoSessao1) return true;
             const p = progressoGrupo(grupoSessao1.id);
             return p.total > 0 && p.feitos === p.total;
