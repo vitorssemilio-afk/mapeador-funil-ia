@@ -234,6 +234,14 @@ export function Mapeamento() {
     await navigator.clipboard.writeText(link);
     setLinkCopiado(true);
     setTimeout(() => setLinkCopiado(false), 2000);
+
+    if (mapeamento.tipo === 'vendas' && mapeamento.cliente_id) {
+      await supabase
+        .from('clientes')
+        .update({ formulario_enviado_em: new Date().toISOString() })
+        .eq('id', mapeamento.cliente_id)
+        .is('formulario_enviado_em', null);
+    }
   }
 
   async function handleExcluir() {

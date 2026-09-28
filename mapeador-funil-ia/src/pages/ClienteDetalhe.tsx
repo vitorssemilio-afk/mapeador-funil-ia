@@ -4,10 +4,33 @@ import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
 import type { Cliente, ClienteArquivo, ClienteObservacao, ImplementacaoCrm, Mapeamento } from '../types/database';
 
 const BUCKET_ANEXOS = 'cliente-anexos';
+
+function isoParaInput(iso: string | null, apenasData: boolean): string {
+  if (!iso) return '';
+  const data = new Date(iso);
+  const local = new Date(data.getTime() - data.getTimezoneOffset() * 60000);
+  return apenasData ? local.toISOString().slice(0, 10) : local.toISOString().slice(0, 16);
+}
+
+function inputParaIso(valor: string, apenasData: boolean): string | null {
+  if (!valor) return null;
+  return apenasData ? valor : new Date(valor).toISOString();
+}
+
+type FormMarcos = Record<CampoMarco, string>;
+
+function paraFormMarcos(cliente: Cliente): FormMarcos {
+  const form = {} as FormMarcos;
+  for (const { campo, apenasData } of MARCOS_ORDENADOS) {
+    form[campo] = isoParaInput(cliente[campo], apenasData);
+  }
+  return form;
+}
 
 function formatarDataHora(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', {
@@ -74,6 +97,11 @@ export function ClienteDetalhe() {
   const [baixandoArquivoId, setBaixandoArquivoId] = useState<string | null>(null);
   const [excluindoArquivoId, setExcluindoArquivoId] = useState<string | null>(null);
 
+  const [editandoMarcos, setEditandoMarcos] = useState(false);
+  const [formMarcos, setFormMarcos] = useState<FormMarcos | null>(null);
+  const [salvandoMarcos, setSalvandoMarcos] = useState(false);
+  const [checkpointRespondidoEm, setCheckpointRespondidoEm] = useState<string | null>(null);
+
   async function carregar(clienteId: string) {
     setLoading(true);
     setError(null);
@@ -130,11 +158,24 @@ export function ClienteDetalhe() {
 
     setCliente(clienteData);
     setForm(paraForm(clienteData));
+    setFormMarcos(paraFormMarcos(clienteData));
     setMapeamentoVendas(vendasData ?? null);
     setMapeamentoPosVenda(posVendaData ?? null);
     setImplementacao(implementacaoData ?? null);
     setObservacoes(observacoesData ?? []);
     setArquivos(arquivosData ?? []);
+
+    if (implementacaoData) {
+      const { data: checkpointData } = await supabase
+        .from('checkpoints_adocao')
+        .select('respondido_em')
+        .eq('implementacao_id', implementacaoData.id)
+        .maybeSingle();
+      setCheckpointRespondidoEm(checkpointData?.respondido_em ?? null);
+    } else {
+      setCheckpointRespondidoEm(null);
+    }
+
     setLoading(false);
   }
 
@@ -168,6 +209,33 @@ export function ClienteDetalhe() {
 
     setCliente(data);
     setEditando(false);
+  }
+
+  async function handleSalvarMarcos(e: FormEvent) {
+    e.preventDefault();
+    if (!cliente || !formMarcos) return;
+
+    setSalvandoMarcos(true);
+    const atualizacao: Partial<Pick<Cliente, CampoMarco>> = Object.fromEntries(
+      MARCOS_ORDENADOS.map(({ campo, apenasData }) => [campo, inputParaIso(formMarcos[campo], apenasData)]),
+    );
+
+    const { data, error: updateError } = await supabase
+      .from('clientes')
+      .update(atualizacao)
+      .eq('id', cliente.id)
+      .select()
+      .single();
+    setSalvandoMarcos(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setCliente(data);
+    setFormMarcos(paraFormMarcos(data));
+    setEditandoMarcos(false);
   }
 
   async function handleCriarMapeamentoVendas() {
@@ -481,6 +549,94 @@ export function ClienteDetalhe() {
           </div>
         )
       )}
+
+      <section className="card form-card">
+        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <h2 style={{ marginBottom: 0 }}>Marcos e linha do tempo</h2>
+          {!editandoMarcos && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-auto"
+              onClick={() => {
+                setFormMarcos(paraFormMarcos(cliente));
+                setEditandoMarcos(true);
+              }}
+            >
+              Editar marcos
+            </button>
+          )}
+        </div>
+
+        {editandoMarcos && formMarcos ? (
+          <form onSubmit={handleSalvarMarcos}>
+            <div className="form-grid">
+              {MARCOS_ORDENADOS.map(({ campo, label, apenasData }) => (
+                <label key={campo} className="field">
+                  <span>{label}</span>
+                  <input
+                    type={apenasData ? 'date' : 'datetime-local'}
+                    value={formMarcos[campo]}
+                    onChange={(e) => setFormMarcos({ ...formMarcos, [campo]: e.target.value })}
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="wizard-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setFormMarcos(paraFormMarcos(cliente));
+                  setEditandoMarcos(false);
+                }}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={salvandoMarcos}>
+                {salvandoMarcos ? 'Salvando…' : 'Salvar marcos'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            <p className="field-hint">
+              O prazo dos 40 dias da implementação começa a contar a partir do Kickoff realizado — não da
+              contratação, do envio/resposta do formulário, ou da criação da conta Kommo.
+            </p>
+            <ol className="timeline-marcos">
+              {MARCOS_ORDENADOS.filter(({ campo }) => cliente[campo]).map(({ campo, label, apenasData }) => (
+                <li key={campo}>
+                  <span className="timeline-marco-label">{label}</span>
+                  <span className="timeline-marco-data">
+                    {apenasData
+                      ? new Date(`${cliente[campo]}T12:00:00`).toLocaleDateString('pt-BR')
+                      : formatarDataHora(cliente[campo]!)}
+                  </span>
+                </li>
+              ))}
+              {checkpointRespondidoEm && (
+                <li>
+                  <span className="timeline-marco-label">Checkpoint de 30 dias respondido</span>
+                  <span className="timeline-marco-data">{formatarDataHora(checkpointRespondidoEm)}</span>
+                </li>
+              )}
+              {MARCOS_ORDENADOS.every(({ campo }) => !cliente[campo]) && !checkpointRespondidoEm && (
+                <p className="field-hint">Nenhum marco registrado ainda.</p>
+              )}
+            </ol>
+
+            <h3>Métricas de duração</h3>
+            <ul className="metricas-marcos">
+              {calcularMetricas(cliente).map((metrica) => (
+                <li key={metrica.label}>
+                  <span>{metrica.label}</span>
+                  <strong>{metrica.dias != null ? `${metrica.dias}d` : '—'}</strong>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
 
       <section className="card form-card">
         <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
