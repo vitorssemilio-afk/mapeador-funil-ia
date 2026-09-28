@@ -1,61 +1,54 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
+import { inicioDoDia, itensDaAgenda } from '../lib/agendaImplementacao';
+import {
+  construirAlertas,
+  construirResumoClientes,
+  SAUDE_LABELS,
+  type AlertaOperacao,
+  type ClienteResumo,
+  type SaudeCliente,
+} from '../lib/operacaoResumo';
 import { supabase } from '../lib/supabaseClient';
-import type { Cliente, ImplementacaoStatus, MapeamentoStatus } from '../types/database';
+import type {
+  ChecklistGrupoImplementacao,
+  ChecklistItemImplementacao,
+  Cliente,
+  ImplementacaoChecklistMarcado,
+  ImplementacaoCrm,
+  ImplementacaoStatusHistorico,
+  Mapeamento,
+} from '../types/database';
 
-type MapeamentoResumo = {
-  id: string;
-  cliente_id: string | null;
-  tipo: 'vendas' | 'pos_venda';
-  status: MapeamentoStatus;
-  enviado_pelo_cliente: boolean;
-};
-
-type ImplementacaoResumo = {
-  id: string;
-  cliente_id: string | null;
-  status: ImplementacaoStatus;
-};
-
-type ImplementacaoSemPosVenda = {
-  id: string;
-  mapeamento_id: string;
-  nome_cliente: string;
-};
-
-function labelStatusMapeamento(m: MapeamentoResumo | undefined): { texto: string; classe: string } | null {
-  if (!m) return null;
-  if (m.status === 'em_preenchimento') {
-    return m.enviado_pelo_cliente
-      ? { texto: 'Cliente respondeu', classe: 'status-concluido' }
-      : { texto: 'Aguardando preenchimento', classe: 'status-em_preenchimento' };
-  }
-  if (m.status === 'processando_ia') return { texto: 'Gerando funil', classe: 'status-processando_ia' };
-  if (m.status === 'aguardando_esclarecimento') {
-    return { texto: 'IA pediu esclarecimento', classe: 'status-aguardando_esclarecimento' };
-  }
-  if (m.status === 'concluido') return { texto: 'Funil gerado', classe: 'status-concluido' };
-  return { texto: 'Erro', classe: 'status-erro' };
-}
+const SAUDE_ORDEM: SaudeCliente[] = ['critico', 'atencao', 'aguardando_cliente', 'normal', 'concluido'];
 
 export function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
+
   const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [mapeamentosPorCliente, setMapeamentosPorCliente] = useState<Map<string, MapeamentoResumo[]>>(new Map());
-  const [implementacoesPorCliente, setImplementacoesPorCliente] = useState<Map<string, ImplementacaoResumo>>(
-    new Map(),
-  );
-  const [implementacoesSemPosVenda, setImplementacoesSemPosVenda] = useState<ImplementacaoSemPosVenda[]>([]);
+  const [mapeamentos, setMapeamentos] = useState<Mapeamento[]>([]);
+  const [implementacoes, setImplementacoes] = useState<ImplementacaoCrm[]>([]);
+  const [historico, setHistorico] = useState<ImplementacaoStatusHistorico[]>([]);
+  const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
+  const [itens, setItens] = useState<ChecklistItemImplementacao[]>([]);
+  const [marcados, setMarcados] = useState<ImplementacaoChecklistMarcado[]>([]);
+
   const [busca, setBusca] = useState('');
+  const [filtroFase, setFiltroFase] = useState('');
+  const [filtroConsultor, setFiltroConsultor] = useState('');
+  const [filtroSaude, setFiltroSaude] = useState('');
+  const [soAtrasados, setSoAtrasados] = useState(false);
+  const [soMeusClientes, setSoMeusClientes] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const hoje = useMemo(() => inicioDoDia(new Date()), []);
+
   useEffect(() => {
     if (!user) return;
-
     let cancelled = false;
 
     async function load() {
@@ -65,10 +58,18 @@ export function Dashboard() {
         { data: clientesData, error: clientesError },
         { data: mapeamentosData },
         { data: implementacoesData },
+        { data: historicoData },
+        { data: gruposData },
+        { data: itensData },
+        { data: marcadosData },
       ] = await Promise.all([
-        supabase.from('clientes').select('*').order('created_at', { ascending: false }),
-        supabase.from('mapeamentos').select('id, cliente_id, tipo, status, enviado_pelo_cliente'),
-        supabase.from('implementacoes_crm').select('id, cliente_id, mapeamento_id, nome_cliente, status'),
+        supabase.from('clientes').select('*'),
+        supabase.from('mapeamentos').select('*'),
+        supabase.from('implementacoes_crm').select('*'),
+        supabase.from('implementacao_status_historico').select('*'),
+        supabase.from('checklist_grupos_implementacao').select('*'),
+        supabase.from('checklist_itens_implementacao').select('*'),
+        supabase.from('implementacao_checklist_marcado').select('*'),
       ]);
 
       if (cancelled) return;
@@ -80,30 +81,12 @@ export function Dashboard() {
       }
 
       setClientes(clientesData ?? []);
-
-      const mapaMapeamentos = new Map<string, MapeamentoResumo[]>();
-      for (const m of mapeamentosData ?? []) {
-        if (!m.cliente_id) continue;
-        const lista = mapaMapeamentos.get(m.cliente_id) ?? [];
-        lista.push(m as MapeamentoResumo);
-        mapaMapeamentos.set(m.cliente_id, lista);
-      }
-      setMapeamentosPorCliente(mapaMapeamentos);
-
-      const mapaImplementacoes = new Map<string, ImplementacaoResumo>();
-      for (const impl of implementacoesData ?? []) {
-        if (impl.cliente_id) mapaImplementacoes.set(impl.cliente_id, impl as ImplementacaoResumo);
-      }
-      setImplementacoesPorCliente(mapaImplementacoes);
-
-      setImplementacoesSemPosVenda(
-        (implementacoesData ?? []).filter(
-          (impl) =>
-            ['semana_3', 'semana_4', 'concluida'].includes(impl.status) &&
-            !(impl.cliente_id && mapaMapeamentos.get(impl.cliente_id)?.some((m) => m.tipo === 'pos_venda')),
-        ),
-      );
-
+      setMapeamentos(mapeamentosData ?? []);
+      setImplementacoes(implementacoesData ?? []);
+      setHistorico(historicoData ?? []);
+      setGrupos(gruposData ?? []);
+      setItens(itensData ?? []);
+      setMarcados(marcadosData ?? []);
       setLoading(false);
     }
 
@@ -113,24 +96,115 @@ export function Dashboard() {
     };
   }, [user]);
 
-  const clientesFiltrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-    const filtrados = termo
-      ? clientes.filter(
-          (c) =>
-            c.nome_empresa.toLowerCase().includes(termo) ||
-            (c.nome_contato ?? '').toLowerCase().includes(termo) ||
-            (c.segmento ?? '').toLowerCase().includes(termo),
-        )
-      : clientes;
+  const resumos = useMemo(
+    () =>
+      construirResumoClientes({
+        clientes,
+        mapeamentos,
+        implementacoes,
+        historico,
+        itens,
+        marcados,
+        hoje,
+      }),
+    [clientes, mapeamentos, implementacoes, historico, itens, marcados, hoje],
+  );
 
-    return [...filtrados].sort((a, b) => a.nome_empresa.localeCompare(b.nome_empresa, 'pt-BR'));
-  }, [clientes, busca]);
+  const alertas = useMemo(() => construirAlertas(resumos, hoje), [resumos, hoje]);
+
+  const marcadosPorImplementacao = useMemo(() => {
+    const mapa = new Map<string, Set<string>>();
+    for (const m of marcados) {
+      if (!m.marcado) continue;
+      const set = mapa.get(m.implementacao_id) ?? new Set<string>();
+      set.add(m.item_id);
+      mapa.set(m.implementacao_id, set);
+    }
+    return mapa;
+  }, [marcados]);
+
+  const itensHoje = useMemo(
+    () =>
+      itensDaAgenda({
+        implementacoes,
+        grupos,
+        itens,
+        marcadosPorImplementacao,
+        historico,
+        diaSelecionado: hoje,
+        hoje,
+      }),
+    [implementacoes, grupos, itens, marcadosPorImplementacao, historico, hoje],
+  );
+
+  const consultoresDisponiveis = useMemo(() => {
+    const nomes = new Set(resumos.map((r) => r.consultor).filter((c): c is string => !!c?.trim()));
+    return Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [resumos]);
+
+  const fasesDisponiveis = useMemo(() => {
+    const nomes = new Set(resumos.map((r) => r.faseAtual));
+    return Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [resumos]);
+
+  const kpis = useMemo(
+    () => ({
+      clientesAtivos: resumos.filter((r) => r.saude !== 'concluido').length,
+      implementacoesEmAndamento: implementacoes.filter((i) => !['concluida', 'cancelada'].includes(i.status)).length,
+      clientesEmRisco: resumos.filter((r) => r.saude === 'atencao' || r.saude === 'critico').length,
+      acoesHoje: itensHoje.length,
+    }),
+    [resumos, implementacoes, itensHoje],
+  );
+
+  const minhaIniciais = (user?.email ?? '').split('@')[0]?.toLowerCase() ?? '';
+
+  const resumosFiltrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+
+    const filtrados = resumos.filter((r) => {
+      if (termo) {
+        const alvo = `${r.cliente.nome_empresa} ${r.cliente.nome_contato ?? ''} ${r.cliente.segmento ?? ''}`.toLowerCase();
+        if (!alvo.includes(termo)) return false;
+      }
+      if (filtroFase && r.faseAtual !== filtroFase) return false;
+      if (filtroConsultor && r.consultor !== filtroConsultor) return false;
+      if (filtroSaude && r.saude !== filtroSaude) return false;
+      if (soAtrasados && !(r.prazoFase?.atrasada || r.prazoProcesso?.atrasada)) return false;
+      if (soMeusClientes && !(r.consultor ?? '').toLowerCase().includes(minhaIniciais)) return false;
+      return true;
+    });
+
+    return [...filtrados].sort((a, b) => {
+      const ordemA = SAUDE_ORDEM.indexOf(a.saude);
+      const ordemB = SAUDE_ORDEM.indexOf(b.saude);
+      if (ordemA !== ordemB) return ordemA - ordemB;
+      return a.cliente.nome_empresa.localeCompare(b.cliente.nome_empresa, 'pt-BR');
+    });
+  }, [resumos, busca, filtroFase, filtroConsultor, filtroSaude, soAtrasados, soMeusClientes, minhaIniciais]);
+
+  function limparFiltros() {
+    setBusca('');
+    setFiltroFase('');
+    setFiltroConsultor('');
+    setFiltroSaude('');
+    setSoAtrasados(false);
+    setSoMeusClientes(false);
+  }
+
+  const filtrosAtivos =
+    !!busca || !!filtroFase || !!filtroConsultor || !!filtroSaude || soAtrasados || soMeusClientes;
 
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Clientes</h1>
+        <div>
+          <h1>Operação CRM</h1>
+          <p className="field-hint">
+            Acompanhamento das implementações de CRM em andamento — status, prazos e próximas ações
+            por cliente.
+          </p>
+        </div>
         <Link to="/clientes/novo" className="btn btn-primary">
           + Novo cliente
         </Link>
@@ -138,22 +212,6 @@ export function Dashboard() {
 
       {loading && <p className="page-loading">Carregando…</p>}
       {error && <p className="form-error">{error}</p>}
-
-      {!loading && implementacoesSemPosVenda.length > 0 && (
-        <div className="form-info form-info-com-acao">
-          <span>
-            {implementacoesSemPosVenda.length} cliente
-            {implementacoesSemPosVenda.length === 1 ? '' : 's'} na Semana 3 ou mais da implementação
-            sem formulário de pós-venda enviado:{' '}
-            {implementacoesSemPosVenda.map((impl, i) => (
-              <span key={impl.id}>
-                {i > 0 && ', '}
-                <Link to={`/implementacoes/${impl.id}`}>{impl.nome_cliente}</Link>
-              </span>
-            ))}
-          </span>
-        </div>
-      )}
 
       {!loading && !error && clientes.length === 0 && (
         <div className="empty-state">
@@ -166,86 +224,240 @@ export function Dashboard() {
 
       {!loading && clientes.length > 0 && (
         <>
-          <label className="field" style={{ maxWidth: 360 }}>
-            <span>Buscar</span>
-            <input
-              type="text"
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Nome da empresa, contato ou segmento"
-            />
-          </label>
-
-          {clientesFiltrados.length === 0 ? (
-            <div className="empty-state">
-              <p>Nenhum cliente encontrado.</p>
+          <div className="ops-kpi-grid">
+            <div className="ops-kpi-card">
+              <span className="ops-kpi-value">{kpis.clientesAtivos}</span>
+              <span className="ops-kpi-label">Clientes ativos</span>
             </div>
-          ) : (
-            <div className="table-wrap" style={{ overflowX: 'auto' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Cliente</th>
-                    <th>Vendas</th>
-                    <th>Pós-venda</th>
-                    <th>Implementação</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {clientesFiltrados.map((c) => {
-                    const mapeamentosDoCliente = mapeamentosPorCliente.get(c.id) ?? [];
-                    const vendas = mapeamentosDoCliente.find((m) => m.tipo === 'vendas');
-                    const posVenda = mapeamentosDoCliente.find((m) => m.tipo === 'pos_venda');
-                    const implementacao = implementacoesPorCliente.get(c.id);
-                    const statusVendas = labelStatusMapeamento(vendas);
-                    const statusPosVenda = labelStatusMapeamento(posVenda);
-
-                    return (
-                      <tr
-                        key={c.id}
-                        className="data-table-row-link"
-                        onClick={() => navigate(`/clientes/${c.id}`)}
-                      >
-                        <td>
-                          <Link to={`/clientes/${c.id}`} className="row-name-link">
-                            {c.nome_empresa}
-                          </Link>
-                          {(c.nome_contato || c.segmento) && (
-                            <span className="mapeamento-card-data" style={{ display: 'block' }}>
-                              {[c.nome_contato, c.segmento].filter(Boolean).join(' · ')}
-                            </span>
-                          )}
-                        </td>
-                        <td>
-                          {statusVendas ? (
-                            <span className={`status-badge ${statusVendas.classe}`}>{statusVendas.texto}</span>
-                          ) : (
-                            <span className="dash">—</span>
-                          )}
-                        </td>
-                        <td>
-                          {statusPosVenda ? (
-                            <span className={`status-badge ${statusPosVenda.classe}`}>{statusPosVenda.texto}</span>
-                          ) : (
-                            <span className="dash">—</span>
-                          )}
-                        </td>
-                        <td>
-                          {implementacao ? (
-                            <ImplementacaoStatusBadge status={implementacao.status} />
-                          ) : (
-                            <span className="dash">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="ops-kpi-card">
+              <span className="ops-kpi-value">{kpis.implementacoesEmAndamento}</span>
+              <span className="ops-kpi-label">Implementações em andamento</span>
             </div>
-          )}
+            <div className={`ops-kpi-card${kpis.clientesEmRisco > 0 ? ' ops-kpi-card-risco' : ''}`}>
+              <span className="ops-kpi-value">{kpis.clientesEmRisco}</span>
+              <span className="ops-kpi-label">Clientes em risco</span>
+            </div>
+            <div className="ops-kpi-card">
+              <span className="ops-kpi-value">{kpis.acoesHoje}</span>
+              <span className="ops-kpi-label">Ações para hoje</span>
+            </div>
+          </div>
+
+          <div className="ops-grid-2">
+            <section className="ops-section">
+              <div className="ops-section-head">
+                <h2>Atenção necessária</h2>
+                <span className="ops-section-count">{alertas.length}</span>
+              </div>
+              {alertas.length === 0 ? (
+                <p className="ops-empty-hint">Nenhum cliente precisando de atenção agora. 🎉</p>
+              ) : (
+                <ul className="ops-alert-list">
+                  {alertas.map((a) => (
+                    <AlertaCard key={`${a.clienteId}-${a.motivo}`} alerta={a} navigate={navigate} />
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="ops-section">
+              <div className="ops-section-head">
+                <h2>Próximos compromissos</h2>
+              </div>
+              <div className="ops-meetings-empty">
+                <p>
+                  Nenhuma integração de agenda conectada ainda. Quando o Google Calendar estiver
+                  ligado, kickoffs, treinamentos, check-ins e reuniões finais aparecem aqui, com
+                  horário, cliente, tipo e consultor.
+                </p>
+              </div>
+            </section>
+          </div>
+
+          <section className="ops-section">
+            <div className="ops-section-head">
+              <h2>Clientes</h2>
+              <span className="ops-section-count">{resumosFiltrados.length}</span>
+            </div>
+
+            <div className="ops-filters-bar">
+              <input
+                type="text"
+                className="ops-search"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por empresa, contato ou segmento"
+              />
+              <select value={filtroFase} onChange={(e) => setFiltroFase(e.target.value)}>
+                <option value="">Todas as fases</option>
+                {fasesDisponiveis.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+              <select value={filtroConsultor} onChange={(e) => setFiltroConsultor(e.target.value)}>
+                <option value="">Todos os consultores</option>
+                {consultoresDisponiveis.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <select value={filtroSaude} onChange={(e) => setFiltroSaude(e.target.value)}>
+                <option value="">Toda saúde</option>
+                {SAUDE_ORDEM.map((s) => (
+                  <option key={s} value={s}>
+                    {SAUDE_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+              <label className="ops-filter-chip">
+                <input type="checkbox" checked={soAtrasados} onChange={(e) => setSoAtrasados(e.target.checked)} />
+                Só atrasados
+              </label>
+              <label className="ops-filter-chip">
+                <input
+                  type="checkbox"
+                  checked={soMeusClientes}
+                  onChange={(e) => setSoMeusClientes(e.target.checked)}
+                />
+                Meus clientes
+              </label>
+              {filtrosAtivos && (
+                <button type="button" className="btn btn-ghost" onClick={limparFiltros}>
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+
+            {resumosFiltrados.length === 0 ? (
+              <div className="empty-state">
+                <p>Nenhum cliente encontrado com esses filtros.</p>
+              </div>
+            ) : (
+              <div className="table-wrap" style={{ overflowX: 'auto' }}>
+                <table className="data-table ops-table">
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Fase atual</th>
+                      <th>Saúde</th>
+                      <th>Progresso</th>
+                      <th>Trial</th>
+                      <th>Próxima ação</th>
+                      <th>Prazo</th>
+                      <th>Consultor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resumosFiltrados.map((r) => (
+                      <LinhaCliente key={r.cliente.id} resumo={r} navigate={navigate} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </>
       )}
     </div>
+  );
+}
+
+function AlertaCard({
+  alerta,
+  navigate,
+}: {
+  alerta: AlertaOperacao;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  return (
+    <li className={`ops-alert-card ops-alert-${alerta.severidade}`}>
+      <span className="ops-alert-dot" aria-hidden="true" />
+      <div className="ops-alert-body">
+        <div className="ops-alert-top">
+          <span className="ops-alert-cliente">{alerta.clienteNome}</span>
+          {alerta.prazoLabel && <span className="ops-alert-prazo">{alerta.prazoLabel}</span>}
+        </div>
+        <p className="ops-alert-motivo">{alerta.motivo}</p>
+        <p className="ops-alert-meta">
+          Próxima ação: <strong>{alerta.proximaAcao}</strong>
+          {alerta.consultor && ` · ${alerta.consultor}`}
+        </p>
+      </div>
+      <button
+        type="button"
+        className="btn btn-secondary ops-alert-btn"
+        onClick={() => navigate(`/clientes/${alerta.clienteId}`)}
+      >
+        Abrir
+      </button>
+    </li>
+  );
+}
+
+function LinhaCliente({
+  resumo,
+  navigate,
+}: {
+  resumo: ClienteResumo;
+  navigate: ReturnType<typeof useNavigate>;
+}) {
+  const { cliente, faseAtual, saude, progresso, prazoFase, prazoProcesso, proximaAcao, consultor } = resumo;
+  const prazoLabel = prazoFase
+    ? prazoFase.atrasada
+      ? `${prazoFase.diasAtraso}d atrasada`
+      : `${prazoFase.diasRestantes}d restantes`
+    : prazoProcesso
+      ? prazoProcesso.atrasada
+        ? `${prazoProcesso.diasAtraso}d atrasado`
+        : `${prazoProcesso.diasRestantes}d restantes`
+      : null;
+  const prazoAtrasado = prazoFase?.atrasada || prazoProcesso?.atrasada;
+
+  return (
+    <tr className="ops-table-row" onClick={() => navigate(`/clientes/${cliente.id}`)}>
+      <td>
+        <Link to={`/clientes/${cliente.id}`} className="row-name-link">
+          {cliente.nome_empresa}
+        </Link>
+        {(cliente.nome_contato || cliente.segmento) && (
+          <span className="mapeamento-card-data" style={{ display: 'block' }}>
+            {[cliente.nome_contato, cliente.segmento].filter(Boolean).join(' · ')}
+          </span>
+        )}
+      </td>
+      <td>{faseAtual}</td>
+      <td>
+        <span className={`ops-saude-badge ops-saude-${saude}`}>{SAUDE_LABELS[saude]}</span>
+      </td>
+      <td>
+        {progresso == null ? (
+          <span className="dash">—</span>
+        ) : (
+          <span className="ops-progress" title={`${progresso}%`}>
+            <span className="ops-progress-track">
+              <span className="ops-progress-fill" style={{ width: `${progresso}%` }} />
+            </span>
+            <span className="ops-progress-value">{progresso}%</span>
+          </span>
+        )}
+      </td>
+      <td>
+        <span className="dash" title="Trial Kommo ainda não integrado">
+          —
+        </span>
+      </td>
+      <td>{proximaAcao}</td>
+      <td>
+        {prazoLabel ? (
+          <span className={prazoAtrasado ? 'ops-prazo-atrasado' : 'ops-prazo-ok'}>{prazoLabel}</span>
+        ) : (
+          <span className="dash">—</span>
+        )}
+      </td>
+      <td>{consultor ?? <span className="dash">—</span>}</td>
+    </tr>
   );
 }
