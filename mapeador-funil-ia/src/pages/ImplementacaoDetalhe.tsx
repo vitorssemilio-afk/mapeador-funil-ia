@@ -218,6 +218,7 @@ export function ImplementacaoDetalhe() {
   } | null>(null);
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
   const [linkPosVendaCopiado, setLinkPosVendaCopiado] = useState(false);
+  const [kickoffRealizadoEm, setKickoffRealizadoEm] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -253,19 +254,14 @@ export function ImplementacaoDetalhe() {
   );
 
   const prazoProcesso = useMemo(
-    () =>
-      implementacao && mapeamentoOrigem
-        ? prazoGeral(implementacao, mapeamentoOrigem, hoje)
-        : null,
-    [implementacao, mapeamentoOrigem, hoje],
+    () => (implementacao ? prazoGeral(implementacao, kickoffRealizadoEm, hoje) : null),
+    [implementacao, kickoffRealizadoEm, hoje],
   );
 
   const tempoReuniao = useMemo(
     () =>
-      implementacao && mapeamentoOrigem
-        ? tempoAteReuniao(implementacao, historicoStatus, mapeamentoOrigem, hoje)
-        : null,
-    [implementacao, historicoStatus, mapeamentoOrigem, hoje],
+      implementacao ? tempoAteReuniao(implementacao, historicoStatus, kickoffRealizadoEm, hoje) : null,
+    [implementacao, historicoStatus, kickoffRealizadoEm, hoje],
   );
 
   const itensGantt = useMemo(() => {
@@ -363,7 +359,7 @@ export function ImplementacaoDetalhe() {
     if (!historicoError) setHistoricoStatus(historicoData ?? []);
     setCheckpointAdocao(checkpointData ?? null);
 
-    const [{ data: mapeamentoOrigemData }, { data: posVendaData }] = await Promise.all([
+    const [{ data: mapeamentoOrigemData }, { data: posVendaData }, { data: clienteData }] = await Promise.all([
       supabase
         .from('mapeamentos')
         .select('id, nome_negocio, enviado_em, created_at')
@@ -374,9 +370,13 @@ export function ImplementacaoDetalhe() {
         .select('id, codigo_curto')
         .eq('mapeamento_origem_id', implData.mapeamento_id)
         .eq('tipo', 'pos_venda'),
+      implData.cliente_id
+        ? supabase.from('clientes').select('kickoff_realizado_em').eq('id', implData.cliente_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
 
     setMapeamentoOrigem(mapeamentoOrigemData ?? null);
+    setKickoffRealizadoEm(clienteData?.kickoff_realizado_em ?? null);
     setPosVendaMapeamento(posVendaData?.[0] ?? null);
 
     const idsMapeamentos = [implData.mapeamento_id, ...(posVendaData ?? []).map((m) => m.id)];

@@ -163,7 +163,7 @@ export function construirResumoClientes(params: {
     const implementacao = implementacoes.find((i) => i.cliente_id === cliente.id) ?? null;
 
     const prazoFase = implementacao ? prazoFaseAtual(implementacao, historico, hoje) : null;
-    const prazoProcesso = implementacao && vendas ? prazoGeral(implementacao, vendas, hoje) : null;
+    const prazoProcesso = implementacao ? prazoGeral(implementacao, cliente.kickoff_realizado_em, hoje) : null;
 
     const precisaPosVenda =
       !!implementacao &&

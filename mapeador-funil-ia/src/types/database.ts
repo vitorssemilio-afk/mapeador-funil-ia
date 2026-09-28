@@ -24,7 +24,30 @@ export type MapeamentoStatus =
 
 export type MapeamentoTipo = 'vendas' | 'pos_venda';
 
-export type Cliente = {
+// Marcos do ciclo de vida do cliente (contratação → ... → adoção). Datados
+// automaticamente pelo produto quando dá (triggers no banco — ver migration
+// 0034), sempre editáveis manualmente na ficha do cliente. Campos "_para"
+// são datas agendadas/planejadas; "_em" são o que de fato aconteceu.
+export type MarcosCliente = {
+  contratado_em: string | null;
+  formulario_enviado_em: string | null;
+  formulario_respondido_em: string | null;
+  funil_gerado_em: string | null;
+  funil_revisado_em: string | null;
+  kickoff_agendado_para: string | null;
+  kickoff_realizado_em: string | null;
+  conta_kommo_solicitada_em: string | null;
+  conta_kommo_criada_em: string | null;
+  treinamento_agendado_para: string | null;
+  treinamento_realizado_em: string | null;
+  extensao_14_solicitada_em: string | null;
+  extensao_14_aprovada_em: string | null;
+  extensao_7_solicitada_em: string | null;
+  extensao_7_aprovada_em: string | null;
+  implementacao_concluida_em: string | null;
+};
+
+export type Cliente = MarcosCliente & {
   id: string;
   nome_empresa: string;
   nome_contato: string | null;

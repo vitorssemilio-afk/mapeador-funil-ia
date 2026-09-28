@@ -2165,3 +2165,54 @@ img.auth-logo {
 .ops-prazo-ok {
   color: var(--color-text-muted);
 }
+
+/* ── Marcos / linha do tempo (ficha do cliente) ── */
+.timeline-marcos {
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline-marcos li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  font-size: 13px;
+}
+
+.timeline-marco-label {
+  font-weight: 600;
+}
+
+.timeline-marco-data {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.metricas-marcos {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metricas-marcos li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.metricas-marcos strong {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}

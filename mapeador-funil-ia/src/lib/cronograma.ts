@@ -11,7 +11,6 @@ import type {
   ImplementacaoCrm,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
-  Mapeamento,
 } from '../types/database';
 
 export const PX_POR_DIA = 26;
@@ -210,11 +209,10 @@ export function empacotarFasesEmRaias(fases: FaseCronograma[], escala: EscalaTem
 // Prazos e alertas de atraso
 // ============================================================
 
-// Duração planejada do POP inteiro (preparação + as 4 fases semanais), em dias
-// corridos a partir de quando o cliente respondeu o formulário de
-// mapeamento (não de quando a implementação foi criada — o pré-requisito
-// pode ficar dias parado esperando o kickoff, e isso não deveria "esconder"
-// atraso real do relógio geral).
+// Duração planejada do POP inteiro (preparação + as 4 fases semanais), em
+// dias corridos a partir do Kickoff REALIZADO (clientes.kickoff_realizado_em)
+// — não da contratação, do envio/resposta do formulário, ou da criação da
+// conta Kommo. Ver marcosImplementacao.ts.
 export const DURACAO_TOTAL_DIAS = 40;
 
 // Prazo "leve" de cada semana do checklist — combina com o padrão de item
@@ -229,17 +227,6 @@ const FASES_SEMANAIS: ImplementacaoStatus[] = [
   'automacoes',
   'entrega',
 ];
-
-// Instante em que o relógio dos 40 dias começa a contar: quando o cliente
-// respondeu o formulário de mapeamento (mapeamentos.enviado_em). Mapeamentos
-// enviados antes dessa coluna existir usam updated_at como aproximação (via
-// backfill da migration); sem nenhum dos dois, cai pro created_at do
-// mapeamento como último recurso.
-export function dataInicioProcesso(
-  mapeamento: Pick<Mapeamento, 'enviado_em' | 'created_at'>,
-): Date {
-  return new Date(mapeamento.enviado_em ?? mapeamento.created_at);
-}
 
 export function dataPrevistaConclusao(inicioProcesso: Date): Date {
   return adicionarDias(inicioProcesso, DURACAO_TOTAL_DIAS);
@@ -282,17 +269,19 @@ export type PrazoGeral = {
   diasAtraso: number;
 };
 
-// Prazo do processo inteiro (os 40 dias corridos), só relevante enquanto a
-// implementação ainda está em andamento — concluída/cancelada não "atrasa"
-// mais.
+// Prazo do processo inteiro (os 40 dias corridos a partir do Kickoff
+// REALIZADO), só relevante enquanto a implementação ainda está em andamento
+// — concluída/cancelada não "atrasa" mais, e sem Kickoff realizado ainda
+// não existe prazo (o relógio nem começou).
 export function prazoGeral(
   implementacao: ImplementacaoCrm,
-  mapeamento: Pick<Mapeamento, 'enviado_em' | 'created_at'>,
+  kickoffRealizadoEm: string | null,
   hoje: Date,
 ): PrazoGeral | null {
   if (implementacao.status === 'concluida' || implementacao.status === 'cancelada') return null;
+  if (!kickoffRealizadoEm) return null;
 
-  const inicioProcesso = dataInicioProcesso(mapeamento);
+  const inicioProcesso = new Date(kickoffRealizadoEm);
   const prazoConclusao = dataPrevistaConclusao(inicioProcesso);
   const diasRestantes = diferencaEmDias(prazoConclusao, hoje);
 
@@ -312,16 +301,16 @@ export type TempoAteReuniao = {
   concluido: boolean;
 };
 
-// Quanto tempo levou (ou está levando) entre o cliente responder o
-// formulário e a implementação sair do pré-requisito (proxy pra "primeira
-// reunião" — é o marco que o histórico de fato registra).
+// Quanto tempo levou (ou está levando) entre o Kickoff realizado e a
+// implementação sair da Preparação do CRM.
 export function tempoAteReuniao(
   implementacao: ImplementacaoCrm,
   historico: ImplementacaoStatusHistorico[],
-  mapeamento: Pick<Mapeamento, 'enviado_em' | 'created_at'>,
+  kickoffRealizadoEm: string | null,
   hoje: Date,
-): TempoAteReuniao {
-  const inicioProcesso = dataInicioProcesso(mapeamento);
+): TempoAteReuniao | null {
+  if (!kickoffRealizadoEm) return null;
+  const inicioProcesso = new Date(kickoffRealizadoEm);
 
   const saidaPreRequisito = historico
     .filter((h) => h.implementacao_id === implementacao.id && h.status_novo !== 'preparacao_crm')
