@@ -148,6 +148,12 @@ export type Mapeamento = {
   // coluna existir e não há como saber a data exata (nesse caso, updated_at
   // é a melhor aproximação disponível).
   enviado_em: string | null;
+  // Quem confirmou ter revisado a versão atual do funil, e quando — ver o
+  // botão "Marcar como revisado" na tela de Mapeamento. Independente do
+  // status do funil em si (em_revisao_interna etc.), é só um registro de
+  // auditoria de quem olhou por último.
+  revisado_por_email: string | null;
+  revisado_em: string | null;
   created_at: string;
   updated_at: string;
 };

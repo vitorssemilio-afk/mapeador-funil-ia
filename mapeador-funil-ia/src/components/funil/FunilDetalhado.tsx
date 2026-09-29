@@ -1,23 +1,10 @@
 import { useRef, useState } from 'react';
-import {
-  CAMPOS_ETAPA_ANTES_DOS_CAMPOS,
-  CAMPOS_ETAPA_DEPOIS_DOS_CAMPOS,
-  mesclarCamposPorEntidade,
-  textoCamposPorEntidade,
-  textoParaValorEtapa,
-  valorEtapaParaTexto,
-} from '../../data/etapaCampos';
+import { mesclarCamposPorEntidade, textoParaValorEtapa } from '../../data/etapaCampos';
 import { supabase } from '../../lib/supabaseClient';
 import type { EtapaFunil, FunilGerado } from '../../types/database';
+import { EtapaCard } from './EtapaCard';
 
 type CampoEntidadeKey = 'campos_obrigatorios' | 'campos_desejaveis';
-
-const LINHAS_CAMPOS_POR_ENTIDADE: { campoKey: CampoEntidadeKey; label: string; entidade: 'LEAD' | 'CONTATO' }[] = [
-  { campoKey: 'campos_obrigatorios', label: 'Campos Obrigatórios · Lead', entidade: 'LEAD' },
-  { campoKey: 'campos_obrigatorios', label: 'Campos Obrigatórios · Contato', entidade: 'CONTATO' },
-  { campoKey: 'campos_desejaveis', label: 'Campos Desejáveis · Lead', entidade: 'LEAD' },
-  { campoKey: 'campos_desejaveis', label: 'Campos Desejáveis · Contato', entidade: 'CONTATO' },
-];
 
 const AUTOSAVE_DELAY_MS = 1000;
 
@@ -43,6 +30,7 @@ type Props = {
   funil: FunilGerado;
   onChange: (funilId: string, etapas: EtapaFunil[]) => void;
   somenteLeitura?: boolean;
+  modo?: 'tecnica' | 'apresentacao';
 };
 
 function saveStatusLabel(status: SaveStatus): string {
@@ -58,8 +46,9 @@ function saveStatusLabel(status: SaveStatus): string {
   }
 }
 
-export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Props) {
+export function FunilDetalhado({ funil, onChange, somenteLeitura = false, modo = 'tecnica' }: Props) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [expandidos, setExpandidos] = useState<Set<number>>(new Set([0]));
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function persist(etapas: EtapaFunil[]) {
@@ -80,26 +69,24 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
     }, AUTOSAVE_DELAY_MS);
   }
 
+  function toggleExpandir(etapaIndex: number) {
+    setExpandidos((prev) => {
+      const copia = new Set(prev);
+      if (copia.has(etapaIndex)) copia.delete(etapaIndex);
+      else copia.add(etapaIndex);
+      return copia;
+    });
+  }
+
   function handleNomeEtapaChange(etapaIndex: number, novoNome: string) {
     commit(funil.etapas.map((etapa, i) => (i === etapaIndex ? { ...etapa, nome: novoNome } : etapa)));
   }
 
-  function handleCellChange(
-    etapaIndex: number,
-    campoKey: keyof EtapaFunil,
-    texto: string,
-    lista: boolean,
-    estruturado: boolean,
-  ) {
-    let novoValor: ReturnType<typeof textoParaValorEtapa> | null = textoParaValorEtapa(
-      texto,
-      lista,
-      estruturado,
-    );
+  function handleCellChange(etapaIndex: number, campoKey: keyof EtapaFunil, texto: string, lista: boolean) {
+    let novoValor: ReturnType<typeof textoParaValorEtapa> | null = textoParaValorEtapa(texto, lista, false);
     if (campoKey === 'script_sugerido' && typeof novoValor === 'string' && novoValor.trim() === '') {
       novoValor = null;
     }
-
     commit(
       funil.etapas.map((etapa, i) =>
         i === etapaIndex ? ({ ...etapa, [campoKey]: novoValor } as EtapaFunil) : etapa,
@@ -133,6 +120,15 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
     const novasEtapas = [...funil.etapas];
     novasEtapas.splice(indiceInsercao, 0, { ...ETAPA_VAZIA });
     commit(novasEtapas);
+    setExpandidos((prev) => new Set(prev).add(indiceInsercao));
+  }
+
+  function handleDuplicarEtapa(etapaIndex: number) {
+    const original = funil.etapas[etapaIndex];
+    const copia: EtapaFunil = { ...original, nome: `${original.nome} (cópia)` };
+    const novasEtapas = [...funil.etapas];
+    novasEtapas.splice(etapaIndex + 1, 0, copia);
+    commit(novasEtapas);
   }
 
   function handleRemoverEtapa(etapaIndex: number) {
@@ -150,6 +146,10 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
     commit(novasEtapas);
   }
 
+  function handleAceitarRegeneracao(etapaIndex: number, novaEtapa: EtapaFunil) {
+    commit(funil.etapas.map((etapa, i) => (i === etapaIndex ? novaEtapa : etapa)));
+  }
+
   return (
     <section className="card funil-detalhado">
       <div className="funil-detalhado-header">
@@ -157,145 +157,51 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false }: Prop
           <h2>{funil.nome_funil}</h2>
           <span className="tipo-funil-badge">{funil.tipo_funil}</span>
         </div>
-        <span className="save-status">
-          {somenteLeitura ? 'Versão anterior — somente leitura' : saveStatusLabel(saveStatus)}
-        </span>
+        {modo === 'tecnica' && (
+          <span className="save-status">
+            {somenteLeitura ? 'Versão anterior — somente leitura' : saveStatusLabel(saveStatus)}
+          </span>
+        )}
       </div>
 
-      {funil.justificativa && <p className="field-hint">{funil.justificativa}</p>}
+      {funil.justificativa && modo === 'tecnica' && <p className="field-hint">{funil.justificativa}</p>}
 
-      <div className="funil-table-wrap">
-        <table className="funil-etapas-table">
-          <thead>
-            <tr>
-              <th className="campo-label-cell">Etapa</th>
-              {funil.etapas.map((etapa, i) => (
-                <th key={i}>
-                  <div className="etapa-nome-cell">
-                    {!somenteLeitura && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-mover-etapa"
-                        title="Mover etapa pra esquerda"
-                        disabled={i === 0}
-                        onClick={() => handleMoverEtapa(i, -1)}
-                      >
-                        ‹
-                      </button>
-                    )}
-                    <input
-                      className="etapa-nome-input"
-                      value={etapa.nome}
-                      onChange={(e) => handleNomeEtapaChange(i, e.target.value)}
-                      readOnly={somenteLeitura}
-                    />
-                    {!somenteLeitura && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-mover-etapa"
-                        title="Mover etapa pra direita"
-                        disabled={i === funil.etapas.length - 1}
-                        onClick={() => handleMoverEtapa(i, 1)}
-                      >
-                        ›
-                      </button>
-                    )}
-                    {!somenteLeitura && funil.etapas.length > 1 && (
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-remover-etapa"
-                        title="Remover etapa"
-                        onClick={() => handleRemoverEtapa(i)}
-                      >
-                        ×
-                      </button>
-                    )}
-                  </div>
-                </th>
-              ))}
-              {!somenteLeitura && (
-                <th>
-                  <button type="button" className="btn btn-secondary btn-auto" onClick={handleAdicionarEtapa}>
-                    + Etapa
-                  </button>
-                </th>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {CAMPOS_ETAPA_ANTES_DOS_CAMPOS.map((campo) => (
-              <tr key={campo.key}>
-                <th scope="row" className="campo-label-cell">
-                  {campo.label}
-                </th>
-                {funil.etapas.map((etapa, i) => (
-                  <td key={i}>
-                    <textarea
-                      className="etapa-cell-input"
-                      rows={2}
-                      value={valorEtapaParaTexto(etapa[campo.key], campo.estruturado)}
-                      onChange={(e) =>
-                        handleCellChange(i, campo.key, e.target.value, campo.lista, !!campo.estruturado)
-                      }
-                      readOnly={somenteLeitura}
-                    />
-                  </td>
-                ))}
-                {!somenteLeitura && <td />}
-              </tr>
-            ))}
-
-            {LINHAS_CAMPOS_POR_ENTIDADE.map(({ campoKey, label, entidade }) => (
-              <tr key={`${campoKey}-${entidade}`}>
-                <th scope="row" className="campo-label-cell">
-                  {label}
-                </th>
-                {funil.etapas.map((etapa, i) => (
-                  <td key={i}>
-                    <textarea
-                      className="etapa-cell-input"
-                      rows={2}
-                      value={textoCamposPorEntidade(etapa[campoKey], entidade)}
-                      onChange={(e) => handleCamposEntidadeChange(i, campoKey, entidade, e.target.value)}
-                      readOnly={somenteLeitura}
-                    />
-                  </td>
-                ))}
-                {!somenteLeitura && <td />}
-              </tr>
-            ))}
-
-            {CAMPOS_ETAPA_DEPOIS_DOS_CAMPOS.map((campo) => (
-              <tr key={campo.key}>
-                <th scope="row" className="campo-label-cell">
-                  {campo.label}
-                </th>
-                {funil.etapas.map((etapa, i) => (
-                  <td key={i}>
-                    <textarea
-                      className="etapa-cell-input"
-                      rows={2}
-                      value={valorEtapaParaTexto(etapa[campo.key], campo.estruturado)}
-                      onChange={(e) =>
-                        handleCellChange(i, campo.key, e.target.value, campo.lista, !!campo.estruturado)
-                      }
-                      readOnly={somenteLeitura}
-                    />
-                  </td>
-                ))}
-                {!somenteLeitura && <td />}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="etapa-card-lista-container">
+        {funil.etapas.map((etapa, i) => (
+          <EtapaCard
+            key={i}
+            etapa={etapa}
+            index={i}
+            total={funil.etapas.length}
+            funilId={funil.id}
+            modo={modo}
+            somenteLeitura={somenteLeitura}
+            expandido={expandidos.has(i)}
+            onToggleExpandir={() => toggleExpandir(i)}
+            onChangeNome={(novoNome) => handleNomeEtapaChange(i, novoNome)}
+            onChangeCampo={(campoKey, texto, lista) => handleCellChange(i, campoKey, texto, lista)}
+            onChangeCamposEntidade={(campoKey, entidade, texto) =>
+              handleCamposEntidadeChange(i, campoKey, entidade, texto)
+            }
+            onDuplicar={() => handleDuplicarEtapa(i)}
+            onExcluir={() => handleRemoverEtapa(i)}
+            onMover={(direcao) => handleMoverEtapa(i, direcao)}
+            onAceitarRegeneracao={(novaEtapa) => handleAceitarRegeneracao(i, novaEtapa)}
+          />
+        ))}
       </div>
 
-      {funil.etapas.length > 0 && (
+      {modo === 'tecnica' && !somenteLeitura && (
+        <button type="button" className="btn btn-secondary btn-auto" onClick={handleAdicionarEtapa}>
+          + Etapa
+        </button>
+      )}
+
+      {modo === 'tecnica' && !somenteLeitura && funil.etapas.length > 0 && (
         <p className="field-hint funil-estruturado-hint">
-          Campos Obrigatórios/Desejáveis: uma linha por campo, no formato "Nome (tipo)" — ex:
+          Campos obrigatórios/desejáveis: uma linha por campo, no formato "Nome (tipo)" — ex:
           "Orçamento (numero)" — ou "Nome (lista_suspensa: opção 1, opção 2)" quando o tipo tiver
-          opções. Cada campo já entra na linha certa (Lead ou Contato) — mover um campo de entidade
-          é só recortar a linha e colar na outra.
+          opções.
         </p>
       )}
     </section>
