@@ -316,15 +316,6 @@ export type Consultor = {
   cargo: string | null;
   avatar_url: string | null;
   ativo: boolean;
-  // Integração com Google Calendar via o "endereço secreto no formato iCal"
-  // que o próprio consultor gera (migration 0043) — sem depender de conta de
-  // serviço nem de nenhuma política de compartilhamento do Workspace.
-  // google_calendar_id/google_calendar_sync_token (migration 0042, quando a
-  // ideia era usar a API com conta de serviço) ficaram sem uso.
-  google_calendar_id: string | null;
-  google_calendar_sync_token: string | null;
-  google_calendar_sincronizado_em: string | null;
-  google_calendar_ical_url: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -448,12 +439,6 @@ export type StatusReuniao =
 // dias e o gate do treinamento em outros lugares do produto (ver
 // src/lib/cronograma.ts e src/lib/atividadesCronograma.ts), então o módulo
 // de Reuniões escreve nos dois lugares em vez de duplicar essa lógica.
-// origem 'google_calendar' marca uma reunião vinculada a um evento real do
-// Google Calendar, que passa a ser a fonte principal do agendamento — a
-// sincronização periódica (edge function google-calendar-sync) atualiza
-// data_hora/google_meet_link/google_status sozinha a partir de lá, mas
-// nunca decide status='realizada' (isso é sempre confirmação manual) nem
-// mexe numa reunião já realizada.
 export type Reuniao = {
   id: string;
   cliente_id: string;
@@ -471,11 +456,6 @@ export type Reuniao = {
   pendencias_cliente: string | null;
   pendencias_internas: string | null;
   proximos_passos: string | null;
-  origem: 'manual' | 'google_calendar';
-  google_event_id: string | null;
-  google_calendar_id: string | null;
-  google_meet_link: string | null;
-  google_status: 'confirmed' | 'cancelled' | null;
   created_at: string;
   updated_at: string;
 };
@@ -489,30 +469,6 @@ export type ReuniaoRemarcacao = {
   responsavel_impacto: ImpactoResponsavel;
   alterado_por_email: string | null;
   created_at: string;
-};
-
-// Eventos sincronizados dos calendários dos consultores, ainda não
-// vinculados a uma reunião — sugestao_cliente_id/sugestao_tipo vêm da regra
-// de match automático (ver supabase/functions/google-calendar-sync), mas o
-// vínculo em si (preencher reuniao_id) é sempre uma confirmação manual do
-// consultor, nunca automático.
-export type GoogleCalendarEventoPendente = {
-  id: string;
-  consultor_id: string;
-  google_calendar_id: string;
-  google_event_id: string;
-  titulo: string | null;
-  descricao: string | null;
-  data_inicio: string | null;
-  data_fim: string | null;
-  meet_link: string | null;
-  attendees: { email: string; displayName?: string }[] | null;
-  status_google: 'confirmed' | 'cancelled';
-  reuniao_id: string | null;
-  sugestao_cliente_id: string | null;
-  sugestao_tipo: TipoReuniao | null;
-  created_at: string;
-  updated_at: string;
 };
 
 // Configuração global (singleton, id sempre true), não por cliente — as 4
@@ -709,13 +665,6 @@ export type Database = {
         Insert: Partial<ReuniaoRemarcacao> &
           Pick<ReuniaoRemarcacao, 'reuniao_id' | 'data_nova' | 'motivo' | 'responsavel_impacto'>;
         Update: Partial<ReuniaoRemarcacao>;
-        Relationships: [];
-      };
-      google_calendar_eventos_pendentes: {
-        Row: GoogleCalendarEventoPendente;
-        Insert: Partial<GoogleCalendarEventoPendente> &
-          Pick<GoogleCalendarEventoPendente, 'consultor_id' | 'google_calendar_id' | 'google_event_id' | 'status_google'>;
-        Update: Partial<GoogleCalendarEventoPendente>;
         Relationships: [];
       };
       cliente_arquivos: {

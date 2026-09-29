@@ -9,7 +9,6 @@ type FormConsultor = {
   cargo: string;
   avatar_url: string;
   ativo: boolean;
-  google_calendar_ical_url: string;
 };
 
 const FORM_VAZIO: FormConsultor = {
@@ -19,7 +18,6 @@ const FORM_VAZIO: FormConsultor = {
   cargo: '',
   avatar_url: '',
   ativo: true,
-  google_calendar_ical_url: '',
 };
 
 function paraForm(consultor: Consultor): FormConsultor {
@@ -30,7 +28,6 @@ function paraForm(consultor: Consultor): FormConsultor {
     cargo: consultor.cargo ?? '',
     avatar_url: consultor.avatar_url ?? '',
     ativo: consultor.ativo,
-    google_calendar_ical_url: consultor.google_calendar_ical_url ?? '',
   };
 }
 
@@ -99,7 +96,6 @@ export function Consultores() {
       cargo: form.cargo.trim() || null,
       avatar_url: form.avatar_url.trim() || null,
       ativo: form.ativo,
-      google_calendar_ical_url: form.google_calendar_ical_url.trim() || null,
     };
 
     const { error: saveError } = editandoId
@@ -213,22 +209,6 @@ export function Consultores() {
                 placeholder="https://..."
               />
             </label>
-            <label className="field">
-              <span>Endereço secreto do Google Calendar em formato iCal (opcional)</span>
-              <input
-                type="url"
-                value={form.google_calendar_ical_url}
-                onChange={(e) => setForm({ ...form, google_calendar_ical_url: e.target.value })}
-                placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
-              />
-              <span className="field-hint">
-                O próprio consultor gera esse link, sem precisar de nenhum admin: no Google Calendar,
-                em Configurações → o nome da agenda dele → "Integrar agenda" → copiar o "Endereço
-                secreto no formato iCal". Cole esse link aqui. Sem isso, as reuniões desse consultor não
-                são sincronizadas. Trate esse link como uma senha — quem o tiver consegue ler a agenda
-                completa dele.
-              </span>
-            </label>
           </div>
           <label className="option-checkbox">
             <input
@@ -270,7 +250,6 @@ export function Consultores() {
                 <th>E-mail</th>
                 <th>Telefone</th>
                 <th>Cargo</th>
-                <th>Google Calendar</th>
                 <th>Status</th>
                 <th />
               </tr>
@@ -293,17 +272,6 @@ export function Consultores() {
                   <td>{c.email}</td>
                   <td>{c.telefone ?? '—'}</td>
                   <td>{c.cargo ?? '—'}</td>
-                  <td>
-                    {c.google_calendar_ical_url ? (
-                      <span className="status-badge status-tone-success">
-                        Conectado
-                        {c.google_calendar_sincronizado_em &&
-                          ` · sinc. ${new Date(c.google_calendar_sincronizado_em).toLocaleString('pt-BR')}`}
-                      </span>
-                    ) : (
-                      <span className="status-badge status-tone-warning">Não conectado</span>
-                    )}
-                  </td>
                   <td>
                     <span className={`status-badge status-tone-${c.ativo ? 'success' : 'danger'}`}>
                       {c.ativo ? 'Ativo' : 'Inativo'}
