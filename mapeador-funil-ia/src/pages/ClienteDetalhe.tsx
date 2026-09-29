@@ -6,9 +6,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
-import { IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
+import { CICLOS_OPERACIONAIS, calcularDiaCiclo, IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
-import { nomeConsultor } from '../lib/operacaoResumo';
+import { construirResumoClientes, nomeConsultor, SAUDE_LABELS, type SaudeCliente } from '../lib/operacaoResumo';
 import { STATUS_REUNIAO_LABELS, STATUS_REUNIAO_TONE, TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import type {
@@ -20,7 +20,9 @@ import type {
   ClienteContato,
   ClienteObservacao,
   ClienteOcorrencia,
+  ConfiguracaoPipefy,
   Consultor,
+  FunilVersao,
   ImpactoResponsavel,
   ImplementacaoCrm,
   Mapeamento,
@@ -243,6 +245,16 @@ export function ClienteDetalhe() {
   const [salvandoOcorrencia, setSalvandoOcorrencia] = useState(false);
   const [resolvendoOcorrenciaId, setResolvendoOcorrenciaId] = useState<string | null>(null);
 
+  // Aba ativa da central operacional — puramente de navegação/exibição,
+  // nenhuma lógica de dados depende dela.
+  const [aba, setAba] = useState<
+    'resumo' | 'mapeamento' | 'implementacao' | 'reunioes' | 'trial' | 'informacoes' | 'arquivos' | 'historico'
+  >('resumo');
+
+  const [versaoVendas, setVersaoVendas] = useState<FunilVersao | null>(null);
+  const [versaoPosVenda, setVersaoPosVenda] = useState<FunilVersao | null>(null);
+  const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
+
   async function carregar(clienteId: string) {
     setLoading(true);
     setError(null);
@@ -259,6 +271,7 @@ export function ClienteDetalhe() {
       { data: ocorrenciasData },
       { data: reunioesData },
       { data: consultoresData },
+      { data: pipefyConfigData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -315,6 +328,7 @@ export function ClienteDetalhe() {
         .eq('cliente_id', clienteId)
         .order('data_hora', { ascending: true }),
       supabase.from('consultores').select('*').order('nome', { ascending: true }),
+      supabase.from('configuracoes_pipefy').select('*').eq('id', true).maybeSingle(),
     ]);
 
     if (clienteError || !clienteData) {
@@ -337,6 +351,32 @@ export function ClienteDetalhe() {
     setOcorrencias(ocorrenciasData ?? []);
     setReunioes(reunioesData ?? []);
     setConsultores(consultoresData ?? []);
+    setPipefyConfig(pipefyConfigData ?? null);
+
+    // Versões do funil (vendas/pós-venda) — buscadas depois, pois dependem
+    // do id do mapeamento que acabou de ser carregado acima.
+    const [{ data: versaoVendasData }, { data: versaoPosVendaData }] = await Promise.all([
+      vendasData
+        ? supabase
+            .from('funil_versoes')
+            .select('*')
+            .eq('mapeamento_id', vendasData.id)
+            .order('versao', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      posVendaData
+        ? supabase
+            .from('funil_versoes')
+            .select('*')
+            .eq('mapeamento_id', posVendaData.id)
+            .order('versao', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    setVersaoVendas(versaoVendasData ?? null);
+    setVersaoPosVenda(versaoPosVendaData ?? null);
 
     if (implementacaoData) {
       const { data: checkpointData } = await supabase
@@ -879,6 +919,100 @@ export function ClienteDetalhe() {
     return itens.sort((a, b) => b.data.getTime() - a.data.getTime());
   }, [cliente, remarcacoes, implementacao, atividadesAutomacao, statusAutomacao, reunioes]);
 
+  // Resumo consolidado do cliente (fase, saúde, progresso, prazos,
+  // consultores) — reaproveita a mesma função usada no dashboard "Operação
+  // CRM", só que com arrays de um elemento só.
+  const resumo = useMemo(() => {
+    if (!cliente) return null;
+    const resumos = construirResumoClientes({
+      clientes: [cliente],
+      mapeamentos: [mapeamentoVendas, mapeamentoPosVenda].filter((m): m is Mapeamento => m != null),
+      implementacoes: implementacao ? [implementacao] : [],
+      historico: [],
+      atividades: atividadesAutomacao,
+      statusRows: statusAutomacao,
+      consultores,
+      hoje: new Date(),
+    });
+    return resumos[0] ?? null;
+  }, [cliente, mapeamentoVendas, mapeamentoPosVenda, implementacao, atividadesAutomacao, statusAutomacao, consultores]);
+
+  const diaCiclo = useMemo(() => {
+    if (!cliente) return null;
+    return calcularDiaCiclo(cliente.kickoff_realizado_em, new Date());
+  }, [cliente]);
+
+  const resumoTrial = useMemo(() => {
+    if (!cliente) return null;
+    return resolverResumoTrialKommo(cliente, new Date());
+  }, [cliente]);
+
+  const proximaReuniao = useMemo(() => {
+    const agora = new Date();
+    return (
+      [...reunioes]
+        .filter((r) => r.status === 'agendada' && r.data_hora && new Date(r.data_hora) >= agora)
+        .sort((a, b) => new Date(a.data_hora!).getTime() - new Date(b.data_hora!).getTime())[0] ?? null
+    );
+  }, [reunioes]);
+
+  const proximosCompromissos = useMemo(() => {
+    const agora = new Date();
+    return [...reunioes]
+      .filter((r) => r.status === 'agendada' && r.data_hora && new Date(r.data_hora) >= agora)
+      .sort((a, b) => new Date(a.data_hora!).getTime() - new Date(b.data_hora!).getTime())
+      .slice(0, 3);
+  }, [reunioes]);
+
+  const ocorrenciasAbertas = useMemo(() => ocorrencias.filter((o) => o.status === 'aberta'), [ocorrencias]);
+
+  const riscosAbertos = useMemo(
+    () => ocorrenciasAbertas.filter((o) => o.impacta_cronograma),
+    [ocorrenciasAbertas],
+  );
+
+  const pendenciasClienteCount = useMemo(
+    () => reunioes.filter((r) => (r.pendencias_cliente ?? '').trim().length > 0).length + ocorrenciasAbertas.length,
+    [reunioes, ocorrenciasAbertas],
+  );
+
+  const pendenciasInternasCount = useMemo(
+    () => reunioes.filter((r) => (r.pendencias_internas ?? '').trim().length > 0).length,
+    [reunioes],
+  );
+
+  const proximosMarcos = useMemo(() => {
+    if (!cliente) return [];
+    return MARCOS_ORDENADOS.filter(({ campo }) => !cliente[campo]).slice(0, 3);
+  }, [cliente]);
+
+  const arquivosPorCategoria = useMemo(() => {
+    const grupos: { nome: string; itens: ClienteArquivo[] }[] = [
+      { nome: 'Apresentações', itens: [] },
+      { nome: 'Contratos', itens: [] },
+      { nome: 'Atas', itens: [] },
+      { nome: 'Playbook', itens: [] },
+      { nome: 'Outros', itens: [] },
+    ];
+    for (const arquivo of arquivos) {
+      const alvo = `${arquivo.nome_arquivo} ${arquivo.tipo_mime ?? ''}`.toLowerCase();
+      if (alvo.includes('apresenta') || alvo.includes('.ppt')) grupos[0].itens.push(arquivo);
+      else if (alvo.includes('contrat')) grupos[1].itens.push(arquivo);
+      else if (alvo.includes('ata')) grupos[2].itens.push(arquivo);
+      else if (alvo.includes('playbook')) grupos[3].itens.push(arquivo);
+      else grupos[4].itens.push(arquivo);
+    }
+    return grupos.filter((g) => g.itens.length > 0);
+  }, [arquivos]);
+
+  const SAUDE_TONE: Record<SaudeCliente, 'success' | 'warning' | 'danger' | 'info'> = {
+    normal: 'success',
+    atencao: 'warning',
+    critico: 'danger',
+    aguardando_cliente: 'info',
+    concluido: 'success',
+  };
+
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error && !cliente) return <p className="form-error">{error}</p>;
   if (!cliente || !form) return <p className="form-error">Cliente não encontrado.</p>;
@@ -901,6 +1035,265 @@ export function ClienteDetalhe() {
 
       {error && <p className="form-error">{error}</p>}
 
+      {resumo && (
+        <section className="card resumo-revisao-card">
+          <div className="resumo-revisao-grid">
+            <div>
+              <span className="etapa-card-label">Consultor responsável</span>
+              <p>{resumo.consultor ?? '—'}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Consultor de apoio</span>
+              <p>{resumo.consultorApoio ?? '—'}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Fase atual</span>
+              <p>{resumo.faseAtual}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Saúde da implementação</span>
+              <p>
+                <span className={`status-badge status-tone-${SAUDE_TONE[resumo.saude]}`}>
+                  {SAUDE_LABELS[resumo.saude]}
+                </span>
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Progresso</span>
+              <p>{resumo.progresso != null ? `${resumo.progresso}%` : '—'}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Dia atual / 40</span>
+              <p>{diaCiclo ? `Dia ${diaCiclo.dia}/40` : 'Kickoff ainda não realizado'}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Ciclo atual</span>
+              <p>{diaCiclo?.ciclo?.nome ?? '—'}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Status do Trial Kommo</span>
+              <p>
+                {resumoTrial ? (
+                  <span className={`status-badge status-tone-${STATUS_TRIAL_TONE[resumoTrial.status]}`}>
+                    {STATUS_TRIAL_LABELS[resumoTrial.status]}
+                  </span>
+                ) : (
+                  'Sem Trial iniciado'
+                )}
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Próxima ação</span>
+              <p>{resumo.proximaAcao}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Prazo da próxima ação</span>
+              <p>
+                {(() => {
+                  const prazo = resumo.prazoFase ?? resumo.prazoProcesso;
+                  if (!prazo) return '—';
+                  return prazo.atrasada ? `${prazo.diasAtraso}d atrasado` : `${prazo.diasRestantes}d restantes`;
+                })()}
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Próxima reunião</span>
+              <p>
+                {proximaReuniao
+                  ? `${TIPO_REUNIAO_LABELS[proximaReuniao.tipo]} em ${formatarDataHora(proximaReuniao.data_hora!)}`
+                  : 'Nenhuma reunião agendada'}
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Pendências do cliente</span>
+              <p>{pendenciasClienteCount} pendência(s)</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Pendências internas</span>
+              <p>{pendenciasInternasCount} pendência(s)</p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <div className="tabs">
+        <button type="button" className={`tab-button${aba === 'resumo' ? ' active' : ''}`} onClick={() => setAba('resumo')}>
+          Resumo
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'mapeamento' ? ' active' : ''}`}
+          onClick={() => setAba('mapeamento')}
+        >
+          Mapeamento
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'implementacao' ? ' active' : ''}`}
+          onClick={() => setAba('implementacao')}
+        >
+          Implementação
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'reunioes' ? ' active' : ''}`}
+          onClick={() => setAba('reunioes')}
+        >
+          Reuniões
+        </button>
+        <button type="button" className={`tab-button${aba === 'trial' ? ' active' : ''}`} onClick={() => setAba('trial')}>
+          Trial Kommo
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'informacoes' ? ' active' : ''}`}
+          onClick={() => setAba('informacoes')}
+        >
+          Informações
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'arquivos' ? ' active' : ''}`}
+          onClick={() => setAba('arquivos')}
+        >
+          Arquivos
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'historico' ? ' active' : ''}`}
+          onClick={() => setAba('historico')}
+        >
+          Histórico
+        </button>
+      </div>
+
+      {aba === 'resumo' && resumo && (
+        <div className="form-grid">
+          <section className="card">
+            <span className="etapa-card-label">Status geral</span>
+            <p>
+              {implementacao && <ImplementacaoStatusBadge status={implementacao.status} />} {resumo.faseAtual}
+            </p>
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Saúde da implementação</span>
+            <p>
+              <span className={`status-badge status-tone-${SAUDE_TONE[resumo.saude]}`}>
+                {SAUDE_LABELS[resumo.saude]}
+              </span>
+            </p>
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Próxima ação</span>
+            <p>{resumo.proximaAcao}</p>
+            <p className="field-hint">
+              {(() => {
+                const prazo = resumo.prazoFase ?? resumo.prazoProcesso;
+                if (!prazo) return 'Sem prazo calculado';
+                return prazo.atrasada ? `${prazo.diasAtraso}d atrasado` : `${prazo.diasRestantes}d restantes`;
+              })()}
+            </p>
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Próximos marcos</span>
+            {proximosMarcos.length === 0 ? (
+              <p className="field-hint">Todos os marcos já foram registrados.</p>
+            ) : (
+              <ul className="observacoes-lista">
+                {proximosMarcos.map(({ campo, label }) => (
+                  <li key={campo} className="field-hint">
+                    Aguardando: {label}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Próximos compromissos</span>
+            {proximosCompromissos.length === 0 ? (
+              <p className="field-hint">Nenhuma reunião agendada.</p>
+            ) : (
+              <ul className="observacoes-lista">
+                {proximosCompromissos.map((r) => (
+                  <li key={r.id} className="field-hint">
+                    {TIPO_REUNIAO_LABELS[r.tipo]} — {formatarDataHora(r.data_hora!)}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Trial Kommo</span>
+            <p>
+              {resumoTrial
+                ? `${STATUS_TRIAL_LABELS[resumoTrial.status]} — ${resumoTrial.diasRestantes}d restantes`
+                : 'Sem Trial iniciado'}
+            </p>
+            <button type="button" className="btn btn-secondary btn-auto" onClick={() => setAba('trial')}>
+              Ver Trial Kommo
+            </button>
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Contador de 40 dias</span>
+            <p>{diaCiclo ? `Dia ${diaCiclo.dia}/40 — ${diaCiclo.ciclo?.nome ?? 'fora dos ciclos'}` : 'Kickoff ainda não realizado'}</p>
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Pendências abertas</span>
+            <p>{ocorrenciasAbertas.length} ocorrência(s) aberta(s)</p>
+            {ocorrenciasAbertas.length > 0 && (
+              <ul className="observacoes-lista">
+                {ocorrenciasAbertas.map((o) => (
+                  <li key={o.id} className="field-hint">
+                    {o.descricao}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Riscos</span>
+            {riscosAbertos.length === 0 ? (
+              <p className="field-hint">Nenhum risco com impacto no cronograma.</p>
+            ) : (
+              <ul className="observacoes-lista">
+                {riscosAbertos.map((o) => (
+                  <li key={o.id} className="field-hint">
+                    {o.descricao} — {o.dias_impacto ?? 0}d de impacto
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Ocorrências abertas</span>
+            {ocorrenciasAbertas.length === 0 ? (
+              <p className="field-hint">Nenhuma ocorrência aberta.</p>
+            ) : (
+              <ul className="observacoes-lista">
+                {ocorrenciasAbertas.map((o) => (
+                  <li key={o.id} className="field-hint">
+                    {CATEGORIA_OCORRENCIA_LABELS[o.categoria]} — {o.descricao}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" className="btn btn-secondary btn-auto" onClick={() => setAba('historico')}>
+              Ver todas em Histórico
+            </button>
+          </section>
+        </div>
+      )}
+
+      {aba === 'informacoes' && (<>
       {editando ? (
         <form onSubmit={handleSalvarCliente} className="card form-card">
           <h2>Dados do cliente</h2>
@@ -1227,7 +1620,9 @@ export function ClienteDetalhe() {
           </button>
         )}
       </section>
+      </>)}
 
+      {aba === 'historico' && (<>
       <section className="card form-card">
         <h2>Histórico</h2>
         <p className="field-hint">
@@ -1529,7 +1924,9 @@ export function ClienteDetalhe() {
           </>
         )}
       </section>
+      </>)}
 
+      {aba === 'reunioes' && (
       <section className="card form-card">
         <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
           <h2 style={{ marginBottom: 0 }}>Reuniões</h2>
@@ -1546,6 +1943,7 @@ export function ClienteDetalhe() {
         {reunioes.length === 0 ? (
           <p className="field-hint">Nenhuma reunião registrada ainda.</p>
         ) : (
+          <>
           <div className="table-wrap">
             <table className="data-table">
               <thead>
@@ -1574,9 +1972,63 @@ export function ClienteDetalhe() {
               </tbody>
             </table>
           </div>
+
+          <h3>Por tipo de reunião</h3>
+          {(['kickoff', 'treinamento', 'checkin_1', 'checkin_2', 'tira_duvidas', 'reuniao_final', 'extraordinaria'] as const).map(
+            (tipo) => {
+              const doTipo = reunioes.filter((r) => r.tipo === tipo);
+              if (doTipo.length === 0) return null;
+              return (
+                <div key={tipo} className="card form-card">
+                  <h4>{TIPO_REUNIAO_LABELS[tipo]}</h4>
+                  <ul className="observacoes-lista">
+                    {doTipo.map((r) => (
+                      <li key={r.id} className="observacao-item">
+                        <div className="observacao-item-header">
+                          <span className="observacao-item-meta">
+                            {r.data_hora ? formatarDataHora(r.data_hora) : 'Não agendada'} ·{' '}
+                            <span className={`status-badge status-tone-${STATUS_REUNIAO_TONE[r.status]}`}>
+                              {STATUS_REUNIAO_LABELS[r.status]}
+                            </span>{' '}
+                            · consultor: {nomeConsultor(r.consultor_responsavel_id, consultores) ?? '—'}
+                          </span>
+                        </div>
+                        {r.ata && (
+                          <p className="observacao-item-texto">
+                            <strong>Ata:</strong> {r.ata}
+                          </p>
+                        )}
+                        {r.decisoes && (
+                          <p className="observacao-item-texto">
+                            <strong>Decisões:</strong> {r.decisoes}
+                          </p>
+                        )}
+                        {r.pendencias_cliente && (
+                          <p className="observacao-item-texto">
+                            <strong>Pendências do cliente:</strong> {r.pendencias_cliente}
+                          </p>
+                        )}
+                        {r.pendencias_internas && (
+                          <p className="observacao-item-texto">
+                            <strong>Pendências internas:</strong> {r.pendencias_internas}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            },
+          )}
+          </>
         )}
       </section>
+      )}
 
+      {aba === 'mapeamento' && (
+      <>
+      <h2>Mapeamento</h2>
+      <h3>Vendas</h3>
       <section className="card form-card">
         <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
           <h2 style={{ marginBottom: 0 }}>Mapeamento de vendas</h2>
@@ -1604,8 +2056,18 @@ export function ClienteDetalhe() {
             </button>
           </>
         )}
+        {mapeamentoVendas && versaoVendas && (
+          <p className="field-hint">
+            Versão {versaoVendas.versao}
+            {versaoVendas.status === 'aprovada' ? ' — Aprovada' : ''} ·{' '}
+            <a href={`/mapeamento/${mapeamentoVendas.id}/relatorio`} target="_blank" rel="noopener noreferrer">
+              Ver apresentação/relatório
+            </a>
+          </p>
+        )}
       </section>
 
+      <h3>Pós-venda</h3>
       {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
           <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -1634,9 +2096,22 @@ export function ClienteDetalhe() {
               </button>
             </>
           )}
+          {mapeamentoPosVenda && versaoPosVenda && (
+            <p className="field-hint">
+              Versão {versaoPosVenda.versao}
+              {versaoPosVenda.status === 'aprovada' ? ' — Aprovada' : ''} ·{' '}
+              <a href={`/mapeamento/${mapeamentoPosVenda.id}/relatorio`} target="_blank" rel="noopener noreferrer">
+                Ver apresentação/relatório
+              </a>
+            </p>
+          )}
         </section>
       )}
+      </>
+      )}
 
+      {aba === 'implementacao' && (
+      <>
       {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
           <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -1660,13 +2135,51 @@ export function ClienteDetalhe() {
               </button>
             </>
           )}
+          {implementacao && (
+            <>
+              <p className="field-hint">Progresso geral: {resumo?.progresso != null ? `${resumo.progresso}%` : '—'}</p>
+              <div className="resumo-revisao-grid">
+                {CICLOS_OPERACIONAIS.map((ciclo) => {
+                  const diaAtual = diaCiclo?.dia;
+                  const tone =
+                    diaAtual != null && diaAtual > ciclo.diaFim
+                      ? 'success'
+                      : diaAtual != null && diaAtual >= ciclo.diaInicio && diaAtual <= ciclo.diaFim
+                        ? 'info'
+                        : 'warning';
+                  const statusLabel =
+                    diaAtual != null && diaAtual > ciclo.diaFim
+                      ? 'Concluído'
+                      : diaAtual != null && diaAtual >= ciclo.diaInicio && diaAtual <= ciclo.diaFim
+                        ? 'Em andamento'
+                        : 'Aguardando';
+                  return (
+                    <div key={ciclo.nome}>
+                      <span className="etapa-card-label">{ciclo.nome}</span>
+                      <p>
+                        <span className={`status-badge status-tone-${tone}`}>{statusLabel}</span>
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </section>
       )}
+      </>
+      )}
 
-      {cliente &&
+      {aba === 'trial' && cliente &&
         (() => {
-          const resumoTrial = resolverResumoTrialKommo(cliente, new Date());
-          if (!resumoTrial) return null;
+          if (!resumoTrial) {
+            return (
+              <section className="card form-card">
+                <h2>Trial Kommo</h2>
+                <p className="field-hint">Sem Trial iniciado — a conta Kommo ainda não foi criada.</p>
+              </section>
+            );
+          }
           return (
             <section className="card form-card">
               <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -1680,6 +2193,97 @@ export function ClienteDetalhe() {
                 uso total {resumoTrial.usoTotalDias}/{resumoTrial.usoTotalMaximo} · vence em{' '}
                 {resumoTrial.vencimento.toLocaleDateString('pt-BR')}
               </p>
+              <p className="field-hint">
+                Início: {cliente.conta_kommo_criada_em ? formatarDataHora(cliente.conta_kommo_criada_em) : '—'}
+              </p>
+              <p className="field-hint">
+                Períodos: <span style={resumoTrial.periodoAtual === 'Trial inicial' ? { fontWeight: 700 } : undefined}>14</span> +{' '}
+                <span style={resumoTrial.periodoAtual === 'Primeira extensão' ? { fontWeight: 700 } : undefined}>14</span> +{' '}
+                <span style={resumoTrial.periodoAtual === 'Segunda extensão' ? { fontWeight: 700 } : undefined}>7</span>
+              </p>
+              <p className="field-hint">
+                Dias utilizados: {resumoTrial.usoTotalDias}/{resumoTrial.usoTotalMaximo} · Dias restantes (período
+                atual): {resumoTrial.diasRestantes}
+              </p>
+              <p className="field-hint">
+                Próxima extensão: {resumoTrial.proximaExtensao?.rotulo ?? 'Nenhuma — já usou as duas'}
+              </p>
+
+              {pipefyConfig && (
+                <>
+                  <h3>Links do Pipefy</h3>
+                  <ul className="observacoes-lista">
+                    {pipefyConfig.url_criacao_conta && (
+                      <li className="field-hint">
+                        Criação de conta —{' '}
+                        <a href={pipefyConfig.url_criacao_conta} target="_blank" rel="noopener noreferrer">
+                          Abrir
+                        </a>
+                      </li>
+                    )}
+                    {pipefyConfig.url_extensao_14 && (
+                      <li className="field-hint">
+                        Extensão +14 dias —{' '}
+                        <a href={pipefyConfig.url_extensao_14} target="_blank" rel="noopener noreferrer">
+                          Abrir
+                        </a>
+                      </li>
+                    )}
+                    {pipefyConfig.url_extensao_7 && (
+                      <li className="field-hint">
+                        Extensão +7 dias —{' '}
+                        <a href={pipefyConfig.url_extensao_7} target="_blank" rel="noopener noreferrer">
+                          Abrir
+                        </a>
+                      </li>
+                    )}
+                    {pipefyConfig.url_contratacao_definitiva && (
+                      <li className="field-hint">
+                        Contratação definitiva —{' '}
+                        <a href={pipefyConfig.url_contratacao_definitiva} target="_blank" rel="noopener noreferrer">
+                          Abrir
+                        </a>
+                      </li>
+                    )}
+                  </ul>
+                </>
+              )}
+
+              <h3>Histórico de solicitações</h3>
+              <ul className="observacoes-lista">
+                {cliente.conta_kommo_solicitada_em && (
+                  <li className="field-hint">Conta Kommo solicitada: {formatarDataHora(cliente.conta_kommo_solicitada_em)}</li>
+                )}
+                {cliente.conta_kommo_criada_em && (
+                  <li className="field-hint">Conta Kommo criada: {formatarDataHora(cliente.conta_kommo_criada_em)}</li>
+                )}
+                {cliente.extensao_14_solicitada_em && (
+                  <li className="field-hint">
+                    Extensão de 14 dias solicitada: {formatarDataHora(cliente.extensao_14_solicitada_em)}
+                  </li>
+                )}
+                {cliente.extensao_14_aprovada_em && (
+                  <li className="field-hint">
+                    Extensão de 14 dias aprovada: {formatarDataHora(cliente.extensao_14_aprovada_em)}
+                  </li>
+                )}
+                {cliente.extensao_7_solicitada_em && (
+                  <li className="field-hint">
+                    Extensão de 7 dias solicitada: {formatarDataHora(cliente.extensao_7_solicitada_em)}
+                  </li>
+                )}
+                {cliente.extensao_7_aprovada_em && (
+                  <li className="field-hint">
+                    Extensão de 7 dias aprovada: {formatarDataHora(cliente.extensao_7_aprovada_em)}
+                  </li>
+                )}
+                {cliente.contratacao_kommo_solicitada_em && (
+                  <li className="field-hint">
+                    Contratação definitiva solicitada: {formatarDataHora(cliente.contratacao_kommo_solicitada_em)}
+                  </li>
+                )}
+              </ul>
+
               {resumoTrial.precisaAlerta && (
                 <p className="form-error">
                   Trial vence em {resumoTrial.diasRestantes}d e a extensão de {resumoTrial.proximaExtensao?.rotulo}{' '}
@@ -1687,12 +2291,19 @@ export function ClienteDetalhe() {
                   {implementacao && <Link to={`/implementacoes/${implementacao.id}`}>Registrar na implementação →</Link>}
                 </p>
               )}
+
+              {implementacao && (
+                <p className="field-hint">
+                  <Link to={`/implementacoes/${implementacao.id}`}>Gerenciar no Trial Kommo →</Link>
+                </p>
+              )}
             </section>
           );
         })()}
 
+      {aba === 'arquivos' && (
       <section className="card form-card">
-        <h2>Anexos</h2>
+        <h2>Arquivos</h2>
         <p className="field-hint">Contratos, prints, propostas — qualquer arquivo relevante desse cliente.</p>
 
         <label className="btn btn-secondary btn-auto" style={{ cursor: 'pointer' }}>
@@ -1709,41 +2320,48 @@ export function ClienteDetalhe() {
         {arquivos.length === 0 ? (
           <p className="field-hint">Nenhum arquivo anexado ainda.</p>
         ) : (
-          <ul className="observacoes-lista">
-            {arquivos.map((a) => (
-              <li key={a.id} className="observacao-item">
-                <div className="observacao-item-header">
-                  <span className="observacao-item-meta">
-                    <strong style={{ color: 'var(--color-text)' }}>{a.nome_arquivo}</strong>
-                    {' · '}
-                    {formatarTamanho(a.tamanho_bytes)} · {formatarDataHora(a.created_at)}
-                    {a.autor_email ? ` · ${a.autor_email}` : ''}
-                  </span>
-                  <span className="table-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => handleBaixarArquivo(a)}
-                      disabled={baixandoArquivoId === a.id}
-                    >
-                      {baixandoArquivoId === a.id ? 'Abrindo…' : 'Baixar'}
-                    </button>{' '}
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => handleExcluirArquivo(a)}
-                      disabled={excluindoArquivoId === a.id}
-                    >
-                      {excluindoArquivoId === a.id ? 'Excluindo…' : 'Excluir'}
-                    </button>
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
+          arquivosPorCategoria.map((grupo) => (
+            <div key={grupo.nome}>
+              <h3>{grupo.nome}</h3>
+              <ul className="observacoes-lista">
+                {grupo.itens.map((a) => (
+                  <li key={a.id} className="observacao-item">
+                    <div className="observacao-item-header">
+                      <span className="observacao-item-meta">
+                        <strong style={{ color: 'var(--color-text)' }}>{a.nome_arquivo}</strong>
+                        {' · '}
+                        {formatarTamanho(a.tamanho_bytes)} · {formatarDataHora(a.created_at)}
+                        {a.autor_email ? ` · ${a.autor_email}` : ''}
+                      </span>
+                      <span className="table-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => handleBaixarArquivo(a)}
+                          disabled={baixandoArquivoId === a.id}
+                        >
+                          {baixandoArquivoId === a.id ? 'Abrindo…' : 'Baixar'}
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => handleExcluirArquivo(a)}
+                          disabled={excluindoArquivoId === a.id}
+                        >
+                          {excluindoArquivoId === a.id ? 'Excluindo…' : 'Excluir'}
+                        </button>
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
         )}
       </section>
+      )}
 
+      {aba === 'historico' && (
       <section className="card form-card">
         <h2>Observações</h2>
         <p className="field-hint">
@@ -1798,6 +2416,7 @@ export function ClienteDetalhe() {
           </ul>
         )}
       </section>
+      )}
     </div>
   );
 }
