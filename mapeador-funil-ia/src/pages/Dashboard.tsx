@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { inicioDoDia, itensDaAgenda } from '../lib/agendaImplementacao';
+import { atividadesDaAgenda, inicioDoDia } from '../lib/agendaImplementacao';
 import {
   construirAlertas,
   construirResumoClientes,
@@ -12,10 +12,9 @@ import {
 } from '../lib/operacaoResumo';
 import { supabase } from '../lib/supabaseClient';
 import type {
-  ChecklistGrupoImplementacao,
-  ChecklistItemImplementacao,
+  AtividadeCronograma,
+  AtividadeStatusRow,
   Cliente,
-  ImplementacaoChecklistMarcado,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
@@ -31,9 +30,8 @@ export function Dashboard() {
   const [mapeamentos, setMapeamentos] = useState<Mapeamento[]>([]);
   const [implementacoes, setImplementacoes] = useState<ImplementacaoCrm[]>([]);
   const [historico, setHistorico] = useState<ImplementacaoStatusHistorico[]>([]);
-  const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
-  const [itens, setItens] = useState<ChecklistItemImplementacao[]>([]);
-  const [marcados, setMarcados] = useState<ImplementacaoChecklistMarcado[]>([]);
+  const [atividades, setAtividades] = useState<AtividadeCronograma[]>([]);
+  const [statusRows, setStatusRows] = useState<AtividadeStatusRow[]>([]);
 
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('');
@@ -59,17 +57,15 @@ export function Dashboard() {
         { data: mapeamentosData },
         { data: implementacoesData },
         { data: historicoData },
-        { data: gruposData },
-        { data: itensData },
-        { data: marcadosData },
+        { data: atividadesData },
+        { data: statusRowsData },
       ] = await Promise.all([
         supabase.from('clientes').select('*'),
         supabase.from('mapeamentos').select('*'),
         supabase.from('implementacoes_crm').select('*'),
         supabase.from('implementacao_status_historico').select('*'),
-        supabase.from('checklist_grupos_implementacao').select('*'),
-        supabase.from('checklist_itens_implementacao').select('*'),
-        supabase.from('implementacao_checklist_marcado').select('*'),
+        supabase.from('atividades_cronograma').select('*'),
+        supabase.from('atividades_status').select('*'),
       ]);
 
       if (cancelled) return;
@@ -84,9 +80,8 @@ export function Dashboard() {
       setMapeamentos(mapeamentosData ?? []);
       setImplementacoes(implementacoesData ?? []);
       setHistorico(historicoData ?? []);
-      setGrupos(gruposData ?? []);
-      setItens(itensData ?? []);
-      setMarcados(marcadosData ?? []);
+      setAtividades(atividadesData ?? []);
+      setStatusRows(statusRowsData ?? []);
       setLoading(false);
     }
 
@@ -103,38 +98,29 @@ export function Dashboard() {
         mapeamentos,
         implementacoes,
         historico,
-        itens,
-        marcados,
+        atividades,
+        statusRows,
         hoje,
       }),
-    [clientes, mapeamentos, implementacoes, historico, itens, marcados, hoje],
+    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, hoje],
   );
 
   const alertas = useMemo(() => construirAlertas(resumos, hoje), [resumos, hoje]);
 
-  const marcadosPorImplementacao = useMemo(() => {
-    const mapa = new Map<string, Set<string>>();
-    for (const m of marcados) {
-      if (!m.marcado) continue;
-      const set = mapa.get(m.implementacao_id) ?? new Set<string>();
-      set.add(m.item_id);
-      mapa.set(m.implementacao_id, set);
-    }
-    return mapa;
-  }, [marcados]);
-
   const itensHoje = useMemo(
     () =>
-      itensDaAgenda({
-        implementacoes,
-        grupos,
-        itens,
-        marcadosPorImplementacao,
-        historico,
+      atividadesDaAgenda({
+        entradas: implementacoes.map((implementacao) => ({
+          implementacao,
+          atividades,
+          statusRows: statusRows.filter((s) => s.implementacao_id === implementacao.id),
+          cliente: clientes.find((c) => c.id === implementacao.cliente_id) ?? null,
+          historico: historico.filter((h) => h.implementacao_id === implementacao.id),
+        })),
         diaSelecionado: hoje,
         hoje,
       }),
-    [implementacoes, grupos, itens, marcadosPorImplementacao, historico, hoje],
+    [implementacoes, atividades, statusRows, clientes, historico, hoje],
   );
 
   const consultoresDisponiveis = useMemo(() => {

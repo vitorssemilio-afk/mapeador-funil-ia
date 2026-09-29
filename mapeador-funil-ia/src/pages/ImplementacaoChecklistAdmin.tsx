@@ -1,48 +1,43 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import type { ChecklistGrupoImplementacao, ChecklistItemImplementacao } from '../types/database';
+import type { AtividadeCronograma } from '../types/database';
 
+// Admin do template global do cronograma (implementacao_id nulo) — atividades
+// derivadas automaticamente do funil de um cliente (botão "Gerar itens a
+// partir do funil" na tela de cada implementação) não aparecem aqui, só o
+// que é compartilhado entre todo mundo.
 export function ImplementacaoChecklistAdmin() {
-  const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
-  const [itens, setItens] = useState<ChecklistItemImplementacao[]>([]);
+  const [atividades, setAtividades] = useState<AtividadeCronograma[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
-  const [mostrarFormGrupo, setMostrarFormGrupo] = useState(false);
-  const [tituloNovoGrupo, setTituloNovoGrupo] = useState('');
-  const [chaveNovoGrupo, setChaveNovoGrupo] = useState('');
+  const [mostrarFormCiclo, setMostrarFormCiclo] = useState(false);
+  const [nomeNovoCiclo, setNomeNovoCiclo] = useState('');
 
-  const [formItem, setFormItem] = useState<{
+  const [formAtividade, setFormAtividade] = useState<{
     id: string | null;
-    grupo_id: string;
-    texto: string;
+    ciclo: string;
+    nome: string;
+    chave: string;
+    responsavel_padrao: string;
+    depende_de: string;
+    prazo_dias: string;
     requer_evidencia: boolean;
-    dia_semana: string;
   } | null>(null);
 
   async function carregar() {
     setLoading(true);
     setError(null);
 
-    const [{ data: gruposData, error: gruposError }, { data: itensData, error: itensError }] =
-      await Promise.all([
-        supabase.from('checklist_grupos_implementacao').select('*').order('ordem', { ascending: true }),
-        // Só o template global (compartilhado entre todo mundo) — itens derivados
-        // automaticamente do funil de um cliente específico não aparecem aqui.
-        supabase
-          .from('checklist_itens_implementacao')
-          .select('*')
-          .is('implementacao_id', null)
-          .order('ordem', { ascending: true }),
-      ]);
+    const { data, error: fetchError } = await supabase
+      .from('atividades_cronograma')
+      .select('*')
+      .is('implementacao_id', null)
+      .order('ordem', { ascending: true });
 
-    if (gruposError) setError(gruposError.message);
-    else if (itensError) setError(itensError.message);
-    else {
-      setGrupos(gruposData ?? []);
-      setItens(itensData ?? []);
-    }
+    if (fetchError) setError(fetchError.message);
+    else setAtividades(data ?? []);
     setLoading(false);
   }
 
@@ -50,233 +45,206 @@ export function ImplementacaoChecklistAdmin() {
     carregar();
   }, []);
 
-  function itensDoGrupo(grupoId: string): ChecklistItemImplementacao[] {
-    return itens.filter((item) => item.grupo_id === grupoId).sort((a, b) => a.ordem - b.ordem);
+  const ciclos = useMemo(() => {
+    // Ordem dos ciclos = ordem da primeira atividade de cada um (já vem
+    // ordenado por `ordem` na query), sem duplicar.
+    const vistos: string[] = [];
+    for (const atividade of atividades) {
+      if (!vistos.includes(atividade.ciclo)) vistos.push(atividade.ciclo);
+    }
+    return vistos;
+  }, [atividades]);
+
+  function atividadesDoCiclo(ciclo: string): AtividadeCronograma[] {
+    return atividades.filter((a) => a.ciclo === ciclo).sort((a, b) => a.ordem - b.ordem);
   }
 
-  function gerarChave(titulo: string): string {
-    return (
-      titulo
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(new RegExp('[̀-ͯ]', 'g'), '')
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '') || 'grupo'
-    );
+  function proximaOrdem(ciclo: string): number {
+    const ordens = atividadesDoCiclo(ciclo).map((a) => a.ordem);
+    return ordens.length > 0 ? Math.max(...ordens) + 1 : 0;
   }
 
-  async function handleCriarGrupo(e: FormEvent) {
+  async function handleCriarCiclo(e: FormEvent) {
     e.preventDefault();
-    if (!tituloNovoGrupo.trim()) return;
-
-    setSalvando(true);
-    const proximaOrdem = grupos.length > 0 ? Math.max(...grupos.map((g) => g.ordem)) + 1 : 0;
-    const chave = chaveNovoGrupo.trim() || gerarChave(tituloNovoGrupo);
-
-    const { error: insertError } = await supabase
-      .from('checklist_grupos_implementacao')
-      .insert({ titulo: tituloNovoGrupo.trim(), chave, ordem: proximaOrdem });
-    setSalvando(false);
-
-    if (insertError) {
-      setError(insertError.message);
+    if (!nomeNovoCiclo.trim()) return;
+    if (ciclos.includes(nomeNovoCiclo.trim())) {
+      setError('Já existe um ciclo com esse nome.');
       return;
     }
 
-    setTituloNovoGrupo('');
-    setChaveNovoGrupo('');
-    setMostrarFormGrupo(false);
-    carregar();
+    setFormAtividade({
+      id: null,
+      ciclo: nomeNovoCiclo.trim(),
+      nome: '',
+      chave: '',
+      responsavel_padrao: '',
+      depende_de: '',
+      prazo_dias: '',
+      requer_evidencia: false,
+    });
+    setNomeNovoCiclo('');
+    setMostrarFormCiclo(false);
   }
 
-  async function handleRenomearGrupo(grupo: ChecklistGrupoImplementacao) {
-    const novoTitulo = window.prompt('Novo título do grupo:', grupo.titulo);
-    if (!novoTitulo || !novoTitulo.trim() || novoTitulo.trim() === grupo.titulo) return;
+  async function handleRenomearCiclo(ciclo: string) {
+    const novoNome = window.prompt('Novo nome do ciclo:', ciclo);
+    if (!novoNome || !novoNome.trim() || novoNome.trim() === ciclo) return;
 
     const { error: updateError } = await supabase
-      .from('checklist_grupos_implementacao')
-      .update({ titulo: novoTitulo.trim() })
-      .eq('id', grupo.id);
+      .from('atividades_cronograma')
+      .update({ ciclo: novoNome.trim() })
+      .eq('ciclo', ciclo)
+      .is('implementacao_id', null);
 
     if (updateError) setError(updateError.message);
     else carregar();
   }
 
-  async function handleMoverGrupo(grupo: ChecklistGrupoImplementacao, direcao: -1 | 1) {
-    const ordenados = [...grupos].sort((a, b) => a.ordem - b.ordem);
-    const index = ordenados.findIndex((g) => g.id === grupo.id);
-    const vizinho = ordenados[index + direcao];
-    if (!vizinho) return;
-
-    const { error: e1 } = await supabase
-      .from('checklist_grupos_implementacao')
-      .update({ ordem: vizinho.ordem })
-      .eq('id', grupo.id);
-    const { error: e2 } = await supabase
-      .from('checklist_grupos_implementacao')
-      .update({ ordem: grupo.ordem })
-      .eq('id', vizinho.id);
-
-    if (e1 || e2) setError((e1 ?? e2)!.message);
-    carregar();
-  }
-
-  async function handleExcluirGrupo(grupo: ChecklistGrupoImplementacao) {
-    const qtdItens = itensDoGrupo(grupo.id).length;
-    const aviso =
-      qtdItens > 0
-        ? `Excluir o grupo "${grupo.titulo}"? Isso também apaga os ${qtdItens} item(ns) dentro dele.`
-        : `Excluir o grupo "${grupo.titulo}"?`;
-    if (!window.confirm(aviso)) return;
+  async function handleExcluirCiclo(ciclo: string) {
+    const qtd = atividadesDoCiclo(ciclo).length;
+    if (
+      !window.confirm(
+        `Excluir o ciclo "${ciclo}"? Isso também apaga as ${qtd} atividade(s) do template dentro dele.`,
+      )
+    ) {
+      return;
+    }
 
     const { error: deleteError } = await supabase
-      .from('checklist_grupos_implementacao')
+      .from('atividades_cronograma')
       .delete()
-      .eq('id', grupo.id);
+      .eq('ciclo', ciclo)
+      .is('implementacao_id', null);
     if (deleteError) setError(deleteError.message);
     else carregar();
   }
 
-  function abrirNovoItem(grupoId: string) {
-    setFormItem({ id: null, grupo_id: grupoId, texto: '', requer_evidencia: false, dia_semana: '' });
-  }
-
-  function abrirEdicaoItem(item: ChecklistItemImplementacao) {
-    setFormItem({
-      id: item.id,
-      grupo_id: item.grupo_id,
-      texto: item.texto,
-      requer_evidencia: item.requer_evidencia,
-      dia_semana: item.dia_semana ? String(item.dia_semana) : '',
+  function abrirNovaAtividade(ciclo: string) {
+    setFormAtividade({
+      id: null,
+      ciclo,
+      nome: '',
+      chave: '',
+      responsavel_padrao: '',
+      depende_de: '',
+      prazo_dias: '',
+      requer_evidencia: false,
     });
   }
 
-  function fecharFormItem() {
-    setFormItem(null);
+  function abrirEdicaoAtividade(atividade: AtividadeCronograma) {
+    setFormAtividade({
+      id: atividade.id,
+      ciclo: atividade.ciclo,
+      nome: atividade.nome,
+      chave: atividade.chave ?? '',
+      responsavel_padrao: atividade.responsavel_padrao ?? '',
+      depende_de: atividade.depende_de ?? '',
+      prazo_dias: atividade.prazo_dias != null ? String(atividade.prazo_dias) : '',
+      requer_evidencia: atividade.requer_evidencia,
+    });
   }
 
-  async function handleSalvarItem(e: FormEvent) {
+  function fecharFormAtividade() {
+    setFormAtividade(null);
+  }
+
+  async function handleSalvarAtividade(e: FormEvent) {
     e.preventDefault();
-    if (!formItem || !formItem.texto.trim()) return;
+    if (!formAtividade || !formAtividade.nome.trim()) return;
 
     setSalvando(true);
-    const diaSemana = formItem.dia_semana ? Number(formItem.dia_semana) : null;
+    const prazoDias = formAtividade.prazo_dias ? Number(formAtividade.prazo_dias) : null;
 
-    if (formItem.id) {
-      const { error: updateError } = await supabase
-        .from('checklist_itens_implementacao')
-        .update({
-          texto: formItem.texto.trim(),
-          requer_evidencia: formItem.requer_evidencia,
-          dia_semana: diaSemana,
-        })
-        .eq('id', formItem.id);
+    const payload = {
+      nome: formAtividade.nome.trim(),
+      chave: formAtividade.chave.trim() || null,
+      responsavel_padrao: formAtividade.responsavel_padrao.trim() || null,
+      depende_de: formAtividade.depende_de.trim() || null,
+      prazo_dias: prazoDias,
+      requer_evidencia: formAtividade.requer_evidencia,
+    };
 
-      setSalvando(false);
-      if (updateError) {
-        setError(updateError.message);
-        return;
-      }
-    } else {
-      const itensDoGrupoAtual = itensDoGrupo(formItem.grupo_id);
-      const proximaOrdem =
-        itensDoGrupoAtual.length > 0 ? Math.max(...itensDoGrupoAtual.map((i) => i.ordem)) + 1 : 0;
+    const { error: saveError } = formAtividade.id
+      ? await supabase.from('atividades_cronograma').update(payload).eq('id', formAtividade.id)
+      : await supabase.from('atividades_cronograma').insert({
+          ...payload,
+          ciclo: formAtividade.ciclo,
+          ordem: proximaOrdem(formAtividade.ciclo),
+        });
 
-      const { error: insertError } = await supabase.from('checklist_itens_implementacao').insert({
-        grupo_id: formItem.grupo_id,
-        texto: formItem.texto.trim(),
-        ordem: proximaOrdem,
-        requer_evidencia: formItem.requer_evidencia,
-        dia_semana: diaSemana,
-      });
-
-      setSalvando(false);
-      if (insertError) {
-        setError(insertError.message);
-        return;
-      }
+    setSalvando(false);
+    if (saveError) {
+      setError(saveError.message);
+      return;
     }
 
-    fecharFormItem();
+    fecharFormAtividade();
     carregar();
   }
 
-  async function handleMoverItem(item: ChecklistItemImplementacao, direcao: -1 | 1) {
-    const ordenados = itensDoGrupo(item.grupo_id);
-    const index = ordenados.findIndex((i) => i.id === item.id);
-    const vizinho = ordenados[index + direcao];
-    if (!vizinho) return;
+  async function handleMoverAtividade(atividade: AtividadeCronograma, direcao: -1 | 1) {
+    const ordenadas = atividadesDoCiclo(atividade.ciclo);
+    const index = ordenadas.findIndex((a) => a.id === atividade.id);
+    const vizinha = ordenadas[index + direcao];
+    if (!vizinha) return;
 
     const { error: e1 } = await supabase
-      .from('checklist_itens_implementacao')
-      .update({ ordem: vizinho.ordem })
-      .eq('id', item.id);
+      .from('atividades_cronograma')
+      .update({ ordem: vizinha.ordem })
+      .eq('id', atividade.id);
     const { error: e2 } = await supabase
-      .from('checklist_itens_implementacao')
-      .update({ ordem: item.ordem })
-      .eq('id', vizinho.id);
+      .from('atividades_cronograma')
+      .update({ ordem: atividade.ordem })
+      .eq('id', vizinha.id);
 
     if (e1 || e2) setError((e1 ?? e2)!.message);
     carregar();
   }
 
-  async function handleExcluirItem(item: ChecklistItemImplementacao) {
-    if (!window.confirm(`Excluir o item "${item.texto}"?`)) return;
+  async function handleExcluirAtividade(atividade: AtividadeCronograma) {
+    if (!window.confirm(`Excluir a atividade "${atividade.nome}"?`)) return;
 
-    const { error: deleteError } = await supabase
-      .from('checklist_itens_implementacao')
-      .delete()
-      .eq('id', item.id);
+    const { error: deleteError } = await supabase.from('atividades_cronograma').delete().eq('id', atividade.id);
     if (deleteError) setError(deleteError.message);
     else carregar();
   }
-
-  const gruposOrdenados = [...grupos].sort((a, b) => a.ordem - b.ordem);
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Checklist de Implementação</h1>
+          <h1>Cronograma de Implementação</h1>
           <p className="field-hint">
-            Itens do POP de implementação de CRM (pré-requisito, semanas, critérios de sucesso).
-            Alterar aqui vale pra próxima vez que alguém marcar um item numa implementação — os
-            itens já marcados em implementações existentes não são afetados por edição de texto.
-            Itens gerados automaticamente a partir do funil de um cliente (botão "Gerar itens a
-            partir do funil" na tela de cada implementação) são específicos daquele cliente e não
-            aparecem aqui.
+            Template global de atividades do cronograma (dependências, prazos e responsáveis
+            padrão). Alterar aqui vale pra próxima vez que alguém abrir o cronograma de uma
+            implementação — atividades já com status marcado em implementações existentes não são
+            afetadas por edição de texto. Atividades geradas automaticamente a partir do funil de um
+            cliente (botão "Gerar itens a partir do funil" na tela de cada implementação) são
+            específicas daquele cliente e não aparecem aqui.
           </p>
         </div>
-        {!mostrarFormGrupo && (
-          <button type="button" className="btn btn-primary" onClick={() => setMostrarFormGrupo(true)}>
-            + Novo grupo
+        {!mostrarFormCiclo && (
+          <button type="button" className="btn btn-primary" onClick={() => setMostrarFormCiclo(true)}>
+            + Novo ciclo
           </button>
         )}
       </div>
 
       {error && <p className="form-error">{error}</p>}
 
-      {mostrarFormGrupo && (
-        <form onSubmit={handleCriarGrupo} className="card form-card">
-          <h2>Novo grupo</h2>
+      {mostrarFormCiclo && (
+        <form onSubmit={handleCriarCiclo} className="card form-card">
+          <h2>Novo ciclo</h2>
           <label className="field">
-            <span>Título do grupo</span>
+            <span>Nome do ciclo</span>
             <input
               type="text"
               required
               autoFocus
-              value={tituloNovoGrupo}
-              onChange={(e) => setTituloNovoGrupo(e.target.value)}
-              placeholder="Ex: Semana 5 — Acompanhamento"
-            />
-          </label>
-          <label className="field">
-            <span>Chave interna (opcional)</span>
-            <input
-              type="text"
-              value={chaveNovoGrupo}
-              onChange={(e) => setChaveNovoGrupo(e.target.value)}
-              placeholder="Gerada automaticamente a partir do título se deixar em branco"
+              value={nomeNovoCiclo}
+              onChange={(e) => setNomeNovoCiclo(e.target.value)}
+              placeholder="Ex: Acompanhamento pós-entrega"
             />
           </label>
           <div className="wizard-actions">
@@ -284,15 +252,14 @@ export function ImplementacaoChecklistAdmin() {
               type="button"
               className="btn btn-secondary"
               onClick={() => {
-                setMostrarFormGrupo(false);
-                setTituloNovoGrupo('');
-                setChaveNovoGrupo('');
+                setMostrarFormCiclo(false);
+                setNomeNovoCiclo('');
               }}
             >
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary" disabled={salvando}>
-              {salvando ? 'Salvando…' : 'Criar grupo'}
+            <button type="submit" className="btn btn-primary">
+              Continuar — criar a 1ª atividade
             </button>
           </div>
         </form>
@@ -300,44 +267,26 @@ export function ImplementacaoChecklistAdmin() {
 
       {loading && <p className="page-loading">Carregando…</p>}
 
-      {!loading && gruposOrdenados.length === 0 && !mostrarFormGrupo && (
+      {!loading && ciclos.length === 0 && !mostrarFormCiclo && (
         <div className="empty-state">
-          <p>Nenhum grupo de checklist cadastrado ainda.</p>
-          <button type="button" className="btn btn-primary" onClick={() => setMostrarFormGrupo(true)}>
-            Criar o primeiro grupo
+          <p>Nenhum ciclo cadastrado ainda.</p>
+          <button type="button" className="btn btn-primary" onClick={() => setMostrarFormCiclo(true)}>
+            Criar o primeiro ciclo
           </button>
         </div>
       )}
 
       {!loading &&
-        gruposOrdenados.map((grupo, grupoIndex) => (
-          <section key={grupo.id} className="card form-card">
+        ciclos.map((ciclo) => (
+          <section key={ciclo} className="card form-card">
             <div className="page-header">
-              <h2 style={{ marginBottom: 0 }}>{grupo.titulo}</h2>
+              <h2 style={{ marginBottom: 0 }}>{ciclo}</h2>
               <div className="page-header-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => handleMoverGrupo(grupo, -1)}
-                  disabled={grupoIndex === 0}
-                  title="Mover grupo para cima"
-                >
-                  ↑
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => handleMoverGrupo(grupo, 1)}
-                  disabled={grupoIndex === gruposOrdenados.length - 1}
-                  title="Mover grupo para baixo"
-                >
-                  ↓
-                </button>
-                <button type="button" className="btn btn-secondary" onClick={() => handleRenomearGrupo(grupo)}>
+                <button type="button" className="btn btn-secondary" onClick={() => handleRenomearCiclo(ciclo)}>
                   Renomear
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={() => handleExcluirGrupo(grupo)}>
-                  Excluir grupo
+                <button type="button" className="btn btn-ghost" onClick={() => handleExcluirCiclo(ciclo)}>
+                  Excluir ciclo
                 </button>
               </div>
             </div>
@@ -346,28 +295,31 @@ export function ImplementacaoChecklistAdmin() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Item</th>
+                    <th>Atividade</th>
+                    <th>Dependência</th>
+                    <th>Prazo</th>
+                    <th>Responsável</th>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {itensDoGrupo(grupo.id).map((item, itemIndex, lista) => (
-                    <tr key={item.id}>
+                  {atividadesDoCiclo(ciclo).map((atividade, index, lista) => (
+                    <tr key={atividade.id}>
                       <td>
-                        {item.texto}
-                        {item.requer_evidencia && (
+                        {atividade.nome}
+                        {atividade.requer_evidencia && (
                           <span className="requer-evidencia-badge"> · exige evidência</span>
                         )}
-                        {item.dia_semana && (
-                          <span className="dia-semana-badge"> · dia {item.dia_semana}</span>
-                        )}
                       </td>
+                      <td>{atividade.depende_de ?? '—'}</td>
+                      <td>{atividade.prazo_dias != null ? `${atividade.prazo_dias}d` : '—'}</td>
+                      <td>{atividade.responsavel_padrao ?? '—'}</td>
                       <td className="table-actions">
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => handleMoverItem(item, -1)}
-                          disabled={itemIndex === 0}
+                          onClick={() => handleMoverAtividade(atividade, -1)}
+                          disabled={index === 0}
                           title="Mover para cima"
                         >
                           ↑
@@ -375,8 +327,8 @@ export function ImplementacaoChecklistAdmin() {
                         <button
                           type="button"
                           className="btn btn-ghost"
-                          onClick={() => handleMoverItem(item, 1)}
-                          disabled={itemIndex === lista.length - 1}
+                          onClick={() => handleMoverAtividade(atividade, 1)}
+                          disabled={index === lista.length - 1}
                           title="Mover para baixo"
                         >
                           ↓
@@ -384,20 +336,20 @@ export function ImplementacaoChecklistAdmin() {
                         <button
                           type="button"
                           className="btn btn-secondary"
-                          onClick={() => abrirEdicaoItem(item)}
+                          onClick={() => abrirEdicaoAtividade(atividade)}
                         >
                           Editar
                         </button>{' '}
-                        <button type="button" className="btn btn-ghost" onClick={() => handleExcluirItem(item)}>
+                        <button type="button" className="btn btn-ghost" onClick={() => handleExcluirAtividade(atividade)}>
                           Excluir
                         </button>
                       </td>
                     </tr>
                   ))}
-                  {itensDoGrupo(grupo.id).length === 0 && (
+                  {atividadesDoCiclo(ciclo).length === 0 && (
                     <tr>
-                      <td colSpan={2} className="field-hint">
-                        Nenhum item neste grupo ainda.
+                      <td colSpan={5} className="field-hint">
+                        Nenhuma atividade neste ciclo ainda.
                       </td>
                     </tr>
                   )}
@@ -405,55 +357,69 @@ export function ImplementacaoChecklistAdmin() {
               </table>
             </div>
 
-            {formItem && formItem.grupo_id === grupo.id ? (
-              <form onSubmit={handleSalvarItem} className="card form-card">
-                <h3>{formItem.id ? 'Editar item' : 'Novo item'}</h3>
+            {formAtividade && formAtividade.ciclo === ciclo ? (
+              <form onSubmit={handleSalvarAtividade} className="card form-card">
+                <h3>{formAtividade.id ? 'Editar atividade' : 'Nova atividade'}</h3>
                 <label className="field">
-                  <span>Texto do item</span>
+                  <span>Nome da atividade</span>
                   <input
                     type="text"
                     required
                     autoFocus
-                    value={formItem.texto}
-                    onChange={(e) => setFormItem({ ...formItem, texto: e.target.value })}
+                    value={formAtividade.nome}
+                    onChange={(e) => setFormAtividade({ ...formAtividade, nome: e.target.value })}
                     placeholder="Ex: Configuração dos relatórios de desempenho de vendas"
+                  />
+                </label>
+                <label className="field">
+                  <span>Dependência (opcional)</span>
+                  <input
+                    type="text"
+                    value={formAtividade.depende_de}
+                    onChange={(e) => setFormAtividade({ ...formAtividade, depende_de: e.target.value })}
+                    placeholder="marco:kickoff_realizado_em ou ciclo:preparacao_crm"
+                  />
+                  <span className="field-hint">
+                    "marco:&lt;campo do cliente&gt;" (ex: marco:conta_kommo_criada_em) ou
+                    "ciclo:&lt;status da implementação&gt;" (ex: ciclo:crm_em_configuracao). Em
+                    branco = sem dependência, libera desde o início.
+                  </span>
+                </label>
+                <label className="field">
+                  <span>Prazo (dias corridos após a dependência liberar)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={formAtividade.prazo_dias}
+                    onChange={(e) => setFormAtividade({ ...formAtividade, prazo_dias: e.target.value })}
+                    placeholder="Em branco = sem data planejada"
+                  />
+                </label>
+                <label className="field">
+                  <span>Responsável padrão (opcional)</span>
+                  <input
+                    type="text"
+                    value={formAtividade.responsavel_padrao}
+                    onChange={(e) => setFormAtividade({ ...formAtividade, responsavel_padrao: e.target.value })}
                   />
                 </label>
                 <label className="option-checkbox">
                   <input
                     type="checkbox"
-                    checked={formItem.requer_evidencia}
-                    onChange={(e) => setFormItem({ ...formItem, requer_evidencia: e.target.checked })}
+                    checked={formAtividade.requer_evidencia}
+                    onChange={(e) => setFormAtividade({ ...formAtividade, requer_evidencia: e.target.checked })}
                   />
                   <span>
-                    Exige evidência pra marcar (link, print ou nota — pra itens que pedem
+                    Exige evidência pra concluir (link, print ou nota — pra atividades que pedem
                     verificação, não só configuração)
                   </span>
                 </label>
-                <label className="field">
-                  <span>Dia dentro da semana (1 a 7)</span>
-                  <select
-                    value={formItem.dia_semana}
-                    onChange={(e) => setFormItem({ ...formItem, dia_semana: e.target.value })}
-                  >
-                    <option value="">— Sem prazo definido (não entra na Agenda) —</option>
-                    {[1, 2, 3, 4, 5, 6, 7].map((dia) => (
-                      <option key={dia} value={dia}>
-                        Dia {dia}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="field-hint">
-                    Contado a partir da data em que o cliente entrou nessa semana. Define quando o
-                    item aparece na Agenda diária.
-                  </span>
-                </label>
                 <div className="wizard-actions">
-                  <button type="button" className="btn btn-secondary" onClick={fecharFormItem}>
+                  <button type="button" className="btn btn-secondary" onClick={fecharFormAtividade}>
                     Cancelar
                   </button>
                   <button type="submit" className="btn btn-primary" disabled={salvando}>
-                    {salvando ? 'Salvando…' : 'Salvar item'}
+                    {salvando ? 'Salvando…' : 'Salvar atividade'}
                   </button>
                 </div>
               </form>
@@ -461,9 +427,9 @@ export function ImplementacaoChecklistAdmin() {
               <button
                 type="button"
                 className="btn btn-secondary btn-auto"
-                onClick={() => abrirNovoItem(grupo.id)}
+                onClick={() => abrirNovaAtividade(ciclo)}
               >
-                + Novo item
+                + Nova atividade
               </button>
             )}
           </section>

@@ -1,14 +1,15 @@
+import { resolverAtividade, resolverTrialKommo, type AtividadeResolvida } from './atividadesCronograma';
 import type {
-  ChecklistGrupoImplementacao,
-  ChecklistItemImplementacao,
+  AtividadeCronograma,
+  AtividadeStatusRow,
+  Cliente,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
 } from '../types/database';
 
 export type ItemAgenda = {
   implementacao: ImplementacaoCrm;
-  item: ChecklistItemImplementacao;
-  grupoTitulo: string;
+  atividade: AtividadeResolvida;
   vencimento: Date;
   diasAtraso: number;
 };
@@ -38,67 +39,61 @@ export function dataEntradaStatusAtual(
   return new Date(registros[0]?.alterado_em ?? implementacao.created_at);
 }
 
-export function calcularVencimento(dataEntrada: Date, diaSemana: number): Date {
-  const vencimento = new Date(dataEntrada);
-  vencimento.setDate(vencimento.getDate() + (diaSemana - 1));
-  return inicioDoDia(vencimento);
-}
-
-// Itens pendentes (não marcados) de uma implementação, cujo prazo vence no
-// dia selecionado. Se o dia selecionado é hoje, também traz o atrasado
-// (vencimento < hoje) — pra funcionar como lista de pendências do dia, não
-// só do que vence exatamente hoje. Em outros dias mostra só o que vence
-// naquele dia exato, pra dar uma prévia do que vem a seguir.
-export function itensDaAgenda(params: {
-  implementacoes: ImplementacaoCrm[];
-  grupos: ChecklistGrupoImplementacao[];
-  itens: ChecklistItemImplementacao[];
-  marcadosPorImplementacao: Map<string, Set<string>>;
-  historico: ImplementacaoStatusHistorico[];
+// Atividades pendentes (não concluídas nem bloqueadas pelo cliente) de uma
+// implementação, cuja data planejada cai no dia selecionado. Se o dia
+// selecionado é hoje, também traz o atrasado (vencimento < hoje) — pra
+// funcionar como lista de pendências do dia, não só do que vence exatamente
+// hoje. Em outros dias mostra só o que vence naquele dia exato, pra dar uma
+// prévia do que vem a seguir.
+export function atividadesDaAgenda(params: {
+  entradas: {
+    implementacao: ImplementacaoCrm;
+    atividades: AtividadeCronograma[];
+    statusRows: AtividadeStatusRow[];
+    cliente: Cliente | null;
+    // Já filtrado pra essa implementação — resolverAtividade não filtra sozinho.
+    historico: ImplementacaoStatusHistorico[];
+  }[];
   diaSelecionado: Date;
   hoje: Date;
 }): ItemAgenda[] {
-  const { implementacoes, grupos, itens, marcadosPorImplementacao, historico, diaSelecionado, hoje } = params;
+  const { entradas, diaSelecionado, hoje } = params;
   const diaAlvo = inicioDoDia(diaSelecionado);
   const ehHoje = diferencaEmDias(diaAlvo, hoje) === 0;
 
   const resultado: ItemAgenda[] = [];
 
-  for (const implementacao of implementacoes) {
-    // "CRM em configuração" é dividido em dois grupos de checklist (Sessão
-    // 1 e Sessão 2) que compartilham o mesmo status — os demais status têm
-    // um grupo só, com chave igual ao próprio status.
-    const gruposDoStatus =
-      implementacao.status === 'crm_em_configuracao'
-        ? grupos.filter((g) => g.chave === 'crm_em_configuracao_sessao1' || g.chave === 'crm_em_configuracao_sessao2')
-        : grupos.filter((g) => g.chave === implementacao.status);
-    if (gruposDoStatus.length === 0) continue;
+  for (const { implementacao, atividades, statusRows, cliente, historico } of entradas) {
+    const atividadesVisiveis = atividades.filter(
+      (a) => a.implementacao_id === null || a.implementacao_id === implementacao.id,
+    );
 
-    const dataEntrada = dataEntradaStatusAtual(implementacao, historico);
-    const marcados = marcadosPorImplementacao.get(implementacao.id) ?? new Set<string>();
+    const resolvidas: AtividadeResolvida[] = atividadesVisiveis.map((atividade) =>
+      resolverAtividade({
+        atividade,
+        statusRow: statusRows.find((s) => s.atividade_id === atividade.id) ?? null,
+        historico,
+        cliente,
+        hoje,
+      }),
+    );
+    if (cliente) resolvidas.push(resolverTrialKommo(cliente, hoje));
 
-    for (const grupo of gruposDoStatus) {
-      const itensDoGrupo = itens.filter(
-        (item) =>
-          item.grupo_id === grupo.id &&
-          (item.implementacao_id === null || item.implementacao_id === implementacao.id) &&
-          item.dia_semana != null &&
-          !marcados.has(item.id),
-      );
+    for (const atividade of resolvidas) {
+      if (atividade.status === 'concluido' || atividade.status === 'bloqueado_cliente') continue;
+      if (!atividade.dataPlanejada) continue;
 
-      for (const item of itensDoGrupo) {
-        const vencimento = calcularVencimento(dataEntrada, item.dia_semana!);
-        const dentroDoAlvo = ehHoje ? vencimento.getTime() <= diaAlvo.getTime() : vencimento.getTime() === diaAlvo.getTime();
-        if (!dentroDoAlvo) continue;
+      const dentroDoAlvo = ehHoje
+        ? atividade.dataPlanejada.getTime() <= diaAlvo.getTime()
+        : atividade.dataPlanejada.getTime() === diaAlvo.getTime();
+      if (!dentroDoAlvo) continue;
 
-        resultado.push({
-          implementacao,
-          item,
-          grupoTitulo: grupo.titulo,
-          vencimento,
-          diasAtraso: Math.max(0, diferencaEmDias(hoje, vencimento)),
-        });
-      }
+      resultado.push({
+        implementacao,
+        atividade,
+        vencimento: atividade.dataPlanejada,
+        diasAtraso: atividade.atrasoDias,
+      });
     }
   }
 

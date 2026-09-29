@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
-import { itensDaAgenda, type ItemAgenda } from '../lib/agendaImplementacao';
+import { atividadesDaAgenda, type ItemAgenda } from '../lib/agendaImplementacao';
 import { supabase } from '../lib/supabaseClient';
 import type {
-  ChecklistGrupoImplementacao,
-  ChecklistItemImplementacao,
+  AtividadeCronograma,
+  AtividadeStatusRow,
+  Cliente,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
 } from '../types/database';
@@ -36,9 +37,9 @@ function inicioDoDia(data: Date): Date {
 
 export function Agenda() {
   const [implementacoes, setImplementacoes] = useState<ImplementacaoCrm[]>([]);
-  const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
-  const [itens, setItens] = useState<ChecklistItemImplementacao[]>([]);
-  const [marcadosPorImplementacao, setMarcadosPorImplementacao] = useState<Map<string, Set<string>>>(new Map());
+  const [atividades, setAtividades] = useState<AtividadeCronograma[]>([]);
+  const [statusRows, setStatusRows] = useState<AtividadeStatusRow[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [historico, setHistorico] = useState<ImplementacaoStatusHistorico[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -64,54 +65,49 @@ export function Agenda() {
     setImplementacoes(implementacoesAtivas);
 
     if (implementacoesAtivas.length === 0) {
-      setGrupos([]);
-      setItens([]);
-      setMarcadosPorImplementacao(new Map());
+      setAtividades([]);
+      setStatusRows([]);
+      setClientes([]);
       setHistorico([]);
       setLoading(false);
       return;
     }
 
     const ids = implementacoesAtivas.map((i) => i.id);
+    const clienteIds = implementacoesAtivas
+      .map((i) => i.cliente_id)
+      .filter((id): id is string => id !== null);
 
     const [
-      { data: gruposData, error: gruposError },
-      { data: itensData, error: itensError },
-      { data: marcadosData, error: marcadosError },
+      { data: atividadesData, error: atividadesError },
+      { data: statusRowsData, error: statusRowsError },
+      { data: clientesData, error: clientesError },
       { data: historicoData, error: historicoError },
     ] = await Promise.all([
-      supabase.from('checklist_grupos_implementacao').select('*'),
       supabase
-        .from('checklist_itens_implementacao')
+        .from('atividades_cronograma')
         .select('*')
-        .or(`implementacao_id.is.null,implementacao_id.in.(${ids.join(',')})`)
-        .not('dia_semana', 'is', null),
-      supabase
-        .from('implementacao_checklist_marcado')
-        .select('implementacao_id, item_id, marcado')
-        .in('implementacao_id', ids)
-        .eq('marcado', true),
+        .or(`implementacao_id.is.null,implementacao_id.in.(${ids.join(',')})`),
+      supabase.from('atividades_status').select('*').in('implementacao_id', ids),
+      clienteIds.length > 0
+        ? supabase.from('clientes').select('*').in('id', clienteIds)
+        : Promise.resolve({ data: [] as Cliente[], error: null }),
       supabase.from('implementacao_status_historico').select('*').in('implementacao_id', ids),
     ]);
 
-    if (gruposError || itensError || marcadosError || historicoError) {
+    if (atividadesError || statusRowsError || clientesError || historicoError) {
       setError(
-        (gruposError ?? itensError ?? marcadosError ?? historicoError)?.message ?? 'Erro ao carregar a agenda.',
+        (atividadesError ?? statusRowsError ?? clientesError ?? historicoError)?.message ??
+          'Erro ao carregar a agenda.',
       );
       setLoading(false);
       return;
     }
 
-    setGrupos(gruposData ?? []);
-    setItens(itensData ?? []);
+    setAtividades(atividadesData ?? []);
+    setStatusRows(statusRowsData ?? []);
+    setClientes(clientesData ?? []);
     setHistorico(historicoData ?? []);
-
-    const mapa = new Map<string, Set<string>>();
-    for (const marcado of marcadosData ?? []) {
-      if (!mapa.has(marcado.implementacao_id)) mapa.set(marcado.implementacao_id, new Set());
-      mapa.get(marcado.implementacao_id)!.add(marcado.item_id);
-    }
-    setMarcadosPorImplementacao(mapa);
 
     setLoading(false);
   }
@@ -122,16 +118,18 @@ export function Agenda() {
 
   const itensAgenda = useMemo(
     () =>
-      itensDaAgenda({
-        implementacoes,
-        grupos,
-        itens,
-        marcadosPorImplementacao,
-        historico,
+      atividadesDaAgenda({
+        entradas: implementacoes.map((implementacao) => ({
+          implementacao,
+          atividades,
+          statusRows: statusRows.filter((s) => s.implementacao_id === implementacao.id),
+          cliente: clientes.find((c) => c.id === implementacao.cliente_id) ?? null,
+          historico: historico.filter((h) => h.implementacao_id === implementacao.id),
+        })),
         diaSelecionado,
         hoje: inicioDoDia(new Date()),
       }),
-    [implementacoes, grupos, itens, marcadosPorImplementacao, historico, diaSelecionado],
+    [implementacoes, atividades, statusRows, clientes, historico, diaSelecionado],
   );
 
   const agrupadoPorCliente = useMemo(() => {
@@ -145,15 +143,16 @@ export function Agenda() {
   }, [itensAgenda]);
 
   async function handleMarcarItem(entrada: ItemAgenda) {
-    setMarcando(entrada.item.id);
-    const { error: upsertError } = await supabase.from('implementacao_checklist_marcado').upsert(
+    if (entrada.atividade.id === null) return; // Trial Kommo é virtual, não tem o que marcar aqui.
+
+    setMarcando(entrada.atividade.id);
+    const { error: upsertError } = await supabase.from('atividades_status').upsert(
       {
         implementacao_id: entrada.implementacao.id,
-        item_id: entrada.item.id,
-        marcado: true,
-        marcado_em: new Date().toISOString(),
+        atividade_id: entrada.atividade.id,
+        data_real: new Date().toISOString(),
       },
-      { onConflict: 'implementacao_id,item_id' },
+      { onConflict: 'implementacao_id,atividade_id' },
     );
     setMarcando(null);
 
@@ -162,12 +161,30 @@ export function Agenda() {
       return;
     }
 
-    setMarcadosPorImplementacao((prev) => {
-      const novo = new Map(prev);
-      const marcados = new Set(novo.get(entrada.implementacao.id) ?? []);
-      marcados.add(entrada.item.id);
-      novo.set(entrada.implementacao.id, marcados);
-      return novo;
+    setStatusRows((prev) => {
+      const idx = prev.findIndex(
+        (s) => s.implementacao_id === entrada.implementacao.id && s.atividade_id === entrada.atividade.id,
+      );
+      const dataReal = new Date().toISOString();
+      if (idx === -1) {
+        return [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            implementacao_id: entrada.implementacao.id,
+            atividade_id: entrada.atividade.id!,
+            data_real: dataReal,
+            agendado_para: null,
+            bloqueado_pelo_cliente: false,
+            evidencia: null,
+            created_at: dataReal,
+            updated_at: dataReal,
+          },
+        ];
+      }
+      const copia = [...prev];
+      copia[idx] = { ...copia[idx], data_real: dataReal };
+      return copia;
     });
   }
 
@@ -179,9 +196,8 @@ export function Agenda() {
         <div>
           <h1>Agenda</h1>
           <p className="field-hint">
-            Tarefas de implementação de CRM pendentes por cliente, com base no checklist e no dia em
-            que cada cliente entrou na semana atual. Só considera itens do checklist com prazo
-            definido (aba "Editar checklist").
+            Atividades de implementação de CRM pendentes por cliente, com base no cronograma de
+            dependências de cada implementação.
           </p>
         </div>
       </div>
@@ -210,8 +226,8 @@ export function Agenda() {
         <div className="empty-state">
           <p>
             {ehHoje
-              ? 'Nenhuma tarefa pendente com prazo para hoje.'
-              : 'Nenhuma tarefa com prazo para este dia.'}
+              ? 'Nenhuma atividade pendente com prazo para hoje.'
+              : 'Nenhuma atividade com prazo para este dia.'}
           </p>
         </div>
       )}
@@ -229,16 +245,19 @@ export function Agenda() {
               </div>
               <div className="options-list">
                 {entradas.map((entrada) => (
-                  <label key={entrada.item.id} className="option-checkbox agenda-item">
+                  <label
+                    key={entrada.atividade.id ?? 'trial-kommo'}
+                    className="option-checkbox agenda-item"
+                  >
                     <input
                       type="checkbox"
                       checked={false}
-                      disabled={marcando === entrada.item.id}
+                      disabled={marcando === entrada.atividade.id || entrada.atividade.id === null}
                       onChange={() => handleMarcarItem(entrada)}
                     />
                     <span>
-                      {entrada.item.texto}
-                      <span className="field-hint"> · {entrada.grupoTitulo}</span>
+                      {entrada.atividade.nome}
+                      <span className="field-hint"> · {entrada.atividade.ciclo}</span>
                       {entrada.diasAtraso > 0 && (
                         <span className="agenda-atraso-badge">
                           {' '}
