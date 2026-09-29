@@ -64,7 +64,8 @@ Deno.serve(async (req: Request) => {
   });
 
   if (credError) {
-    return jsonResponse({ error: credError.message }, 500);
+    console.error('Erro ao obter credencial da API Kommo', credError);
+    return jsonResponse({ error: 'Não foi possível concluir esta operação.' }, 500);
   }
 
   const credencial = credenciais?.[0];

@@ -336,7 +336,7 @@ Deno.serve(async (req: Request) => {
   if (insertError) {
     console.error('Erro ao salvar funis_gerados', insertError);
     await supabase.from('mapeamentos').update({ status: 'erro' }).eq('id', mapeamentoId);
-    return jsonResponse({ error: insertError.message }, 500);
+    return jsonResponse({ error: 'Não foi possível concluir esta operação.' }, 500);
   }
 
   const { error: metaError } = await supabase.from('geracoes_meta').insert({

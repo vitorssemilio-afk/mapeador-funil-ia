@@ -211,6 +211,6 @@ ${instrucoesExtras ? `Instruções específicas para esta etapa: ${instrucoesExt
     return jsonResponse({ etapa: json });
   } catch (err) {
     console.error('Erro ao regenerar etapa', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Falha ao regenerar a etapa.' }, 500);
+    return jsonResponse({ error: 'Não foi possível regenerar esta etapa. Tente novamente em instantes.' }, 500);
   }
 });
