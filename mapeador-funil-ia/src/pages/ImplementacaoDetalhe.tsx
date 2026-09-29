@@ -16,6 +16,13 @@ import {
   type AtividadeResolvida,
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import {
+  resolverResumoCriteriosEntrega,
+  STATUS_CONTRATACAO_KOMMO_LABELS,
+  STATUS_CONTRATACAO_KOMMO_TONE,
+  STATUS_CRITERIO_LABELS,
+  STATUS_CRITERIO_TONE,
+} from '../lib/criteriosEntrega';
 import { aprovarVersaoAtual } from '../lib/funilVersoes';
 import { nomeConsultor } from '../lib/operacaoResumo';
 import {
@@ -51,6 +58,8 @@ import type {
   Consultor,
   CredencialApiKommoMeta,
   CredencialCrmListada,
+  CriterioEntrega,
+  CriterioEntregaStatus,
   FrequenciaUsoCheckpoint,
   FunilGerado,
   FunilKommoCriacao,
@@ -64,12 +73,14 @@ import type {
   MarcoRemarcacao,
   Reuniao,
   ReuniaoRemarcacao,
+  StatusContratacaoKommo,
+  StatusCriterioEntrega,
   StatusReuniao,
   TipoReuniao,
   UsoDiarioCheckpoint,
 } from '../types/database';
 
-type Aba = 'geral' | 'checklist' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes';
+type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes';
 
 // Ordem fixa de exibição — os 5 tipos "estruturados" (um card cada, sempre
 // visível) vêm antes dos 2 ad-hoc (lista + "nova reunião", pode ter várias).
@@ -195,6 +206,7 @@ type FormGeral = {
   plano_contratado: string;
   periodo_contratado: string;
   data_decisao_plano: string;
+  status_contratacao_kommo: StatusContratacaoKommo;
   observacoes: string;
 };
 
@@ -243,6 +255,7 @@ function paraFormGeral(impl: ImplementacaoCrm): FormGeral {
     plano_contratado: impl.plano_contratado ?? '',
     periodo_contratado: impl.periodo_contratado ?? '',
     data_decisao_plano: impl.data_decisao_plano ?? '',
+    status_contratacao_kommo: impl.status_contratacao_kommo,
     observacoes: impl.observacoes ?? '',
   };
 }
@@ -297,6 +310,17 @@ export function ImplementacaoDetalhe() {
   const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [historicoConsultor, setHistoricoConsultor] = useState<ImplementacaoConsultorHistorico[]>([]);
+  const [criterios, setCriterios] = useState<CriterioEntrega[]>([]);
+  const [criteriosStatus, setCriteriosStatus] = useState<CriterioEntregaStatus[]>([]);
+  const [editandoCriterioId, setEditandoCriterioId] = useState<string | null>(null);
+  const [formCriterio, setFormCriterio] = useState<{
+    status: StatusCriterioEntrega;
+    evidencia: string;
+    observacao: string;
+    justificativa_nao_aplica: string;
+    responsavel_validacao_id: string;
+  } | null>(null);
+  const [salvandoCriterio, setSalvandoCriterio] = useState(false);
   const [confirmandoCampo, setConfirmandoCampo] = useState<
     'conta_kommo_solicitada_em' | 'contratacao_kommo_solicitada_em' | null
   >(null);
@@ -474,6 +498,8 @@ export function ImplementacaoDetalhe() {
       { data: pipefyData },
       { data: consultoresData },
       { data: historicoConsultorData },
+      { data: criteriosData },
+      { data: criteriosStatusData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -501,11 +527,15 @@ export function ImplementacaoDetalhe() {
         .select('*')
         .eq('implementacao_id', implementacaoId)
         .order('alterado_em', { ascending: false }),
+      supabase.from('criterios_entrega').select('*').order('ordem', { ascending: true }),
+      supabase.from('criterios_entrega_status').select('*').eq('implementacao_id', implementacaoId),
     ]);
 
     setPipefyConfig(pipefyData ?? null);
     setConsultores(consultoresData ?? []);
     setHistoricoConsultor(historicoConsultorData ?? []);
+    setCriterios(criteriosData ?? []);
+    setCriteriosStatus(criteriosStatusData ?? []);
 
     if (implError) {
       setError(implError.message);
@@ -730,6 +760,72 @@ export function ImplementacaoDetalhe() {
     });
   }
 
+  function abrirFormCriterio(criterioId: string) {
+    const atual = criteriosStatus.find((s) => s.criterio_id === criterioId);
+    setEditandoCriterioId(criterioId);
+    setFormCriterio({
+      status: atual?.status ?? 'pendente',
+      evidencia: atual?.evidencia ?? '',
+      observacao: atual?.observacao ?? '',
+      justificativa_nao_aplica: atual?.justificativa_nao_aplica ?? '',
+      responsavel_validacao_id: atual?.responsavel_validacao_id ?? '',
+    });
+  }
+
+  function fecharFormCriterio() {
+    setEditandoCriterioId(null);
+    setFormCriterio(null);
+  }
+
+  async function handleSalvarCriterio(e: FormEvent) {
+    e.preventDefault();
+    if (!implementacao || !editandoCriterioId || !formCriterio) return;
+
+    if (formCriterio.status === 'nao_se_aplica' && !formCriterio.justificativa_nao_aplica.trim()) {
+      setError('Justificativa obrigatória para marcar um critério como "Não se aplica".');
+      return;
+    }
+
+    setSalvandoCriterio(true);
+    setError(null);
+
+    const jaValidado = formCriterio.status === 'concluido' || formCriterio.status === 'nao_se_aplica';
+    const { data, error: upsertError } = await supabase
+      .from('criterios_entrega_status')
+      .upsert(
+        {
+          implementacao_id: implementacao.id,
+          criterio_id: editandoCriterioId,
+          status: formCriterio.status,
+          evidencia: formCriterio.evidencia.trim() || null,
+          observacao: formCriterio.observacao.trim() || null,
+          justificativa_nao_aplica:
+            formCriterio.status === 'nao_se_aplica' ? formCriterio.justificativa_nao_aplica.trim() : null,
+          responsavel_validacao_id: formCriterio.responsavel_validacao_id || null,
+          data_validacao: jaValidado ? new Date().toISOString() : null,
+        },
+        { onConflict: 'implementacao_id,criterio_id' },
+      )
+      .select()
+      .single();
+
+    setSalvandoCriterio(false);
+
+    if (upsertError) {
+      setError(upsertError.message);
+      return;
+    }
+
+    setCriteriosStatus((prev) => {
+      const idx = prev.findIndex((s) => s.criterio_id === editandoCriterioId);
+      if (idx === -1) return [...prev, data];
+      const copia = [...prev];
+      copia[idx] = data;
+      return copia;
+    });
+    fecharFormCriterio();
+  }
+
   async function handleMarcarConcluido(atividade: AtividadeResolvida, concluido: boolean) {
     if (atividade.id === null) return;
 
@@ -821,6 +917,7 @@ export function ImplementacaoDetalhe() {
         plano_contratado: formGeral.plano_contratado || null,
         periodo_contratado: formGeral.periodo_contratado.trim() || null,
         data_decisao_plano: formGeral.data_decisao_plano || null,
+        status_contratacao_kommo: formGeral.status_contratacao_kommo,
         observacoes: formGeral.observacoes.trim() || null,
       })
       .eq('id', implementacao.id)
@@ -1622,6 +1719,9 @@ export function ImplementacaoDetalhe() {
       <div className="page-header">
         <div>
           <h1>{implementacao.nome_cliente}</h1>
+          <span className={`status-badge status-tone-${STATUS_CONTRATACAO_KOMMO_TONE[implementacao.status_contratacao_kommo]}`}>
+            {STATUS_CONTRATACAO_KOMMO_LABELS[implementacao.status_contratacao_kommo]}
+          </span>
           <p className="field-hint">
             {implementacao.cliente_id && (
               <>
@@ -1918,6 +2018,13 @@ export function ImplementacaoDetalhe() {
         </button>
         <button
           type="button"
+          className={`tab-button${aba === 'criterios' ? ' active' : ''}`}
+          onClick={() => setAba('criterios')}
+        >
+          Critérios de Entrega
+        </button>
+        <button
+          type="button"
           className={`tab-button${aba === 'cronograma' ? ' active' : ''}`}
           onClick={() => setAba('cronograma')}
         >
@@ -1935,7 +2042,7 @@ export function ImplementacaoDetalhe() {
           className={`tab-button${aba === 'checkpoint' ? ' active' : ''}`}
           onClick={() => setAba('checkpoint')}
         >
-          Checkpoint 30 dias
+          Indicadores de Adoção
           {checkpointAdocao?.risco_churn && <span className="badge-danger">Risco</span>}
         </button>
         <button
@@ -2092,6 +2199,24 @@ export function ImplementacaoDetalhe() {
             </label>
 
             <div className="form-grid">
+              <label className="field">
+                <span>Status da contratação do Kommo</span>
+                <select
+                  value={formGeral.status_contratacao_kommo}
+                  onChange={(e) =>
+                    setFormGeral({ ...formGeral, status_contratacao_kommo: e.target.value as StatusContratacaoKommo })
+                  }
+                >
+                  {Object.entries(STATUS_CONTRATACAO_KOMMO_LABELS).map(([valor, rotulo]) => (
+                    <option key={valor} value={valor}>
+                      {rotulo}
+                    </option>
+                  ))}
+                </select>
+                <span className="field-hint">
+                  Status comercial — separado dos Critérios de Entrega, que são só técnicos.
+                </span>
+              </label>
               <label className="field">
                 <span>Plano contratado</span>
                 <select
@@ -2439,6 +2564,160 @@ export function ImplementacaoDetalhe() {
           );
         })}
 
+      {aba === 'criterios' && implementacao && (
+        <section className="card form-card">
+          <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+            <h2 style={{ marginBottom: 0 }}>Critérios de Entrega</h2>
+            {(() => {
+              const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id);
+              return (
+                <span
+                  className={`status-badge status-tone-${resumoCriterios.todosObrigatoriosAtendidos ? 'success' : 'warning'}`}
+                >
+                  Critérios de entrega: {resumoCriterios.concluidos}/{resumoCriterios.total} concluídos
+                </span>
+              );
+            })()}
+          </div>
+          <p className="field-hint">
+            "A implementação foi corretamente entregue?" — técnico e objetivo, sob controle da V4.
+            Não inclui contratação do plano, adoção do cliente nem o Checkpoint 30 dias (isso fica em
+            "Indicadores de Adoção").
+          </p>
+          {(() => {
+            const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id);
+            return (
+              resumoCriterios.todosObrigatoriosAtendidos && (
+                <p className="field-hint" style={{ color: 'var(--color-success)' }}>
+                  Todos os critérios obrigatórios de entrega estão atendidos — a implementação já pode
+                  ser marcada como tecnicamente concluída.
+                </p>
+              )
+            );
+          })()}
+
+          <ul className="observacoes-lista">
+            {criterios.map((criterio) => {
+              const statusRow = criteriosStatus.find((s) => s.criterio_id === criterio.id);
+              const status = statusRow?.status ?? 'pendente';
+              const editando = editandoCriterioId === criterio.id;
+
+              return (
+                <li key={criterio.id} className="observacao-item">
+                  <div className="observacao-item-header">
+                    <span className="observacao-item-meta">
+                      <span className={`status-badge status-tone-${STATUS_CRITERIO_TONE[status]}`}>
+                        {STATUS_CRITERIO_LABELS[status]}
+                      </span>{' '}
+                      <strong style={{ color: 'var(--color-text)' }}>{criterio.nome}</strong>
+                      {!criterio.obrigatorio && <span className="field-hint"> (quando aplicável)</span>}
+                    </span>
+                    {!editando && (
+                      <button type="button" className="btn btn-secondary" onClick={() => abrirFormCriterio(criterio.id)}>
+                        Editar
+                      </button>
+                    )}
+                  </div>
+
+                  {!editando && statusRow && (
+                    <div className="field-hint">
+                      {statusRow.evidencia && <p>Evidência: {statusRow.evidencia}</p>}
+                      {statusRow.observacao && <p>Observação: {statusRow.observacao}</p>}
+                      {statusRow.status === 'nao_se_aplica' && statusRow.justificativa_nao_aplica && (
+                        <p>Justificativa: {statusRow.justificativa_nao_aplica}</p>
+                      )}
+                      {statusRow.data_validacao && (
+                        <p>
+                          Validado em {formatarDataHoraLocal(statusRow.data_validacao)}
+                          {statusRow.responsavel_validacao_id
+                            ? ` por ${nomeConsultor(statusRow.responsavel_validacao_id, consultores) ?? '—'}`
+                            : ''}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {editando && formCriterio && (
+                    <form onSubmit={handleSalvarCriterio} className="card form-card">
+                      <div className="form-grid">
+                        <label className="field">
+                          <span>Status</span>
+                          <select
+                            value={formCriterio.status}
+                            onChange={(e) =>
+                              setFormCriterio({ ...formCriterio, status: e.target.value as StatusCriterioEntrega })
+                            }
+                          >
+                            {Object.entries(STATUS_CRITERIO_LABELS).map(([valor, rotulo]) => (
+                              <option key={valor} value={valor}>
+                                {rotulo}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="field">
+                          <span>Responsável pela validação</span>
+                          <select
+                            value={formCriterio.responsavel_validacao_id}
+                            onChange={(e) =>
+                              setFormCriterio({ ...formCriterio, responsavel_validacao_id: e.target.value })
+                            }
+                          >
+                            <option value="">Selecione…</option>
+                            {consultores.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nome}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <label className="field">
+                        <span>Evidência</span>
+                        <textarea
+                          rows={2}
+                          value={formCriterio.evidencia}
+                          onChange={(e) => setFormCriterio({ ...formCriterio, evidencia: e.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Observação</span>
+                        <textarea
+                          rows={2}
+                          value={formCriterio.observacao}
+                          onChange={(e) => setFormCriterio({ ...formCriterio, observacao: e.target.value })}
+                        />
+                      </label>
+                      {formCriterio.status === 'nao_se_aplica' && (
+                        <label className="field">
+                          <span>Justificativa (obrigatória)</span>
+                          <textarea
+                            rows={2}
+                            required
+                            value={formCriterio.justificativa_nao_aplica}
+                            onChange={(e) =>
+                              setFormCriterio({ ...formCriterio, justificativa_nao_aplica: e.target.value })
+                            }
+                          />
+                        </label>
+                      )}
+                      <div className="wizard-actions">
+                        <button type="button" className="btn btn-secondary" onClick={fecharFormCriterio}>
+                          Cancelar
+                        </button>
+                        <button type="submit" className="btn btn-primary" disabled={salvandoCriterio}>
+                          {salvandoCriterio ? 'Salvando…' : 'Salvar'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {aba === 'cronograma' && (
         <section className="card form-card">
           <h2>Cronograma</h2>
@@ -2623,7 +2902,14 @@ export function ImplementacaoDetalhe() {
 
       {aba === 'checkpoint' && (
         <section className="card form-card">
-          <h2>Checkpoint de Adoção — 30 dias pós-entrega</h2>
+          <h2>Indicadores de Adoção</h2>
+          <p className="field-hint">
+            Separados dos Critérios de Entrega: entrega técnica correta é uma coisa, adoção real
+            pelo cliente é outra — nenhum indicador daqui (uso das planilhas, frequência de uso de
+            relatórios, contratação do plano, resultado do Checkpoint) bloqueia ou conta como
+            critério de qualidade da implementação.
+          </p>
+          <h3>Checkpoint de Adoção — 30 dias pós-entrega</h3>
           <p className="field-hint">
             Instrumento separado do checklist técnico e do NPS: mede se a adoção do Kommo
             realmente aconteceu depois que o cliente ficou sozinho com a ferramenta, 30 dias após
