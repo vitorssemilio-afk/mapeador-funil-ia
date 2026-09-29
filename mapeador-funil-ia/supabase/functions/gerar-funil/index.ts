@@ -219,21 +219,47 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const { data: funisVendas } = await supabase
-      .from('funis_gerados')
-      .select('nome_funil, tipo_funil, etapas, versao')
+    // Prioriza a versão do funil de vendas já APROVADA pelo cliente (ver
+    // funil_versoes / aprovarVersaoAtual em src/lib/funilVersoes.ts) — só cai
+    // pra última versão gerada (rascunho) quando nenhuma versão foi aprovada
+    // ainda, pra não alimentar o pós-venda com um funil de vendas que ainda
+    // pode mudar antes da aprovação do cliente.
+    const { data: versaoAprovada } = await supabase
+      .from('funil_versoes')
+      .select('versao')
       .eq('mapeamento_id', mapeamento.mapeamento_origem_id as string)
+      .eq('status', 'aprovada')
       .order('versao', { ascending: false })
-      .limit(20);
+      .limit(1)
+      .maybeSingle();
 
-    if (funisVendas && funisVendas.length > 0) {
-      const versaoMaisRecente = Math.max(...funisVendas.map((f: { versao: number }) => f.versao));
-      const funisDaVersao = funisVendas.filter(
-        (f: { versao: number }) => f.versao === versaoMaisRecente,
-      );
-      partesContexto.push(
-        `## Funil de vendas já mapeado para este cliente (a última etapa é o gatilho de entrada do pós-venda)\n${formatFunisResumoTexto(funisDaVersao)}`,
-      );
+    let versaoAlvo = versaoAprovada?.versao ?? null;
+    const versaoEstaAprovada = versaoAlvo !== null;
+
+    if (versaoAlvo === null) {
+      const { data: versaoMaisRecenteRow } = await supabase
+        .from('funis_gerados')
+        .select('versao')
+        .eq('mapeamento_id', mapeamento.mapeamento_origem_id as string)
+        .order('versao', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      versaoAlvo = versaoMaisRecenteRow?.versao ?? null;
+    }
+
+    if (versaoAlvo !== null) {
+      const { data: funisVendas } = await supabase
+        .from('funis_gerados')
+        .select('nome_funil, tipo_funil, etapas, versao')
+        .eq('mapeamento_id', mapeamento.mapeamento_origem_id as string)
+        .eq('versao', versaoAlvo);
+
+      if (funisVendas && funisVendas.length > 0) {
+        const rotulo = versaoEstaAprovada
+          ? 'Funil de vendas já mapeado e APROVADO pelo cliente (a última etapa é o gatilho de entrada do pós-venda)'
+          : 'Funil de vendas já mapeado para este cliente, ainda não aprovado formalmente (a última etapa é o gatilho de entrada do pós-venda)';
+        partesContexto.push(`## ${rotulo}\n${formatFunisResumoTexto(funisVendas)}`);
+      }
     }
 
     if (partesContexto.length > 0) {
