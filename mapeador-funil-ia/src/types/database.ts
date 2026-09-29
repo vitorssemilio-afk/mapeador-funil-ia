@@ -589,6 +589,18 @@ export type ImplementacaoChecklistMarcado = {
 export type UsoDiarioCheckpoint = 'so_kommo' | 'kommo_mais_planilha' | 'voltou_planilha';
 export type FrequenciaUsoCheckpoint = 'diariamente' | 'semanalmente' | 'raramente' | 'nao_uso';
 export type IntencaoManutencaoCheckpoint = 'sim' | 'talvez' | 'nao';
+export type PercentualProcessoKommo = 'praticamente_tudo' | 'maior_parte' | 'cerca_metade' | 'pouco' | 'quase_nada';
+export type AutonomiaEquipeCheckpoint =
+  | 'sim_totalmente'
+  | 'maior_parte_vezes'
+  | 'precisamos_ajuda_frequente'
+  | 'nao_conseguimos_sem_ajuda';
+export type UsoRelatoriosDecisaoCheckpoint = 'sim_mais_uma_vez' | 'sim_uma_vez' | 'ainda_nao' | 'nao_sei_utilizar';
+export type AtividadesForaKommoCheckpoint =
+  | 'nao_tudo_no_kommo'
+  | 'sim_algumas'
+  | 'sim_varias'
+  | 'voltou_processo_antigo';
 
 export type CheckpointAdocao = {
   id: string;
@@ -598,9 +610,26 @@ export type CheckpointAdocao = {
   obstaculo: string | null;
   intencao_manutencao: IntencaoManutencaoCheckpoint;
   risco_churn: boolean;
+  percentual_processo_kommo: PercentualProcessoKommo | null;
+  autonomia_equipe: AutonomiaEquipeCheckpoint | null;
+  uso_relatorios_decisao: UsoRelatoriosDecisaoCheckpoint | null;
+  atividades_fora_kommo: AtividadesForaKommoCheckpoint | null;
+  quais_atividades_fora_kommo: string | null;
+  principal_dificuldade: string | null;
   respondido_em: string;
   created_at: string;
   updated_at: string;
+};
+
+// Ação que o consultor registra depois de analisar as respostas do
+// checkpoint — um log simples, não um novo fluxo de status.
+export type CheckpointAcompanhamento = {
+  id: string;
+  implementacao_id: string;
+  descricao: string;
+  responsavel_id: string | null;
+  autor_email: string | null;
+  created_at: string;
 };
 
 export type CheckpointPublico = {
@@ -870,6 +899,12 @@ export type Database = {
         Insert: Partial<CheckpointAdocao> &
           Pick<CheckpointAdocao, 'implementacao_id' | 'uso_diario' | 'frequencia_uso' | 'intencao_manutencao'>;
         Update: Partial<CheckpointAdocao>;
+        Relationships: [];
+      };
+      checkpoint_acompanhamentos: {
+        Row: CheckpointAcompanhamento;
+        Insert: Partial<CheckpointAcompanhamento> & Pick<CheckpointAcompanhamento, 'implementacao_id' | 'descricao'>;
+        Update: Partial<CheckpointAcompanhamento>;
         Relationships: [];
       };
       marco_remarcacoes: {
