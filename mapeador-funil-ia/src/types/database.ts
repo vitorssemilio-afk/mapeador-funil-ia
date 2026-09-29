@@ -320,6 +320,23 @@ export type AtividadeStatusRow = {
   updated_at: string;
 };
 
+export type ImpactoResponsavel = 'cliente' | 'consultor' | 'v4' | 'problema_tecnico' | 'outro';
+
+// Auditoria de toda remarcação de kickoff_agendado_para/treinamento_agendado_para
+// — distinto de uma edição livre desses campos pelo formulário genérico de
+// marcos: guarda a data anterior (nunca perdida), exige motivo e de quem foi
+// o impacto. Ver src/lib/atividadesCronograma.ts (resolverMarcoAgendavel).
+export type MarcoRemarcacao = {
+  id: string;
+  cliente_id: string;
+  campo_marco: 'kickoff_agendado_para' | 'treinamento_agendado_para';
+  data_anterior: string | null;
+  data_nova: string;
+  motivo: string;
+  responsavel_impacto: ImpactoResponsavel;
+  created_at: string;
+};
+
 export type ChecklistGrupoImplementacao = {
   id: string;
   chave: string;
@@ -582,6 +599,13 @@ export type Database = {
         Insert: Partial<CheckpointAdocao> &
           Pick<CheckpointAdocao, 'implementacao_id' | 'uso_diario' | 'frequencia_uso' | 'intencao_manutencao'>;
         Update: Partial<CheckpointAdocao>;
+        Relationships: [];
+      };
+      marco_remarcacoes: {
+        Row: MarcoRemarcacao;
+        Insert: Partial<MarcoRemarcacao> &
+          Pick<MarcoRemarcacao, 'cliente_id' | 'campo_marco' | 'data_nova' | 'motivo' | 'responsavel_impacto'>;
+        Update: Partial<MarcoRemarcacao>;
         Relationships: [];
       };
     };

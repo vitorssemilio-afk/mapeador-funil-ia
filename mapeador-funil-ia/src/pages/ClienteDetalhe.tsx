@@ -6,7 +6,30 @@ import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
-import type { Cliente, ClienteArquivo, ClienteObservacao, ImplementacaoCrm, Mapeamento } from '../types/database';
+import { IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
+import type {
+  Cliente,
+  ClienteArquivo,
+  ClienteObservacao,
+  ImpactoResponsavel,
+  ImplementacaoCrm,
+  Mapeamento,
+  MarcoRemarcacao,
+} from '../types/database';
+
+// Só esses dois marcos têm a ação dedicada de "Remarcar" — os únicos com par
+// agendado/realizado que o cliente citou como reagendáveis (ver
+// atividadesCronograma.ts).
+const CAMPOS_REMARCAVEIS = ['kickoff_agendado_para', 'treinamento_agendado_para'] as const;
+type CampoRemarcavel = (typeof CAMPOS_REMARCAVEIS)[number];
+const CAMPO_REALIZADO_DO_AGENDADO: Record<CampoRemarcavel, CampoMarco> = {
+  kickoff_agendado_para: 'kickoff_realizado_em',
+  treinamento_agendado_para: 'treinamento_realizado_em',
+};
+
+function ehCampoRemarcavel(campo: CampoMarco): campo is CampoRemarcavel {
+  return (CAMPOS_REMARCAVEIS as readonly string[]).includes(campo);
+}
 
 const BUCKET_ANEXOS = 'cliente-anexos';
 
@@ -102,6 +125,15 @@ export function ClienteDetalhe() {
   const [salvandoMarcos, setSalvandoMarcos] = useState(false);
   const [checkpointRespondidoEm, setCheckpointRespondidoEm] = useState<string | null>(null);
 
+  const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
+  const [remarcandoCampo, setRemarcandoCampo] = useState<CampoRemarcavel | null>(null);
+  const [formRemarcacao, setFormRemarcacao] = useState({
+    data_nova: '',
+    motivo: '',
+    responsavel_impacto: 'cliente' as ImpactoResponsavel,
+  });
+  const [salvandoRemarcacao, setSalvandoRemarcacao] = useState(false);
+
   async function carregar(clienteId: string) {
     setLoading(true);
     setError(null);
@@ -113,6 +145,7 @@ export function ClienteDetalhe() {
       { data: implementacaoData },
       { data: observacoesData },
       { data: arquivosData },
+      { data: remarcacoesData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -148,6 +181,11 @@ export function ClienteDetalhe() {
         .select('*')
         .eq('cliente_id', clienteId)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('marco_remarcacoes')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('created_at', { ascending: false }),
     ]);
 
     if (clienteError || !clienteData) {
@@ -164,6 +202,7 @@ export function ClienteDetalhe() {
     setImplementacao(implementacaoData ?? null);
     setObservacoes(observacoesData ?? []);
     setArquivos(arquivosData ?? []);
+    setRemarcacoes(remarcacoesData ?? []);
 
     if (implementacaoData) {
       const { data: checkpointData } = await supabase
@@ -236,6 +275,63 @@ export function ClienteDetalhe() {
     setCliente(data);
     setFormMarcos(paraFormMarcos(data));
     setEditandoMarcos(false);
+  }
+
+  function abrirRemarcacao(campo: CampoRemarcavel) {
+    setRemarcandoCampo(campo);
+    setFormRemarcacao({ data_nova: '', motivo: '', responsavel_impacto: 'cliente' });
+  }
+
+  function fecharRemarcacao() {
+    setRemarcandoCampo(null);
+  }
+
+  // Ação distinta de editar o marco pelo formulário genérico: preserva a
+  // data anterior (nunca perdida — vai pro log de auditoria), exige motivo e
+  // responsável pelo impacto, e nunca mexe num marco já realizado.
+  async function handleConfirmarRemarcacao(e: FormEvent) {
+    e.preventDefault();
+    if (!cliente || !remarcandoCampo) return;
+    if (!formRemarcacao.data_nova || !formRemarcacao.motivo.trim()) return;
+
+    setSalvandoRemarcacao(true);
+
+    const { error: insertError } = await supabase.from('marco_remarcacoes').insert({
+      cliente_id: cliente.id,
+      campo_marco: remarcandoCampo,
+      data_anterior: cliente[remarcandoCampo],
+      data_nova: formRemarcacao.data_nova,
+      motivo: formRemarcacao.motivo.trim(),
+      responsavel_impacto: formRemarcacao.responsavel_impacto,
+    });
+
+    if (insertError) {
+      setSalvandoRemarcacao(false);
+      setError(insertError.message);
+      return;
+    }
+
+    const atualizacao: Partial<Pick<Cliente, CampoRemarcavel>> = {
+      [remarcandoCampo]: formRemarcacao.data_nova,
+    };
+    const { data, error: updateError } = await supabase
+      .from('clientes')
+      .update(atualizacao)
+      .eq('id', cliente.id)
+      .select()
+      .single();
+
+    setSalvandoRemarcacao(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setCliente(data);
+    setFormMarcos(paraFormMarcos(data));
+    setRemarcandoCampo(null);
+    if (id) await carregar(id);
   }
 
   async function handleCriarMapeamentoVendas() {
@@ -604,16 +700,111 @@ export function ClienteDetalhe() {
               contratação, do envio/resposta do formulário, ou da criação da conta Kommo.
             </p>
             <ol className="timeline-marcos">
-              {MARCOS_ORDENADOS.filter(({ campo }) => cliente[campo]).map(({ campo, label, apenasData }) => (
-                <li key={campo}>
-                  <span className="timeline-marco-label">{label}</span>
-                  <span className="timeline-marco-data">
-                    {apenasData
-                      ? new Date(`${cliente[campo]}T12:00:00`).toLocaleDateString('pt-BR')
-                      : formatarDataHora(cliente[campo]!)}
-                  </span>
-                </li>
-              ))}
+              {MARCOS_ORDENADOS.filter(({ campo }) => cliente[campo]).map(({ campo, label, apenasData }) => {
+                const remarcavel = ehCampoRemarcavel(campo);
+                const jaRealizado = remarcavel ? Boolean(cliente[CAMPO_REALIZADO_DO_AGENDADO[campo]]) : false;
+                const remarcacoesDoCampo = remarcavel
+                  ? remarcacoes.filter((r) => r.campo_marco === campo)
+                  : [];
+                const maisRecente = remarcacoesDoCampo[0] ?? null;
+                // A mais antiga (created_at menor) traz a data original de
+                // verdade, pra calcular o deslocamento total (não só o da
+                // última remarcação).
+                const maisAntiga =
+                  remarcacoesDoCampo.length > 0
+                    ? [...remarcacoesDoCampo].sort(
+                        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+                      )[0]
+                    : null;
+                const deslocamentoDias =
+                  maisAntiga?.data_anterior && cliente[campo]
+                    ? Math.round(
+                        (new Date(`${cliente[campo]}T12:00:00`).getTime() -
+                          new Date(`${maisAntiga.data_anterior}T12:00:00`).getTime()) /
+                          (24 * 60 * 60 * 1000),
+                      )
+                    : null;
+
+                return (
+                  <li key={campo}>
+                    <span className="timeline-marco-label">{label}</span>
+                    <span className="timeline-marco-data">
+                      {apenasData
+                        ? new Date(`${cliente[campo]}T12:00:00`).toLocaleDateString('pt-BR')
+                        : formatarDataHora(cliente[campo]!)}
+                      {maisRecente && (
+                        <span className="field-hint">
+                          {' '}
+                          · remarcado
+                          {deslocamentoDias != null ? ` em ${deslocamentoDias >= 0 ? '+' : ''}${deslocamentoDias} dias` : ''}{' '}
+                          (motivo: {maisRecente.motivo}, impacto:{' '}
+                          {IMPACTO_RESPONSAVEL_LABELS[maisRecente.responsavel_impacto]})
+                        </span>
+                      )}
+                      {remarcavel && !jaRealizado && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-auto"
+                          onClick={() => abrirRemarcacao(campo)}
+                        >
+                          Remarcar
+                        </button>
+                      )}
+                    </span>
+
+                    {remarcandoCampo === campo && (
+                      <form onSubmit={handleConfirmarRemarcacao} className="card form-card">
+                        <label className="field">
+                          <span>Nova data</span>
+                          <input
+                            type="date"
+                            required
+                            value={formRemarcacao.data_nova}
+                            onChange={(e) =>
+                              setFormRemarcacao({ ...formRemarcacao, data_nova: e.target.value })
+                            }
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Motivo</span>
+                          <textarea
+                            rows={2}
+                            required
+                            value={formRemarcacao.motivo}
+                            onChange={(e) => setFormRemarcacao({ ...formRemarcacao, motivo: e.target.value })}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Responsável pelo impacto</span>
+                          <select
+                            value={formRemarcacao.responsavel_impacto}
+                            onChange={(e) =>
+                              setFormRemarcacao({
+                                ...formRemarcacao,
+                                responsavel_impacto: e.target.value as ImpactoResponsavel,
+                              })
+                            }
+                          >
+                            {Object.entries(IMPACTO_RESPONSAVEL_LABELS).map(([valor, rotulo]) => (
+                              <option key={valor} value={valor}>
+                                {rotulo}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="wizard-actions">
+                          <button type="button" className="btn btn-secondary" onClick={fecharRemarcacao}>
+                            Cancelar
+                          </button>
+                          <button type="submit" className="btn btn-primary" disabled={salvandoRemarcacao}>
+                            {salvandoRemarcacao ? 'Salvando…' : 'Confirmar remarcação'}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </li>
+                );
+              })}
               {checkpointRespondidoEm && (
                 <li>
                   <span className="timeline-marco-label">Checkpoint de 30 dias respondido</span>
