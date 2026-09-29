@@ -456,6 +456,14 @@ export type Reuniao = {
   pendencias_cliente: string | null;
   pendencias_internas: string | null;
   proximos_passos: string | null;
+  // Preparação pra uma futura sincronização com calendário externo (Google
+  // Calendar ou outro) — hoje sempre null, nenhum código lê ou escreve
+  // nesses campos ainda. Genéricos de propósito (não específicos do
+  // Google), pra não exigir outra migration de schema quando essa
+  // integração for retomada.
+  external_calendar_id: string | null;
+  external_event_id: string | null;
+  calendar_provider: string | null;
   created_at: string;
   updated_at: string;
 };
