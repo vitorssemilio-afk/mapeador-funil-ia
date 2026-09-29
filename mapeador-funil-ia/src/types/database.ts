@@ -375,8 +375,42 @@ export type ImplementacaoCrm = {
   plano_contratado: string | null;
   periodo_contratado: string | null;
   data_decisao_plano: string | null;
+  // Status comercial da contratação do Kommo — separado dos critérios
+  // técnicos de entrega (ver migration 0047): "cliente contratar o plano
+  // pago" nunca é critério de qualidade da implementação em si.
+  status_contratacao_kommo: StatusContratacaoKommo;
   observacoes: string | null;
   codigo_checkpoint: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StatusContratacaoKommo = 'contratado' | 'em_decisao' | 'nao_contratado';
+
+// Critérios de entrega: "a implementação foi corretamente entregue?" —
+// técnico e objetivo, sob controle da V4. Nunca inclui adoção do cliente
+// (isso é checkpoints_adocao, uma coisa completamente separada).
+export type StatusCriterioEntrega = 'pendente' | 'em_validacao' | 'concluido' | 'nao_se_aplica';
+
+export type CriterioEntrega = {
+  id: string;
+  chave: string | null;
+  nome: string;
+  ordem: number;
+  obrigatorio: boolean;
+  created_at: string;
+};
+
+export type CriterioEntregaStatus = {
+  id: string;
+  implementacao_id: string;
+  criterio_id: string;
+  status: StatusCriterioEntrega;
+  evidencia: string | null;
+  observacao: string | null;
+  justificativa_nao_aplica: string | null;
+  data_validacao: string | null;
+  responsavel_validacao_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -756,6 +790,18 @@ export type Database = {
         Insert: Partial<ImplementacaoCrm> &
           Pick<ImplementacaoCrm, 'mapeamento_id' | 'user_id' | 'nome_cliente'>;
         Update: Partial<ImplementacaoCrm>;
+        Relationships: [];
+      };
+      criterios_entrega: {
+        Row: CriterioEntrega;
+        Insert: Partial<CriterioEntrega> & Pick<CriterioEntrega, 'nome' | 'ordem'>;
+        Update: Partial<CriterioEntrega>;
+        Relationships: [];
+      };
+      criterios_entrega_status: {
+        Row: CriterioEntregaStatus;
+        Insert: Partial<CriterioEntregaStatus> & Pick<CriterioEntregaStatus, 'implementacao_id' | 'criterio_id'>;
+        Update: Partial<CriterioEntregaStatus>;
         Relationships: [];
       };
       atividades_cronograma: {
