@@ -415,6 +415,62 @@ export type MarcoRemarcacao = {
   created_at: string;
 };
 
+export type TipoReuniao =
+  | 'kickoff'
+  | 'treinamento'
+  | 'checkin_1'
+  | 'checkin_2'
+  | 'tira_duvidas'
+  | 'reuniao_final'
+  | 'extraordinaria';
+
+export type StatusReuniao =
+  | 'nao_agendada'
+  | 'agendada'
+  | 'realizada'
+  | 'remarcada'
+  | 'cliente_nao_compareceu'
+  | 'consultor_nao_compareceu'
+  | 'cancelada';
+
+// Kickoff e Treinamento continuam também escrevendo em
+// clientes.kickoff_realizado_em/treinamento_realizado_em (e seus pares
+// "_agendado_para") ao salvar — esses marcos são o que ancora o prazo de 40
+// dias e o gate do treinamento em outros lugares do produto (ver
+// src/lib/cronograma.ts e src/lib/atividadesCronograma.ts), então o módulo
+// de Reuniões escreve nos dois lugares em vez de duplicar essa lógica.
+export type Reuniao = {
+  id: string;
+  cliente_id: string;
+  implementacao_id: string | null;
+  tipo: TipoReuniao;
+  titulo: string | null;
+  data_hora: string | null;
+  consultor_responsavel_id: string | null;
+  participantes: string | null;
+  link: string | null;
+  status: StatusReuniao;
+  ata: string | null;
+  resumo: string | null;
+  decisoes: string | null;
+  pendencias_cliente: string | null;
+  pendencias_internas: string | null;
+  proximos_passos: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReuniaoRemarcacao = {
+  id: string;
+  reuniao_id: string;
+  data_anterior: string | null;
+  data_nova: string;
+  motivo: string;
+  responsavel_impacto: ImpactoResponsavel;
+  alterado_por_email: string | null;
+  created_at: string;
+};
+
 // Configuração global (singleton, id sempre true), não por cliente — as 4
 // URLs de solicitação do Pipefy, cadastradas uma vez e reutilizadas em toda
 // a operação. Sem integração com a API do Pipefy nesta versão: só os links.
@@ -596,6 +652,19 @@ export type Database = {
         Insert: Partial<ImplementacaoConsultorHistorico> &
           Pick<ImplementacaoConsultorHistorico, 'implementacao_id' | 'consultor_novo_id'>;
         Update: Partial<ImplementacaoConsultorHistorico>;
+        Relationships: [];
+      };
+      reunioes: {
+        Row: Reuniao;
+        Insert: Partial<Reuniao> & Pick<Reuniao, 'cliente_id' | 'tipo'>;
+        Update: Partial<Reuniao>;
+        Relationships: [];
+      };
+      reuniao_remarcacoes: {
+        Row: ReuniaoRemarcacao;
+        Insert: Partial<ReuniaoRemarcacao> &
+          Pick<ReuniaoRemarcacao, 'reuniao_id' | 'data_nova' | 'motivo' | 'responsavel_impacto'>;
+        Update: Partial<ReuniaoRemarcacao>;
         Relationships: [];
       };
       cliente_arquivos: {
