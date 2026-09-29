@@ -179,6 +179,9 @@ type ItemHistorico = {
   tipo: string;
   descricao: string;
   usuario: string | null;
+  // Kickoff realizado é o marco formal que ancora o prazo de 40 dias e o
+  // início do Ciclo 1 — precisa se destacar dos outros eventos da timeline.
+  destaque?: boolean;
 };
 
 const CICLOS_AUTOMACAO = ['Ciclo 2 — Automações I e Check-in 1', 'Ciclo 3 — Automações II e Check-in 2'];
@@ -829,6 +832,7 @@ export function ClienteDetalhe() {
         tipo: label,
         descricao: label,
         usuario: null,
+        destaque: campo === 'kickoff_realizado_em',
       });
     }
 
@@ -1235,8 +1239,10 @@ export function ClienteDetalhe() {
         ) : (
           <ol className="timeline-marcos">
             {historicoTimeline.map((item, index) => (
-              <li key={index}>
-                <span className="timeline-marco-label">{item.tipo}</span>
+              <li key={index} className={item.destaque ? 'timeline-marco-destaque' : undefined}>
+                <span className="timeline-marco-label">
+                  {item.destaque && <span className="status-badge status-tone-success">Marco formal</span>} {item.tipo}
+                </span>
                 <span className="timeline-marco-data">
                   {formatarDataHora(item.data.toISOString())} — {item.descricao}
                   {item.usuario ? ` — usuário: ${item.usuario}` : ''}

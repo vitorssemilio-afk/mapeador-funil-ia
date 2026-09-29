@@ -33,6 +33,35 @@ export function funilValidado(status: MapeamentoStatus): boolean {
   return VALIDADOS.has(status);
 }
 
+// Checklist de pré-requisitos do Kickoff (ver ImplementacaoDetalhe, aba
+// Reuniões): "em ou depois de" em vez de "igual a", porque o fluxo permite
+// voltar um passo (ex: ajustes_solicitados → em_revisao_interna) sem que
+// isso desfaça marcos já alcançados antes.
+const EM_OU_APOS_REVISAO_INTERNA = new Set<MapeamentoStatus>([
+  'em_revisao_interna',
+  'pronto_kickoff',
+  'kickoff_agendado',
+  'ajustes_solicitados',
+  'funil_validado',
+  'concluido',
+]);
+
+export function emOuAposRevisaoInterna(status: MapeamentoStatus): boolean {
+  return EM_OU_APOS_REVISAO_INTERNA.has(status);
+}
+
+const EM_OU_APOS_PRONTO_KICKOFF = new Set<MapeamentoStatus>([
+  'pronto_kickoff',
+  'kickoff_agendado',
+  'ajustes_solicitados',
+  'funil_validado',
+  'concluido',
+]);
+
+export function emOuAposProntoKickoff(status: MapeamentoStatus): boolean {
+  return EM_OU_APOS_PRONTO_KICKOFF.has(status);
+}
+
 // Estados manuais do fluxo pós-geração — não são escritos pela IA, só por
 // ação do time.
 export const MAPEAMENTO_STATUS_MANUAIS: MapeamentoStatus[] = [

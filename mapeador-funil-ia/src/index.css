@@ -2190,6 +2190,15 @@ img.auth-logo {
   font-weight: 600;
 }
 
+.timeline-marco-destaque {
+  background: var(--color-accent-soft, var(--color-surface-raised));
+  border: 1px solid var(--color-accent, var(--color-border));
+}
+
+.timeline-marco-destaque .timeline-marco-label {
+  font-size: 14px;
+}
+
 .timeline-marco-data {
   color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
