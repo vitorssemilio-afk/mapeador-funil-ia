@@ -85,13 +85,37 @@ export type AtividadeResolvida = {
 // pra empurrar o prazo geral de 40 dias (esse continua ancorado só em
 // kickoff_realizado_em, ver cronograma.ts).
 const JANELA_CICLO_DIAS: Partial<Record<string, number>> = {
-  'Preparação do CRM': 10,
-  'CRM em configuração': 10,
-  'Treinamento agendado': 10,
-  'Automações I': 20,
-  'Automações II': 30,
-  Entrega: 40,
+  'Ciclo 1 — Setup e Treinamento': 10,
+  'Ciclo 2 — Automações I e Check-in 1': 20,
+  'Ciclo 3 — Automações II e Check-in 2': 30,
+  'Ciclo 4 — Finalização e Entrega': 40,
 };
+
+// Os 4 ciclos, na ordem, com o dia final de cada um — usado pra montar o
+// cabeçalho "Dia X/40" + "Ciclo X — Dias X–Y" mostrado sempre na tela da
+// implementação.
+export const CICLOS_OPERACIONAIS: { nome: string; diaInicio: number; diaFim: number }[] = [
+  { nome: 'Ciclo 1 — Setup e Treinamento', diaInicio: 1, diaFim: 10 },
+  { nome: 'Ciclo 2 — Automações I e Check-in 1', diaInicio: 11, diaFim: 20 },
+  { nome: 'Ciclo 3 — Automações II e Check-in 2', diaInicio: 21, diaFim: 30 },
+  { nome: 'Ciclo 4 — Finalização e Entrega', diaInicio: 31, diaFim: 40 },
+];
+
+export type DiaCiclo = {
+  dia: number; // "Dia X/40" — 1 = o próprio dia do Kickoff
+  ciclo: { nome: string; diaInicio: number; diaFim: number } | null; // null = kickoff ainda não aconteceu, ou dia já passou dos 40
+};
+
+// Calcula em que dia do projeto (1 a 40+) e em que ciclo operacional hoje
+// está, só a partir do Kickoff realizado — nunca de nenhum outro marco.
+export function calcularDiaCiclo(kickoffRealizadoEm: string | null, hoje: Date): DiaCiclo | null {
+  if (!kickoffRealizadoEm) return null;
+
+  const dia = diferencaEmDias(hoje, new Date(kickoffRealizadoEm)) + 1;
+  const ciclo = CICLOS_OPERACIONAIS.find((c) => dia >= c.diaInicio && dia <= c.diaFim) ?? null;
+
+  return { dia, ciclo };
+}
 
 const ORDEM_STATUS_IMPL: Record<ImplementacaoStatus, number> = {
   preparacao_crm: 0,
@@ -118,7 +142,9 @@ const LABEL_MARCO: Partial<Record<keyof Cliente, string>> = {
   formulario_respondido_em: 'Formulário respondido',
   funil_gerado_em: 'Funil gerado',
   funil_revisado_em: 'Funil revisado internamente',
+  funil_validado_em: 'Funil validado',
   kickoff_realizado_em: 'Kickoff realizado',
+  conta_kommo_solicitada_em: 'Conta Kommo solicitada',
   conta_kommo_criada_em: 'Conta Kommo criada',
   treinamento_realizado_em: 'Treinamento realizado',
   implementacao_concluida_em: 'Implementação concluída',
@@ -407,5 +433,42 @@ export function resolverMarcoAgendavel(params: {
     bloqueadoPeloCliente: false,
     ...janela,
     deslocamentoDias,
+  };
+}
+
+// Marco simples de instante único (ex: Funil validado, Conta Kommo
+// solicitada/criada) — sem par agendado/realizado, sem remarcação: ou já
+// aconteceu (valorIso preenchido) ou está "aguardando etapa anterior". Usado
+// pra mostrar esses marcos como linha do cronograma da implementação, sem
+// duplicar dado (a fonte continua sendo o campo em `clientes`).
+export function resolverMarcoSimples(params: {
+  nome: string;
+  ciclo: string;
+  valorIso: string | null;
+  dependenciaLabel?: string | null;
+  kickoffRealizadoEm: string | null;
+  diaLimiteCiclo?: number;
+}): AtividadeResolvida {
+  const { nome, ciclo, valorIso, dependenciaLabel = null, kickoffRealizadoEm, diaLimiteCiclo } = params;
+
+  const dataReal = valorIso ? new Date(valorIso) : null;
+  const janela = calcularJanelaCiclo(dataReal, kickoffRealizadoEm, diaLimiteCiclo);
+
+  return {
+    id: null,
+    nome,
+    ciclo,
+    responsavel: null,
+    dependenciaLabel,
+    prazoDias: null,
+    dataLiberacao: null,
+    dataPlanejada: null,
+    dataReal,
+    agendadoPara: null,
+    atrasoDias: 0,
+    status: dataReal ? 'concluido' : 'aguardando_etapa_anterior',
+    bloqueadoPeloCliente: false,
+    ...janela,
+    deslocamentoDias: null,
   };
 }
