@@ -8,9 +8,9 @@ import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBa
 import { prazoFaseAtual, prazoGeral, type PrazoFase, type PrazoGeral } from './cronograma';
 import { funilValidado, MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
 import type {
+  AtividadeCronograma,
+  AtividadeStatusRow,
   Cliente,
-  ChecklistItemImplementacao,
-  ImplementacaoChecklistMarcado,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
@@ -65,16 +65,18 @@ function preRequisitoCompleto(impl: ImplementacaoCrm): boolean {
 
 function progressoImplementacao(
   implementacaoId: string,
-  itens: ChecklistItemImplementacao[],
-  marcados: ImplementacaoChecklistMarcado[],
+  atividades: AtividadeCronograma[],
+  statusRows: AtividadeStatusRow[],
 ): number | null {
-  const itensVisiveis = itens.filter(
-    (item) => item.implementacao_id === null || item.implementacao_id === implementacaoId,
+  const atividadesVisiveis = atividades.filter(
+    (a) => a.implementacao_id === null || a.implementacao_id === implementacaoId,
   );
-  if (itensVisiveis.length === 0) return null;
+  if (atividadesVisiveis.length === 0) return null;
 
-  const feitos = marcados.filter((m) => m.implementacao_id === implementacaoId && m.marcado).length;
-  return Math.round((Math.min(feitos, itensVisiveis.length) / itensVisiveis.length) * 100);
+  const feitas = atividadesVisiveis.filter((a) =>
+    statusRows.some((s) => s.implementacao_id === implementacaoId && s.atividade_id === a.id && s.data_real),
+  ).length;
+  return Math.round((feitas / atividadesVisiveis.length) * 100);
 }
 
 function faseAtualLabel(vendas: Mapeamento | null, implementacao: ImplementacaoCrm | null): string {
@@ -150,11 +152,11 @@ export function construirResumoClientes(params: {
   mapeamentos: Mapeamento[];
   implementacoes: ImplementacaoCrm[];
   historico: ImplementacaoStatusHistorico[];
-  itens: ChecklistItemImplementacao[];
-  marcados: ImplementacaoChecklistMarcado[];
+  atividades: AtividadeCronograma[];
+  statusRows: AtividadeStatusRow[];
   hoje: Date;
 }): ClienteResumo[] {
-  const { clientes, mapeamentos, implementacoes, historico, itens, marcados, hoje } = params;
+  const { clientes, mapeamentos, implementacoes, historico, atividades, statusRows, hoje } = params;
 
   return clientes.map((cliente) => {
     const doCliente = mapeamentos.filter((m) => m.cliente_id === cliente.id);
@@ -177,7 +179,7 @@ export function construirResumoClientes(params: {
       implementacao,
       faseAtual: faseAtualLabel(vendas, implementacao),
       saude: calcularSaude({ vendas, implementacao, prazoFase, prazoProcesso }),
-      progresso: implementacao ? progressoImplementacao(implementacao.id, itens, marcados) : null,
+      progresso: implementacao ? progressoImplementacao(implementacao.id, atividades, statusRows) : null,
       proximaAcao: proximaAcaoLabel({ vendas, posVenda, implementacao, precisaPosVenda, prazoFase }),
       prazoFase,
       prazoProcesso,

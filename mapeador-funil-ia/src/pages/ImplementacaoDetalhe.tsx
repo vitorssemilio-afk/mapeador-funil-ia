@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
+import {
+  resolverAtividade,
+  resolverTrialKommo,
+  STATUS_ATIVIDADE_LABELS,
+  STATUS_ATIVIDADE_TONE,
+  type AtividadeResolvida,
+} from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import {
@@ -11,16 +18,16 @@ import {
   calcularEscala,
   diaParaPx,
   fasesImplementacao,
-  itensCronograma,
   prazoFaseAtual,
   prazoGeral,
   tempoAteReuniao,
 } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
 import type {
+  AtividadeCronograma,
+  AtividadeStatusRow,
   CheckpointAdocao,
-  ChecklistGrupoImplementacao,
-  ChecklistItemImplementacao,
+  Cliente,
   CredencialApiKommoMeta,
   CredencialCrmListada,
   FrequenciaUsoCheckpoint,
@@ -93,9 +100,9 @@ const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
   'concluida',
 ]);
 
-// Pra que grupo de checklist completo sugere avançar o status — e pra qual
-// próximo status. "criterios_sucesso" não é um status em si, então também
-// aponta pra "entrega" junto com o grupo "entrega".
+// Pra qual próximo status a conclusão do ciclo correspondente sugere avançar
+// — usado no hint de "avançar status" mostrado junto do ciclo atual, na aba
+// Checklist.
 const PROXIMO_STATUS: Partial<Record<ImplementacaoStatus, ImplementacaoStatus>> = {
   preparacao_crm: 'crm_em_configuracao',
   crm_em_configuracao: 'treinamento_agendado',
@@ -104,64 +111,6 @@ const PROXIMO_STATUS: Partial<Record<ImplementacaoStatus, ImplementacaoStatus>> 
   entrega: 'adocao',
   adocao: 'concluida',
 };
-
-function grupoSugereAvancoStatus(chave: string, statusAtual: ImplementacaoStatus): boolean {
-  // "CRM em configuração" é dividido em duas sessões (grupos) — só a
-  // segunda sugere avançar de status, e só depois de checar que a primeira
-  // também está completa (ver uso de `completoSemana1Sessao1` no render do
-  // checklist).
-  if (chave === 'crm_em_configuracao_sessao1') return false;
-  const chaveEfetiva = chave === 'crm_em_configuracao_sessao2' ? 'crm_em_configuracao' : chave;
-  return chaveEfetiva === statusAtual || (chaveEfetiva === 'criterios_sucesso' && statusAtual === 'entrega');
-}
-
-// Ordem das fases, pra saber se um grupo de checklist já pode ser
-// preenchido ou se ainda está à frente do status atual da implementação.
-const ORDEM_STATUS: Record<ImplementacaoStatus, number> = {
-  preparacao_crm: 0,
-  crm_em_configuracao: 1,
-  treinamento_agendado: 2,
-  automacoes: 3,
-  entrega: 4,
-  adocao: 5,
-  concluida: 6,
-  cancelada: 99,
-};
-
-// "criterios_sucesso" não é uma fase em si — libera junto com "entrega".
-const GRUPO_STATUS_REQUERIDO: Partial<Record<string, ImplementacaoStatus>> = {
-  preparacao_crm: 'preparacao_crm',
-  crm_em_configuracao_sessao1: 'crm_em_configuracao',
-  crm_em_configuracao_sessao2: 'crm_em_configuracao',
-  treinamento_agendado: 'treinamento_agendado',
-  automacoes: 'automacoes',
-  entrega: 'entrega',
-  criterios_sucesso: 'entrega',
-};
-
-function grupoBloqueado(chave: string, statusAtual: ImplementacaoStatus): boolean {
-  const statusRequerido = GRUPO_STATUS_REQUERIDO[chave];
-  if (!statusRequerido) return false;
-  return ORDEM_STATUS[statusAtual] < ORDEM_STATUS[statusRequerido];
-}
-
-// Converte entre <input type="date"> (YYYY-MM-DD, sem fuso) e timestamptz
-// (marcado_em), usando o fuso local pra não voltar/adiantar um dia na volta.
-function hojeInputDate(): string {
-  const agora = new Date();
-  const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-}
-
-function paraDataInput(iso: string): string {
-  const data = new Date(iso);
-  const local = new Date(data.getTime() - data.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10);
-}
-
-function dataInputParaIso(dataInput: string): string {
-  return new Date(`${dataInput}T12:00:00`).toISOString();
-}
 
 function preRequisitoCompleto(form: FormGeral): boolean {
   return (
@@ -194,10 +143,9 @@ export function ImplementacaoDetalhe() {
   const { user } = useAuth();
 
   const [implementacao, setImplementacao] = useState<ImplementacaoCrm | null>(null);
-  const [grupos, setGrupos] = useState<ChecklistGrupoImplementacao[]>([]);
-  const [itens, setItens] = useState<ChecklistItemImplementacao[]>([]);
-  const [marcados, setMarcados] = useState<Set<string>>(new Set());
-  const [dataConclusao, setDataConclusao] = useState<Record<string, string>>({});
+  const [atividadesTemplate, setAtividadesTemplate] = useState<AtividadeCronograma[]>([]);
+  const [atividadesStatus, setAtividadesStatus] = useState<AtividadeStatusRow[]>([]);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
   const [evidencias, setEvidencias] = useState<Record<string, string>>({});
   const [evidenciaFaltando, setEvidenciaFaltando] = useState<Set<string>>(new Set());
   const [credenciais, setCredenciais] = useState<CredencialCrmListada[]>([]);
@@ -264,34 +212,40 @@ export function ImplementacaoDetalhe() {
     [implementacao, historicoStatus, kickoffRealizadoEm, hoje],
   );
 
-  const itensGantt = useMemo(() => {
-    if (!implementacao) return [];
-    const marcadosMapa = new Map(
-      itens.map((item) => [
-        item.id,
-        {
-          marcado: marcados.has(item.id),
-          marcadoEm: dataConclusao[item.id] ? `${dataConclusao[item.id]}T12:00:00` : null,
-        },
-      ]),
-    );
-    return itensCronograma({
-      implementacao,
-      grupos,
-      itens,
-      marcados: marcadosMapa,
-      fases: fasesCronograma,
-      hoje,
-    });
-  }, [implementacao, grupos, itens, marcados, dataConclusao, fasesCronograma, hoje]);
-
   const escalaGantt = useMemo(() => {
-    const datas = [
-      ...fasesCronograma.flatMap((fase) => [fase.inicio, fase.fim ?? hoje]),
-      ...itensGantt.flatMap((entrada) => [entrada.dataConclusao, entrada.vencimento].filter((d): d is Date => d !== null)),
-    ];
+    const datas = fasesCronograma.flatMap((fase) => [fase.inicio, fase.fim ?? hoje]);
     return calcularEscala(datas, hoje);
-  }, [fasesCronograma, itensGantt, hoje]);
+  }, [fasesCronograma, hoje]);
+
+  // Cada atividade do template global (ou derivada desta implementação) +
+  // a atividade virtual do Trial Kommo, todas já resolvidas com datas,
+  // status e atraso a partir das dependências e do histórico de status.
+  const atividadesResolvidas: AtividadeResolvida[] = useMemo(() => {
+    if (!implementacao) return [];
+    const resolvidas = atividadesTemplate.map((atividade) =>
+      resolverAtividade({
+        atividade,
+        statusRow: atividadesStatus.find((s) => s.atividade_id === atividade.id) ?? null,
+        historico: historicoStatus,
+        cliente,
+        hoje,
+      }),
+    );
+    if (cliente) resolvidas.push(resolverTrialKommo(cliente, hoje));
+    return resolvidas;
+  }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, hoje]);
+
+  // Agrupadas por ciclo, preservando a ordem de carregamento (já vem
+  // ordenado por `ordem` da query) — Trial Kommo cai sozinho no seu próprio
+  // grupo, por já ter `ciclo: 'Trial Kommo'`.
+  const atividadesPorCiclo = useMemo(() => {
+    const mapa = new Map<string, AtividadeResolvida[]>();
+    for (const atividade of atividadesResolvidas) {
+      if (!mapa.has(atividade.ciclo)) mapa.set(atividade.ciclo, []);
+      mapa.get(atividade.ciclo)!.push(atividade);
+    }
+    return mapa;
+  }, [atividadesResolvidas]);
 
   async function carregar(implementacaoId: string) {
     setLoading(true);
@@ -299,25 +253,20 @@ export function ImplementacaoDetalhe() {
 
     const [
       { data: implData, error: implError },
-      { data: gruposData, error: gruposError },
-      { data: itensData, error: itensError },
-      { data: marcadosData, error: marcadosError },
+      { data: atividadesData, error: atividadesError },
+      { data: atividadesStatusData, error: atividadesStatusError },
       { data: credenciaisData, error: credenciaisError },
       { data: historicoData, error: historicoError },
       { data: checkpointData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
-      supabase.from('checklist_grupos_implementacao').select('*').order('ordem', { ascending: true }),
-      // Template global (implementacao_id nulo) + itens derivados do funil desta implementação.
+      // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
       supabase
-        .from('checklist_itens_implementacao')
+        .from('atividades_cronograma')
         .select('*')
         .or(`implementacao_id.is.null,implementacao_id.eq.${implementacaoId}`)
         .order('ordem', { ascending: true }),
-      supabase
-        .from('implementacao_checklist_marcado')
-        .select('item_id, marcado, evidencia, marcado_em')
-        .eq('implementacao_id', implementacaoId),
+      supabase.from('atividades_status').select('*').eq('implementacao_id', implementacaoId),
       supabase.rpc('listar_credenciais_crm', { p_implementacao_id: implementacaoId }),
       supabase
         .from('implementacao_status_historico')
@@ -339,19 +288,11 @@ export function ImplementacaoDetalhe() {
 
     setImplementacao(implData);
     setFormGeral(paraFormGeral(implData));
-    if (!gruposError) setGrupos(gruposData ?? []);
-    if (!itensError) setItens(itensData ?? []);
-    if (!marcadosError) {
-      setMarcados(new Set((marcadosData ?? []).filter((m) => m.marcado).map((m) => m.item_id)));
+    if (!atividadesError) setAtividadesTemplate(atividadesData ?? []);
+    if (!atividadesStatusError) {
+      setAtividadesStatus(atividadesStatusData ?? []);
       setEvidencias(
-        Object.fromEntries((marcadosData ?? []).map((m) => [m.item_id, m.evidencia ?? ''])),
-      );
-      setDataConclusao(
-        Object.fromEntries(
-          (marcadosData ?? [])
-            .filter((m) => m.marcado)
-            .map((m) => [m.item_id, paraDataInput(m.marcado_em)]),
-        ),
+        Object.fromEntries((atividadesStatusData ?? []).map((s) => [s.atividade_id, s.evidencia ?? ''])),
       );
     }
     setEvidenciaFaltando(new Set());
@@ -371,11 +312,12 @@ export function ImplementacaoDetalhe() {
         .eq('mapeamento_origem_id', implData.mapeamento_id)
         .eq('tipo', 'pos_venda'),
       implData.cliente_id
-        ? supabase.from('clientes').select('kickoff_realizado_em').eq('id', implData.cliente_id).maybeSingle()
+        ? supabase.from('clientes').select('*').eq('id', implData.cliente_id).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
 
     setMapeamentoOrigem(mapeamentoOrigemData ?? null);
+    setCliente(clienteData ?? null);
     setKickoffRealizadoEm(clienteData?.kickoff_realizado_em ?? null);
     setPosVendaMapeamento(posVendaData?.[0] ?? null);
 
@@ -409,22 +351,13 @@ export function ImplementacaoDetalhe() {
     if (id) carregar(id);
   }, [id]);
 
-  function itensDoGrupo(grupoId: string): ChecklistItemImplementacao[] {
-    return itens.filter((item) => item.grupo_id === grupoId).sort((a, b) => a.ordem - b.ordem);
-  }
-
-  function progressoGrupo(grupoId: string): { feitos: number; total: number } {
-    const doGrupo = itensDoGrupo(grupoId);
-    const feitos = doGrupo.filter((item) => marcados.has(item.id)).length;
-    return { feitos, total: doGrupo.length };
-  }
-
-  // Base pros itens derivados: sempre logo após os itens globais do template,
-  // pra não crescer a cada regeneração (os derivados antigos já foram apagados).
-  function proximaOrdemGrupo(grupoId: string): number {
-    const ordens = itens
-      .filter((item) => item.grupo_id === grupoId && item.implementacao_id === null)
-      .map((item) => item.ordem);
+  // Base pras atividades derivadas: sempre logo após as atividades globais
+  // do template do ciclo, pra não crescer a cada regeneração (as derivadas
+  // antigas já foram apagadas antes de inserir as novas).
+  function proximaOrdemCiclo(ciclo: string): number {
+    const ordens = atividadesTemplate
+      .filter((a) => a.ciclo === ciclo && a.implementacao_id === null)
+      .map((a) => a.ordem);
     return ordens.length > 0 ? Math.max(...ordens) + 1 : 0;
   }
 
@@ -452,11 +385,11 @@ export function ImplementacaoDetalhe() {
   async function handleGerarItensDoFunil() {
     if (!implementacao) return;
 
-    const jaTemDerivados = itens.some((item) => item.implementacao_id === implementacao.id);
+    const jaTemDerivados = atividadesTemplate.some((a) => a.implementacao_id === implementacao.id);
     if (
       jaTemDerivados &&
       !window.confirm(
-        'Já existem itens gerados a partir do funil nesta implementação. Gerar de novo substitui esses itens — o que já tinha sido marcado neles se perde. Continuar?',
+        'Já existem atividades geradas a partir do funil nesta implementação. Gerar de novo substitui essas atividades — o que já tinha sido marcado nelas se perde. Continuar?',
       )
     ) {
       return;
@@ -472,42 +405,33 @@ export function ImplementacaoDetalhe() {
       return;
     }
 
-    const grupoSemana1 = grupos.find((g) => g.chave === 'crm_em_configuracao_sessao1');
-    const grupoSemana2 = grupos.find((g) => g.chave === 'treinamento_agendado');
-    if (!grupoSemana1 || !grupoSemana2) {
-      setGerandoItens(false);
-      setError('Grupos de checklist "CRM em configuração" / "Treinamento agendado" não encontrados.');
-      return;
-    }
-
     const { semana1, semana2 } = gerarItensDerivados(funis);
 
     if (jaTemDerivados) {
-      await supabase
-        .from('checklist_itens_implementacao')
-        .delete()
-        .eq('implementacao_id', implementacao.id);
+      await supabase.from('atividades_cronograma').delete().eq('implementacao_id', implementacao.id);
     }
 
-    const ordemBaseSemana1 = proximaOrdemGrupo(grupoSemana1.id);
-    const ordemBaseSemana2 = proximaOrdemGrupo(grupoSemana2.id);
+    const ordemBaseSemana1 = proximaOrdemCiclo('CRM em configuração');
+    const ordemBaseSemana2 = proximaOrdemCiclo('Treinamento agendado');
 
     const rows = [
       ...semana1.map((texto, i) => ({
-        grupo_id: grupoSemana1.id,
-        texto,
+        nome: texto,
+        ciclo: 'CRM em configuração',
         ordem: ordemBaseSemana1 + i,
         implementacao_id: implementacao.id,
+        depende_de: 'ciclo:preparacao_crm',
       })),
       ...semana2.map((texto, i) => ({
-        grupo_id: grupoSemana2.id,
-        texto,
+        nome: texto,
+        ciclo: 'Treinamento agendado',
         ordem: ordemBaseSemana2 + i,
         implementacao_id: implementacao.id,
+        depende_de: 'ciclo:crm_em_configuracao',
       })),
     ];
 
-    const { error: insertError } = await supabase.from('checklist_itens_implementacao').insert(rows);
+    const { error: insertError } = await supabase.from('atividades_cronograma').insert(rows);
     setGerandoItens(false);
 
     if (insertError) {
@@ -518,85 +442,81 @@ export function ImplementacaoDetalhe() {
     await carregar(implementacao.id);
   }
 
-  async function persistirItem(itemId: string, marcado: boolean, dataConclusaoInput?: string) {
+  // Helper único pras 4 ações do checklist (concluir, agendar, bloquear pelo
+  // cliente, salvar evidência) — todas são upserts na mesma linha de
+  // atividades_status, só mudando qual campo é patcheado.
+  async function upsertAtividadeStatus(atividadeId: string, patch: Partial<AtividadeStatusRow>) {
     if (!implementacao) return;
-    const marcadoEm = marcado
-      ? dataInputParaIso(dataConclusaoInput ?? dataConclusao[itemId] ?? hojeInputDate())
-      : new Date().toISOString();
-    await supabase.from('implementacao_checklist_marcado').upsert(
-      {
-        implementacao_id: implementacao.id,
-        item_id: itemId,
-        marcado,
-        evidencia: (evidencias[itemId] ?? '').trim() || null,
-        marcado_em: marcadoEm,
-      },
-      { onConflict: 'implementacao_id,item_id' },
-    );
+
+    const { data, error: upsertError } = await supabase
+      .from('atividades_status')
+      .upsert(
+        { implementacao_id: implementacao.id, atividade_id: atividadeId, ...patch },
+        { onConflict: 'implementacao_id,atividade_id' },
+      )
+      .select()
+      .single();
+
+    if (upsertError) {
+      setError(upsertError.message);
+      return;
+    }
+
+    setAtividadesStatus((prev) => {
+      const idx = prev.findIndex((s) => s.atividade_id === atividadeId);
+      if (idx === -1) return [...prev, data];
+      const copia = [...prev];
+      copia[idx] = data;
+      return copia;
+    });
   }
 
-  async function handleToggleItem(item: ChecklistItemImplementacao) {
-    if (!implementacao) return;
-    const jaMarcado = marcados.has(item.id);
-    const novoMarcado = !jaMarcado;
+  async function handleMarcarConcluido(atividade: AtividadeResolvida, concluido: boolean) {
+    if (atividade.id === null) return;
 
     // Critério que exige evidência não pode ser marcado sem ela — vira só
     // um lembrete e perde a força de controle de qualidade, senão.
-    if (novoMarcado && item.requer_evidencia && !(evidencias[item.id] ?? '').trim()) {
-      setEvidenciaFaltando((prev) => new Set(prev).add(item.id));
+    const requerEvidencia = atividadesTemplate.find((a) => a.id === atividade.id)?.requer_evidencia ?? false;
+    if (concluido && requerEvidencia && !(evidencias[atividade.id] ?? '').trim()) {
+      setEvidenciaFaltando((prev) => new Set(prev).add(atividade.id!));
       return;
     }
 
     setEvidenciaFaltando((prev) => {
-      if (!prev.has(item.id)) return prev;
+      if (!prev.has(atividade.id!)) return prev;
       const next = new Set(prev);
-      next.delete(item.id);
+      next.delete(atividade.id!);
       return next;
     });
 
-    setMarcados((prev) => {
-      const next = new Set(prev);
-      if (novoMarcado) next.add(item.id);
-      else next.delete(item.id);
-      return next;
-    });
-
-    const dataParaSalvar = novoMarcado ? dataConclusao[item.id] ?? hojeInputDate() : undefined;
-    if (novoMarcado) {
-      setDataConclusao((prev) => (prev[item.id] ? prev : { ...prev, [item.id]: dataParaSalvar! }));
-    }
-
-    await persistirItem(item.id, novoMarcado, dataParaSalvar);
+    await upsertAtividadeStatus(atividade.id, { data_real: concluido ? new Date().toISOString() : null });
   }
 
-  async function handleDataConclusaoChange(itemId: string, valor: string) {
-    setDataConclusao((prev) => ({ ...prev, [itemId]: valor }));
-    if (marcados.has(itemId)) {
-      await persistirItem(itemId, true, valor);
-    }
+  async function handleAgendar(atividadeId: string, data: string) {
+    await upsertAtividadeStatus(atividadeId, { agendado_para: data || null });
   }
 
-  function handleEvidenciaChange(itemId: string, texto: string) {
-    setEvidencias((prev) => ({ ...prev, [itemId]: texto }));
+  async function handleBloquearPeloCliente(atividadeId: string, bloqueado: boolean) {
+    await upsertAtividadeStatus(atividadeId, { bloqueado_pelo_cliente: bloqueado });
   }
 
-  async function handleEvidenciaBlur(item: ChecklistItemImplementacao) {
-    const texto = (evidencias[item.id] ?? '').trim();
-    const estavaMarcado = marcados.has(item.id);
+  function handleEvidenciaChange(atividadeId: string, texto: string) {
+    setEvidencias((prev) => ({ ...prev, [atividadeId]: texto }));
+  }
+
+  async function handleEvidenciaBlur(atividade: AtividadeResolvida) {
+    if (atividade.id === null) return;
+    const texto = (evidencias[atividade.id] ?? '').trim();
+
+    const requerEvidencia = atividadesTemplate.find((a) => a.id === atividade.id)?.requer_evidencia ?? false;
 
     // Sem evidência não sustenta a marcação de um critério que exige evidência.
-    if (item.requer_evidencia && !texto && estavaMarcado) {
-      setMarcados((prev) => {
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
-      });
-      await persistirItem(item.id, false);
+    if (requerEvidencia && !texto && atividade.status === 'concluido') {
+      await upsertAtividadeStatus(atividade.id, { evidencia: null, data_real: null });
       return;
     }
 
-    if (!estavaMarcado && !texto) return;
-    await persistirItem(item.id, estavaMarcado);
+    await upsertAtividadeStatus(atividade.id, { evidencia: texto || null });
   }
 
   async function handleSalvarGeral(e: FormEvent) {
@@ -1397,128 +1317,132 @@ export function ImplementacaoDetalhe() {
       )}
 
       {aba === 'checklist' &&
-        grupos.map((grupo) => {
-          const { feitos, total } = progressoGrupo(grupo.id);
-          const completo = total > 0 && feitos === total;
-          const percentual = total > 0 ? Math.round((feitos / total) * 100) : 0;
-          const travado = grupoBloqueado(grupo.chave, implementacao.status);
-          // Semana 1 é dividida em duas sessões — a sugestão de avançar de
-          // status (mostrada junto da Sessão 2) exige as duas completas.
-          const sessao1Completa = (() => {
-            if (grupo.chave !== 'crm_em_configuracao_sessao2') return true;
-            const grupoSessao1 = grupos.find((g) => g.chave === 'crm_em_configuracao_sessao1');
-            if (!grupoSessao1) return true;
-            const p = progressoGrupo(grupoSessao1.id);
-            return p.total > 0 && p.feitos === p.total;
-          })();
+        Array.from(atividadesPorCiclo.entries()).map(([ciclo, atividadesDoCiclo]) => {
+          const reais = atividadesDoCiclo.filter((a) => a.id !== null);
+          const cicloCompleto = reais.length > 0 && reais.every((a) => a.status === 'concluido');
+          const ehCicloAtual = ciclo === IMPLEMENTACAO_STATUS_LABELS[implementacao.status];
+          const proximo = cicloCompleto && ehCicloAtual ? PROXIMO_STATUS[implementacao.status] : undefined;
+          const avancoBloqueado =
+            !!proximo && STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(proximo) && !preRequisitoCompleto(formGeral);
+
           return (
-            <section key={grupo.id} className={`card form-card${travado ? ' checklist-grupo-travado' : ''}`}>
-              <div className="page-header">
-                <h2 style={{ marginBottom: 0 }}>
-                  {grupo.titulo}
-                  {travado && <span className="checklist-travado-badge">Bloqueado</span>}
-                </h2>
-                {total > 0 && (
-                  <div className="checklist-progress">
-                    <div className="checklist-progress-bar">
-                      <div
-                        className={`checklist-progress-bar-fill${completo ? ' complete' : ''}`}
-                        style={{ width: `${percentual}%` }}
-                      />
-                    </div>
-                    <span className="checklist-progress-count">
-                      {feitos}/{total}
-                    </span>
-                  </div>
-                )}
-              </div>
-              {travado && GRUPO_STATUS_REQUERIDO[grupo.chave] && (
-                <p className="field-hint">
-                  Disponível quando o status da implementação chegar em "
-                  {IMPLEMENTACAO_STATUS_LABELS[GRUPO_STATUS_REQUERIDO[grupo.chave]!]}" (aba Visão
-                  Geral).
+            <section key={ciclo} className="card form-card">
+              <h2>{ciclo}</h2>
+
+              {proximo && (
+                <p className="form-info form-info-com-acao">
+                  <span>
+                    Ciclo completo! O status da implementação ainda está em "
+                    {IMPLEMENTACAO_STATUS_LABELS[implementacao.status]}".
+                  </span>
+                  {avancoBloqueado ? (
+                    'Confirme o pré-requisito (aba Visão Geral) antes de avançar.'
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => handleAvancarStatus(proximo)}
+                      disabled={salvandoGeral}
+                    >
+                      Avançar status para "{IMPLEMENTACAO_STATUS_LABELS[proximo]}"
+                    </button>
+                  )}
                 </p>
               )}
-              {!travado &&
-                completo &&
-                sessao1Completa &&
-                grupoSugereAvancoStatus(grupo.chave, implementacao.status) && (
-                (() => {
-                  const proximo = PROXIMO_STATUS[implementacao.status];
-                  if (!proximo) return null;
-                  const bloqueado =
-                    STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(proximo) &&
-                    !preRequisitoCompleto(formGeral);
-                  return (
-                    <p className="form-info form-info-com-acao">
-                      <span>
-                        Checklist completo! O status da implementação ainda está em "
-                        {IMPLEMENTACAO_STATUS_LABELS[implementacao.status]}".
-                      </span>
-                      {bloqueado ? (
-                        'Confirme o pré-requisito (aba Visão Geral) antes de avançar.'
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={() => handleAvancarStatus(proximo)}
-                          disabled={salvandoGeral}
-                        >
-                          Avançar status para "{IMPLEMENTACAO_STATUS_LABELS[proximo]}"
-                        </button>
-                      )}
-                    </p>
-                  );
-                })()
-              )}
-              <div className="options-list">
-                {itensDoGrupo(grupo.id).map((item) => (
-                  <div key={item.id} className="option-checkbox-wrap">
-                    <label className="option-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={marcados.has(item.id)}
-                        onChange={() => handleToggleItem(item)}
-                        disabled={travado}
-                      />
-                      <span>
-                        {item.texto}
-                        {item.implementacao_id && <span className="derivado-badge"> · gerado do funil</span>}
-                      </span>
-                    </label>
-                    {marcados.has(item.id) && (
-                      <label className="data-conclusao-field">
-                        <span className="field-hint">Feito em</span>
-                        <input
-                          type="date"
-                          className="option-livre-input data-conclusao-input"
-                          value={dataConclusao[item.id] ?? hojeInputDate()}
-                          onChange={(e) => handleDataConclusaoChange(item.id, e.target.value)}
-                          disabled={travado}
-                        />
-                      </label>
-                    )}
-                    {item.requer_evidencia && (
-                      <>
-                        <input
-                          type="text"
-                          className="option-livre-input evidencia-input"
-                          placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
-                          value={evidencias[item.id] ?? ''}
-                          onChange={(e) => handleEvidenciaChange(item.id, e.target.value)}
-                          onBlur={() => handleEvidenciaBlur(item)}
-                          disabled={travado}
-                        />
-                        {evidenciaFaltando.has(item.id) && (
-                          <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
-                        )}
-                      </>
-                    )}
-                  </div>
-                ))}
-                {itensDoGrupo(grupo.id).length === 0 && (
-                  <p className="field-hint">Nenhum item cadastrado neste grupo.</p>
-                )}
+
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Atividade</th>
+                      <th>Prazo</th>
+                      <th>Responsável</th>
+                      <th>Dependência</th>
+                      <th>Data planejada</th>
+                      <th>Data real</th>
+                      <th>Atraso</th>
+                      <th>Status</th>
+                      <th>Agendado para</th>
+                      <th>Bloqueado pelo cliente</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {atividadesDoCiclo.map((atividade) => {
+                      const virtual = atividade.id === null;
+                      const templateAtividade = atividadesTemplate.find((a) => a.id === atividade.id);
+                      const requerEvidencia = templateAtividade?.requer_evidencia ?? false;
+                      const desabilitarConcluir = atividade.status === 'aguardando_etapa_anterior';
+                      const statusRow = atividadesStatus.find((s) => s.atividade_id === atividade.id);
+
+                      return (
+                        <Fragment key={atividade.id ?? 'trial-kommo'}>
+                          <tr>
+                            <td>
+                              {!virtual && (
+                                <input
+                                  type="checkbox"
+                                  checked={atividade.status === 'concluido'}
+                                  disabled={desabilitarConcluir}
+                                  onChange={(e) => handleMarcarConcluido(atividade, e.target.checked)}
+                                />
+                              )}{' '}
+                              {atividade.nome}
+                              {templateAtividade?.implementacao_id && (
+                                <span className="derivado-badge"> · gerado do funil</span>
+                              )}
+                            </td>
+                            <td>{atividade.prazoDias != null ? `${atividade.prazoDias}d` : '—'}</td>
+                            <td>{atividade.responsavel ?? '—'}</td>
+                            <td>{atividade.dependenciaLabel ?? '—'}</td>
+                            <td>{atividade.dataPlanejada?.toLocaleDateString('pt-BR') ?? '—'}</td>
+                            <td>{atividade.dataReal?.toLocaleDateString('pt-BR') ?? '—'}</td>
+                            <td>{atividade.atrasoDias > 0 ? `${atividade.atrasoDias}d` : '—'}</td>
+                            <td>
+                              <span className={`status-badge status-tone-${STATUS_ATIVIDADE_TONE[atividade.status]}`}>
+                                {STATUS_ATIVIDADE_LABELS[atividade.status]}
+                              </span>
+                            </td>
+                            <td>
+                              {!virtual && (
+                                <input
+                                  type="date"
+                                  value={statusRow?.agendado_para ?? ''}
+                                  onChange={(e) => handleAgendar(atividade.id!, e.target.value)}
+                                />
+                              )}
+                            </td>
+                            <td>
+                              {!virtual && (
+                                <input
+                                  type="checkbox"
+                                  checked={atividade.bloqueadoPeloCliente}
+                                  onChange={(e) => handleBloquearPeloCliente(atividade.id!, e.target.checked)}
+                                />
+                              )}
+                            </td>
+                          </tr>
+                          {!virtual && requerEvidencia && (
+                            <tr>
+                              <td colSpan={10}>
+                                <input
+                                  type="text"
+                                  className="option-livre-input evidencia-input"
+                                  placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
+                                  value={evidencias[atividade.id!] ?? ''}
+                                  onChange={(e) => handleEvidenciaChange(atividade.id!, e.target.value)}
+                                  onBlur={() => handleEvidenciaBlur(atividade)}
+                                />
+                                {evidenciaFaltando.has(atividade.id!) && (
+                                  <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </section>
           );
@@ -1528,14 +1452,13 @@ export function ImplementacaoDetalhe() {
         <section className="card form-card">
           <h2>Cronograma</h2>
           <p className="field-hint">
-            Uma linha por item do checklist inteiro. Verde = feito, na data real. Laranja/vermelho =
-            pendente, do início da fase até o prazo do item (vermelho se já venceu). Sem barra = fase
-            ainda não alcançada ou item sem dia definido.
+            Uma linha por fase da implementação, do início real (histórico de status) até o fim (ou
+            até hoje, se ainda estiver em andamento).
           </p>
 
-          {itensGantt.length === 0 && <p className="field-hint">Nenhum item de checklist cadastrado ainda.</p>}
+          {fasesCronograma.length === 0 && <p className="field-hint">Nenhuma fase iniciada ainda.</p>}
 
-          {itensGantt.length > 0 && (
+          {fasesCronograma.length > 0 && (
             <div className="gantt-scroll">
               <div className="gantt-inner" style={{ minWidth: escalaGantt.totalDias * PX_POR_DIA + 220 }}>
                 <div className="gantt-row gantt-row-ruler">
@@ -1545,51 +1468,32 @@ export function ImplementacaoDetalhe() {
                   </div>
                 </div>
 
-                {itensGantt.map((entrada) => {
-                  const fase = fasesCronograma.find((f) => f.status === entrada.grupoStatus);
+                {fasesCronograma.map((fase) => {
                   const largura = escalaGantt.totalDias * PX_POR_DIA;
                   const hojePx = diaParaPx(hoje, escalaGantt);
+                  const inicioPx = diaParaPx(fase.inicio, escalaGantt);
+                  const fimPx = diaParaPx(fase.fim ?? hoje, escalaGantt);
 
                   return (
-                    <div key={entrada.item.id} className="gantt-row">
-                      <div className="gantt-row-label" title={entrada.item.texto}>
-                        <span className="gantt-row-label-texto">{entrada.item.texto}</span>
+                    <div key={fase.status} className="gantt-row">
+                      <div className="gantt-row-label" title={fase.titulo}>
+                        <span className="gantt-row-label-texto">{fase.titulo}</span>
                       </div>
                       <div className="gantt-row-track" style={{ width: largura }}>
                         <div className="gantt-hoje-tick" style={{ left: hojePx }} />
-
-                        {entrada.feito && entrada.dataConclusao && (
-                          <div
-                            className="gantt-bar gantt-bar-ponto"
-                            style={{ left: diaParaPx(entrada.dataConclusao, escalaGantt) - 4, background: '#34d399' }}
-                            title={`Feito em ${entrada.dataConclusao.toLocaleDateString('pt-BR')}`}
-                          />
-                        )}
-
-                        {!entrada.feito && entrada.vencimento && fase && (
-                          <div
-                            className="gantt-bar"
-                            style={{
-                              left: diaParaPx(fase.inicio, escalaGantt),
-                              width: Math.max(
-                                PX_POR_DIA,
-                                diaParaPx(entrada.vencimento, escalaGantt) - diaParaPx(fase.inicio, escalaGantt),
-                              ),
-                              background: entrada.diasAtraso > 0 ? '#f87171' : '#fbbf24',
-                            }}
-                            title={
-                              entrada.diasAtraso > 0
-                                ? `Atrasado há ${entrada.diasAtraso} dia(s) — venceu em ${entrada.vencimento.toLocaleDateString('pt-BR')}`
-                                : `Vence em ${entrada.vencimento.toLocaleDateString('pt-BR')}`
-                            }
-                          />
-                        )}
-
-                        {!entrada.feito && !entrada.vencimento && (
-                          <span className="field-hint gantt-sem-fase">
-                            {fase ? 'Sem dia definido' : 'Fase ainda não alcançada'}
-                          </span>
-                        )}
+                        <div
+                          className="gantt-bar"
+                          style={{
+                            left: inicioPx,
+                            width: Math.max(PX_POR_DIA, fimPx - inicioPx),
+                            background: fase.fim ? '#34d399' : '#fbbf24',
+                          }}
+                          title={
+                            fase.fim
+                              ? `${fase.inicio.toLocaleDateString('pt-BR')} — ${fase.fim.toLocaleDateString('pt-BR')}`
+                              : `Desde ${fase.inicio.toLocaleDateString('pt-BR')} (em andamento)`
+                          }
+                        />
                       </div>
                     </div>
                   );
