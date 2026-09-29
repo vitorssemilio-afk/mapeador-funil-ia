@@ -45,6 +45,7 @@ export type MarcosCliente = {
   extensao_14_aprovada_em: string | null;
   extensao_7_solicitada_em: string | null;
   extensao_7_aprovada_em: string | null;
+  contratacao_kommo_solicitada_em: string | null;
   implementacao_concluida_em: string | null;
 };
 
@@ -338,6 +339,18 @@ export type MarcoRemarcacao = {
   created_at: string;
 };
 
+// Configuração global (singleton, id sempre true), não por cliente — as 4
+// URLs de solicitação do Pipefy, cadastradas uma vez e reutilizadas em toda
+// a operação. Sem integração com a API do Pipefy nesta versão: só os links.
+export type ConfiguracaoPipefy = {
+  id: true;
+  url_criacao_conta: string | null;
+  url_extensao_14: string | null;
+  url_extensao_7: string | null;
+  url_contratacao_definitiva: string | null;
+  updated_at: string;
+};
+
 export type ChecklistGrupoImplementacao = {
   id: string;
   chave: string;
@@ -607,6 +620,12 @@ export type Database = {
         Insert: Partial<MarcoRemarcacao> &
           Pick<MarcoRemarcacao, 'cliente_id' | 'campo_marco' | 'data_nova' | 'motivo' | 'responsavel_impacto'>;
         Update: Partial<MarcoRemarcacao>;
+        Relationships: [];
+      };
+      configuracoes_pipefy: {
+        Row: ConfiguracaoPipefy;
+        Insert: Partial<ConfiguracaoPipefy>;
+        Update: Partial<ConfiguracaoPipefy>;
         Relationships: [];
       };
     };

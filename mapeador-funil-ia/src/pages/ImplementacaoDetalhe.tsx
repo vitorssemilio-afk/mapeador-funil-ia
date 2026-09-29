@@ -36,6 +36,7 @@ import type {
   AtividadeStatusRow,
   CheckpointAdocao,
   Cliente,
+  ConfiguracaoPipefy,
   CredencialApiKommoMeta,
   CredencialCrmListada,
   FrequenciaUsoCheckpoint,
@@ -166,6 +167,11 @@ export function ImplementacaoDetalhe() {
   const [kickoffRealizadoEm, setKickoffRealizadoEm] = useState<string | null>(null);
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
   const [salvandoTrial, setSalvandoTrial] = useState(false);
+  const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
+  const [confirmandoCampo, setConfirmandoCampo] = useState<
+    'conta_kommo_solicitada_em' | 'contratacao_kommo_solicitada_em' | null
+  >(null);
+  const [valorConfirmacao, setValorConfirmacao] = useState('');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -324,6 +330,7 @@ export function ImplementacaoDetalhe() {
       { data: credenciaisData, error: credenciaisError },
       { data: historicoData, error: historicoError },
       { data: checkpointData },
+      { data: pipefyData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -344,7 +351,10 @@ export function ImplementacaoDetalhe() {
         .select('*')
         .eq('implementacao_id', implementacaoId)
         .maybeSingle(),
+      supabase.from('configuracoes_pipefy').select('*').eq('id', true).single(),
     ]);
+
+    setPipefyConfig(pipefyData ?? null);
 
     if (implError) {
       setError(implError.message);
@@ -676,6 +686,47 @@ export function ImplementacaoDetalhe() {
     setCliente(data);
   }
 
+  function agoraParaInputDatetime(): string {
+    const agora = new Date();
+    const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  // CTA do Pipefy: abre o link (se cadastrado) e revela o painel pra
+  // confirmar quando a solicitação foi de fato enviada — data/hora já vem
+  // preenchida com agora, mas editável antes de confirmar.
+  function handleAbrirLinkPipefy(
+    url: string | null | undefined,
+    campo: 'conta_kommo_solicitada_em' | 'contratacao_kommo_solicitada_em',
+  ) {
+    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    setConfirmandoCampo(campo);
+    setValorConfirmacao(agoraParaInputDatetime());
+  }
+
+  async function handleConfirmarSolicitacaoPipefy() {
+    if (!cliente || !confirmandoCampo || !valorConfirmacao) return;
+    setSalvandoTrial(true);
+
+    const atualizacao: Partial<Cliente> = { [confirmandoCampo]: new Date(valorConfirmacao).toISOString() };
+    const { data, error: updateError } = await supabase
+      .from('clientes')
+      .update(atualizacao)
+      .eq('id', cliente.id)
+      .select()
+      .single();
+
+    setSalvandoTrial(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setCliente(data);
+    setConfirmandoCampo(null);
+  }
+
   async function handleGerarPosVenda() {
     if (!implementacao || !mapeamentoOrigem || !user) return;
     setCriandoPosVenda(true);
@@ -979,6 +1030,49 @@ export function ImplementacaoDetalhe() {
         </div>
       )}
 
+      {cliente && !cliente.conta_kommo_criada_em && (
+        <section className="card form-card">
+          <h2>Conta Kommo</h2>
+          {cliente.conta_kommo_solicitada_em ? (
+            <p className="field-hint">
+              Solicitada em {new Date(cliente.conta_kommo_solicitada_em).toLocaleString('pt-BR')} — aguardando
+              criação (o Trial começa a contar quando isso acontecer).
+            </p>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary btn-auto"
+              onClick={() => handleAbrirLinkPipefy(pipefyConfig?.url_criacao_conta, 'conta_kommo_solicitada_em')}
+            >
+              Solicitar conta
+            </button>
+          )}
+          {confirmandoCampo === 'conta_kommo_solicitada_em' && (
+            <div className="form-info form-info-com-acao">
+              <label className="field">
+                <span>Solicitação enviada em</span>
+                <input
+                  type="datetime-local"
+                  value={valorConfirmacao}
+                  onChange={(e) => setValorConfirmacao(e.target.value)}
+                />
+              </label>
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmandoCampo(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={salvandoTrial}
+                onClick={handleConfirmarSolicitacaoPipefy}
+              >
+                Confirmar
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Indicador totalmente separado do "Dia X/40" acima — o Trial conta a
           partir da conta Kommo criada, a implementação a partir do Kickoff. */}
       {resumoTrial && (
@@ -1029,15 +1123,20 @@ export function ImplementacaoDetalhe() {
                   type="button"
                   className="btn btn-secondary"
                   disabled={salvandoTrial}
-                  onClick={() =>
-                    handleRegistrarEventoTrial(
+                  onClick={() => {
+                    const campo =
                       resumoTrial.proximaExtensao!.rotulo === '+14 dias'
                         ? 'extensao_14_solicitada_em'
-                        : 'extensao_7_solicitada_em',
-                    )
-                  }
+                        : 'extensao_7_solicitada_em';
+                    const url =
+                      campo === 'extensao_14_solicitada_em'
+                        ? pipefyConfig?.url_extensao_14
+                        : pipefyConfig?.url_extensao_7;
+                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                    handleRegistrarEventoTrial(campo);
+                  }}
                 >
-                  Registrar solicitação
+                  Solicitar extensão {resumoTrial.proximaExtensao.rotulo}
                 </button>
               )}
               {resumoTrial.proximaExtensao.solicitadaEm && !resumoTrial.proximaExtensao.aprovadaEm && (
@@ -1059,6 +1158,50 @@ export function ImplementacaoDetalhe() {
             </div>
           ) : (
             <p className="field-hint">As duas extensões já foram usadas — não há mais prorrogação possível.</p>
+          )}
+
+          <div className="form-info form-info-com-acao">
+            <span>
+              Contratação definitiva:{' '}
+              {cliente?.contratacao_kommo_solicitada_em
+                ? `solicitada em ${new Date(cliente.contratacao_kommo_solicitada_em).toLocaleString('pt-BR')}`
+                : 'Não solicitada'}
+            </span>
+            {!cliente?.contratacao_kommo_solicitada_em && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() =>
+                  handleAbrirLinkPipefy(pipefyConfig?.url_contratacao_definitiva, 'contratacao_kommo_solicitada_em')
+                }
+              >
+                Solicitar contratação
+              </button>
+            )}
+          </div>
+
+          {confirmandoCampo === 'contratacao_kommo_solicitada_em' && (
+            <div className="form-info form-info-com-acao">
+              <label className="field">
+                <span>Solicitação enviada em</span>
+                <input
+                  type="datetime-local"
+                  value={valorConfirmacao}
+                  onChange={(e) => setValorConfirmacao(e.target.value)}
+                />
+              </label>
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmandoCampo(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={salvandoTrial}
+                onClick={handleConfirmarSolicitacaoPipefy}
+              >
+                Confirmar
+              </button>
+            </div>
           )}
         </section>
       )}

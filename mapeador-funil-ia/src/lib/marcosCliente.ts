@@ -25,6 +25,7 @@ export const MARCOS_ORDENADOS: { campo: CampoMarco; label: string; apenasData: b
   { campo: 'extensao_14_aprovada_em', label: 'Extensão de 14 dias aprovada', apenasData: true },
   { campo: 'extensao_7_solicitada_em', label: 'Extensão de 7 dias solicitada', apenasData: true },
   { campo: 'extensao_7_aprovada_em', label: 'Extensão de 7 dias aprovada', apenasData: true },
+  { campo: 'contratacao_kommo_solicitada_em', label: 'Contratação definitiva do Kommo solicitada', apenasData: false },
   { campo: 'implementacao_concluida_em', label: 'Implementação concluída', apenasData: false },
 ];
 

@@ -42,9 +42,14 @@ export function ImplementacoesCrm() {
             nova, abra um mapeamento concluído e clique em "Iniciar implementação de CRM".
           </p>
         </div>
-        <Link to="/implementacoes/checklist" className="btn btn-secondary">
-          Editar checklist
-        </Link>
+        <div className="page-header-actions">
+          <Link to="/configuracoes/pipefy" className="btn btn-secondary">
+            Links do Pipefy
+          </Link>
+          <Link to="/implementacoes/checklist" className="btn btn-secondary">
+            Editar checklist
+          </Link>
+        </div>
       </div>
 
       {loading && <p className="page-loading">Carregando…</p>}
