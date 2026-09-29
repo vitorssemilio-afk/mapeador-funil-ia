@@ -165,6 +165,17 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
     : [];
   const podeAvancar = perguntasVisiveis.every((p) => !p.obrigatoria || temResposta(respostas[p.id]));
 
+  // Estimativa simples (~20s por pergunta visível hoje) só pra dar uma noção
+  // de tempo — não precisa ser exata, os blocos seguintes ainda podem
+  // esconder/mostrar perguntas conforme as respostas.
+  const perguntasRestantes = isResumo
+    ? 0
+    : blocos
+        .slice(step)
+        .flatMap((b) => b.perguntas)
+        .filter((p) => perguntaVisivel(p, respostas)).length;
+  const minutosRestantes = Math.max(1, Math.round((perguntasRestantes * 20) / 60));
+
   return (
     <div className="wizard">
       <div className="wizard-progress-bar">
@@ -174,7 +185,10 @@ export function WizardPublico({ mapeamento, onEnviado }: Props) {
         />
       </div>
       <div className="wizard-progress-label">
-        <span>{isResumo ? 'Resumo' : `Etapa ${step + 1} de ${blocos.length}`}</span>
+        <span>
+          {isResumo ? 'Resumo' : `Etapa ${step + 1} de ${blocos.length}`}
+          {!isResumo && perguntasRestantes > 0 && ` · ~${minutosRestantes} min restantes`}
+        </span>
         <span className="save-status">{saveStatusLabel(saveStatus)}</span>
       </div>
 
