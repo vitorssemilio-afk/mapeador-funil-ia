@@ -16,6 +16,7 @@ import {
   type AtividadeResolvida,
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import { aprovarVersaoAtual } from '../lib/funilVersoes';
 import { nomeConsultor } from '../lib/operacaoResumo';
 import {
   alertaReuniaoObrigatoria,
@@ -1057,6 +1058,14 @@ export function ImplementacaoDetalhe() {
         setError(statusError.message);
       } else {
         setMapeamentoOrigem(mapeamentoAtualizado);
+      }
+
+      if (novoStatusMapeamento === 'funil_validado') {
+        const { error: aprovacaoError } = await aprovarVersaoAtual(supabase, mapeamentoOrigem.id, {
+          aprovadoPorEmail: user?.email ?? null,
+          kickoffReuniaoId: data.id,
+        });
+        if (aprovacaoError) setError(aprovacaoError);
       }
     }
 

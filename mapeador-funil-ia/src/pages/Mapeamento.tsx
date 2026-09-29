@@ -9,6 +9,7 @@ import type { BlocoFormulario } from '../data/formSchema';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { carregarFormSchema } from '../lib/formSchemaService';
+import { aprovarVersaoAtual, rotuloVersao } from '../lib/funilVersoes';
 import { supabase } from '../lib/supabaseClient';
 import {
   funilJaGerado,
@@ -17,8 +18,10 @@ import {
   PROXIMOS_STATUS_MAPEAMENTO,
 } from '../lib/statusFluxo';
 import type {
+  Cliente,
   EtapaFunil,
   FunilGerado,
+  FunilVersao,
   GeracaoMeta,
   ImplementacaoCrm,
   Mapeamento as MapeamentoType,
@@ -40,6 +43,7 @@ export function Mapeamento() {
   const [geracaoMeta, setGeracaoMeta] = useState<GeracaoMeta | null>(null);
   const [versoesDisponiveis, setVersoesDisponiveis] = useState<number[]>([]);
   const [versaoSelecionada, setVersaoSelecionada] = useState<number | null>(null);
+  const [funilVersoes, setFunilVersoes] = useState<FunilVersao[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retomando, setRetomando] = useState(false);
@@ -58,6 +62,12 @@ export function Mapeamento() {
   const [posVendaExistente, setPosVendaExistente] = useState<MapeamentoType | null>(null);
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
   const [alterandoStatus, setAlterandoStatus] = useState(false);
+  const [modo, setModo] = useState<'tecnica' | 'apresentacao'>('tecnica');
+  const [marcandoRevisado, setMarcandoRevisado] = useState(false);
+  const [clienteResumo, setClienteResumo] = useState<Pick<
+    Cliente,
+    'nome_empresa' | 'kickoff_agendado_para' | 'kickoff_realizado_em'
+  > | null>(null);
 
   async function carregarFunis(mapeamentoId: string, versaoAlvo?: number) {
     const { data: versoesData, error: versoesError } = await supabase
@@ -101,6 +111,14 @@ export function Mapeamento() {
       .maybeSingle();
 
     setGeracaoMeta(metaData ?? null);
+
+    const { data: funilVersoesData } = await supabase
+      .from('funil_versoes')
+      .select('*')
+      .eq('mapeamento_id', mapeamentoId)
+      .order('versao', { ascending: false });
+
+    setFunilVersoes(funilVersoesData ?? []);
   }
 
   useEffect(() => {
@@ -147,6 +165,15 @@ export function Mapeamento() {
         .maybeSingle();
 
       if (!cancelled) setImplementacaoExistente(implementacaoData ?? null);
+
+      if (mapeamentoData.cliente_id) {
+        const { data: clienteData } = await supabase
+          .from('clientes')
+          .select('nome_empresa, kickoff_agendado_para, kickoff_realizado_em')
+          .eq('id', mapeamentoData.cliente_id)
+          .maybeSingle();
+        if (!cancelled) setClienteResumo(clienteData ?? null);
+      }
 
       if (mapeamentoData.tipo === 'vendas') {
         const { data: posVendaData } = await supabase
@@ -204,6 +231,31 @@ export function Mapeamento() {
       return;
     }
 
+    setMapeamento(data);
+
+    if (novoStatus === 'funil_validado') {
+      const { error: aprovacaoError } = await aprovarVersaoAtual(supabase, mapeamento.id, {
+        aprovadoPorEmail: user?.email ?? null,
+      });
+      if (aprovacaoError) setError(aprovacaoError);
+      else await carregarFunis(mapeamento.id, versaoSelecionada ?? undefined);
+    }
+  }
+
+  async function handleMarcarRevisado() {
+    if (!mapeamento || !user?.email) return;
+    setMarcandoRevisado(true);
+    const { data, error: updateError } = await supabase
+      .from('mapeamentos')
+      .update({ revisado_por_email: user.email, revisado_em: new Date().toISOString() })
+      .eq('id', mapeamento.id)
+      .select()
+      .single();
+    setMarcandoRevisado(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
     setMapeamento(data);
   }
 
@@ -397,6 +449,12 @@ export function Mapeamento() {
 
   const podeRetomar = mapeamento.status === 'em_preenchimento' || mapeamento.status === 'erro';
   const versaoMaisRecente = versoesDisponiveis[0];
+  const versaoAtualInfo = funilVersoes.find((v) => v.versao === versaoSelecionada) ?? null;
+  // A mais recente entre as aprovadas — é a que de fato está "em
+  // implementação" no momento, mesmo que versões mais novas (em rascunho)
+  // já existam por cima dela.
+  const versaoEmImplementacao =
+    [...funilVersoes].filter((v) => v.status === 'aprovada').sort((a, b) => b.versao - a.versao)[0] ?? null;
   const temRespostas = Object.values(mapeamento.respostas ?? {}).some((valor) => {
     if (Array.isArray(valor)) return valor.length > 0;
     if (typeof valor === 'string') return valor.trim().length > 0;
@@ -428,7 +486,8 @@ export function Mapeamento() {
           )}
         </div>
         <div className="page-header-actions">
-          {mapeamento.tipo === 'vendas' &&
+          {modo === 'tecnica' &&
+            mapeamento.tipo === 'vendas' &&
             funilValidado(mapeamento.status) &&
             (posVendaExistente ? (
               <button
@@ -455,15 +514,15 @@ export function Mapeamento() {
               rel="noopener noreferrer"
               className="btn btn-primary"
             >
-              Ver relatório (PDF/PPTX)
+              Gerar apresentação/relatório
             </Link>
           )}
-          {!mapeamento.enviado_pelo_cliente && (
+          {modo === 'tecnica' && !mapeamento.enviado_pelo_cliente && (
             <button type="button" className="btn btn-secondary" onClick={handleCopiarLink}>
               {linkCopiado ? 'Link copiado!' : 'Copiar link para o cliente'}
             </button>
           )}
-          {funis.length > 0 && (
+          {modo === 'tecnica' && funis.length > 0 && (
             <button
               type="button"
               className="btn btn-secondary"
@@ -473,14 +532,16 @@ export function Mapeamento() {
               {exportando ? 'Exportando…' : 'Exportar para Excel'}
             </button>
           )}
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleDuplicar}
-            disabled={duplicando}
-          >
-            {duplicando ? 'Duplicando…' : 'Duplicar como novo mapeamento'}
-          </button>
+          {modo === 'tecnica' && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleDuplicar}
+              disabled={duplicando}
+            >
+              {duplicando ? 'Duplicando…' : 'Duplicar como novo mapeamento'}
+            </button>
+          )}
           {mapeamento.tipo === 'vendas' &&
             funilValidado(mapeamento.status) &&
             (implementacaoExistente ? (
@@ -492,20 +553,106 @@ export function Mapeamento() {
                 Ver implementação de CRM
               </button>
             ) : (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleIniciarImplementacao}
-                disabled={iniciandoImplementacao}
-              >
-                {iniciandoImplementacao ? 'Iniciando…' : 'Iniciar implementação de CRM'}
-              </button>
+              modo === 'tecnica' && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleIniciarImplementacao}
+                  disabled={iniciandoImplementacao}
+                >
+                  {iniciandoImplementacao ? 'Iniciando…' : 'Iniciar implementação de CRM'}
+                </button>
+              )
             ))}
-          <button type="button" className="btn btn-ghost" onClick={handleExcluir} disabled={excluindo}>
-            {excluindo ? 'Excluindo…' : 'Excluir mapeamento'}
-          </button>
+          {modo === 'tecnica' && (
+            <button type="button" className="btn btn-ghost" onClick={handleExcluir} disabled={excluindo}>
+              {excluindo ? 'Excluindo…' : 'Excluir mapeamento'}
+            </button>
+          )}
         </div>
       </div>
+
+      {funis.length > 0 && (
+        <section className="card resumo-revisao-card">
+          {versaoEmImplementacao && (
+            <div className="resumo-revisao-aprovada-banner">
+              Versão aprovada para implementação — Versão {versaoEmImplementacao.versao}
+            </div>
+          )}
+          <div className="resumo-revisao-grid">
+            {clienteResumo && (
+              <div>
+                <span className="etapa-card-label">Cliente</span>
+                <p>{clienteResumo.nome_empresa}</p>
+              </div>
+            )}
+            <div>
+              <span className="etapa-card-label">Status do funil</span>
+              <p>{MAPEAMENTO_STATUS_LABELS[mapeamento.status]}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Versão atual</span>
+              <p>
+                {versaoMaisRecente}
+                {versaoEmImplementacao?.versao === versaoMaisRecente ? ' — Aprovada' : ''}
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Última atualização</span>
+              <p>
+                {versaoAtualInfo ? new Date(versaoAtualInfo.created_at).toLocaleString('pt-BR') : '—'}
+                {versaoAtualInfo?.gerado_por_email ? ` — ${versaoAtualInfo.gerado_por_email}` : ''}
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Responsável pela revisão</span>
+              <p>
+                {mapeamento.revisado_por_email
+                  ? `${mapeamento.revisado_por_email} em ${new Date(mapeamento.revisado_em!).toLocaleString('pt-BR')}`
+                  : 'Ainda não revisado'}
+              </p>
+            </div>
+            {(clienteResumo?.kickoff_realizado_em || clienteResumo?.kickoff_agendado_para) && (
+              <div>
+                <span className="etapa-card-label">Kickoff</span>
+                <p>
+                  {new Date(
+                    clienteResumo.kickoff_realizado_em ?? clienteResumo.kickoff_agendado_para!,
+                  ).toLocaleString('pt-BR')}
+                  {clienteResumo.kickoff_realizado_em ? ' (realizado)' : ' (agendado)'}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="page-header-actions">
+            <div className="modo-visualizacao-toggle">
+              <button
+                type="button"
+                className={modo === 'tecnica' ? 'btn btn-primary btn-auto' : 'btn btn-secondary btn-auto'}
+                onClick={() => setModo('tecnica')}
+              >
+                Visão técnica
+              </button>
+              <button
+                type="button"
+                className={modo === 'apresentacao' ? 'btn btn-primary btn-auto' : 'btn btn-secondary btn-auto'}
+                onClick={() => setModo('apresentacao')}
+              >
+                Visão de apresentação
+              </button>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-auto"
+              onClick={handleMarcarRevisado}
+              disabled={marcandoRevisado}
+            >
+              {marcandoRevisado ? 'Marcando…' : 'Marcar como revisado'}
+            </button>
+          </div>
+        </section>
+      )}
 
       {mapeamento.status === 'em_preenchimento' && !retomando && (
         <section className="card form-card">
@@ -598,7 +745,8 @@ export function Mapeamento() {
         </section>
       )}
 
-      {funilJaGerado(mapeamento.status) &&
+      {modo === 'tecnica' &&
+        funilJaGerado(mapeamento.status) &&
         (PROXIMOS_STATUS_MAPEAMENTO[mapeamento.status]?.length ?? 0) > 0 && (
           <section className="card">
             <h2>Fluxo do funil</h2>
@@ -629,19 +777,56 @@ export function Mapeamento() {
 
       {funis.length > 0 && (
         <>
-          {versoesDisponiveis.length > 1 && (
+          {modo === 'tecnica' && versaoAtualInfo && (
+            <section className="card">
+              <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                <h2 style={{ marginBottom: 0 }}>
+                  Versão {versaoAtualInfo.versao}
+                  {versaoAtualInfo.versao !== versaoMaisRecente && ' (somente leitura)'}
+                </h2>
+                <span
+                  className={`status-badge status-tone-${versaoAtualInfo.status === 'aprovada' ? 'success' : 'warning'}`}
+                >
+                  {versaoAtualInfo.status === 'aprovada' ? 'Aprovada para implementação' : 'Rascunho'}
+                </span>
+              </div>
+              <p className="field-hint">
+                Gerada em {new Date(versaoAtualInfo.created_at).toLocaleString('pt-BR')}
+                {versaoAtualInfo.gerado_por_email ? ` por ${versaoAtualInfo.gerado_por_email}` : ''} — origem:{' '}
+                {versaoAtualInfo.origem === 'ia' ? 'IA' : 'Manual'}.
+              </p>
+              {versaoAtualInfo.status === 'aprovada' && (
+                <p className="field-hint">
+                  Aprovada em{' '}
+                  {versaoAtualInfo.aprovada_em ? new Date(versaoAtualInfo.aprovada_em).toLocaleString('pt-BR') : '—'}
+                  {versaoAtualInfo.aprovada_por_email ? ` por ${versaoAtualInfo.aprovada_por_email}` : ''}
+                  {versaoAtualInfo.kickoff_reuniao_id ? ' — validada no Kickoff' : ''}.
+                </p>
+              )}
+              {versaoEmImplementacao && versaoEmImplementacao.versao !== versaoAtualInfo.versao && (
+                <p className="field-hint">
+                  A versão atualmente em implementação é a <strong>Versão {versaoEmImplementacao.versao}</strong>.
+                </p>
+              )}
+            </section>
+          )}
+
+          {modo === 'tecnica' && versoesDisponiveis.length > 1 && (
             <div className="page-header-actions">
               <span className="field-hint">Versão:</span>
-              {versoesDisponiveis.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={v === versaoSelecionada ? 'btn btn-primary' : 'btn btn-secondary'}
-                  onClick={() => handleVerVersao(v)}
-                >
-                  {v === versaoMaisRecente ? `Versão ${v} (atual)` : `Versão ${v}`}
-                </button>
-              ))}
+              {versoesDisponiveis.map((v) => {
+                const info = funilVersoes.find((fv) => fv.versao === v);
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    className={v === versaoSelecionada ? 'btn btn-primary' : 'btn btn-secondary'}
+                    onClick={() => handleVerVersao(v)}
+                  >
+                    {info ? rotuloVersao(info, versaoMaisRecente) : `Versão ${v}`}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -651,7 +836,7 @@ export function Mapeamento() {
               geracaoMeta.indicadores_dashboard.length > 0 ||
               geracaoMeta.nivel_complexidade) && (
               <section className="card geracao-meta-card">
-                {geracaoMeta.nivel_complexidade && (
+                {modo === 'tecnica' && geracaoMeta.nivel_complexidade && (
                   <div className="estimativa-badge">
                     <span className={`estimativa-nivel estimativa-nivel-${geracaoMeta.nivel_complexidade}`}>
                       Complexidade {NIVEL_COMPLEXIDADE_LABELS[geracaoMeta.nivel_complexidade]}
@@ -668,7 +853,7 @@ export function Mapeamento() {
                   </div>
                 )}
 
-                {geracaoMeta.transicoes_entre_funis.length > 0 && (
+                {modo === 'tecnica' && geracaoMeta.transicoes_entre_funis.length > 0 && (
                   <div className="geracao-meta-bloco">
                     <h3>Transições entre funis</h3>
                     <ul className="transicoes-lista">
@@ -692,7 +877,7 @@ export function Mapeamento() {
                   </div>
                 )}
 
-                {geracaoMeta.indicadores_dashboard.length > 0 && (
+                {modo === 'tecnica' && geracaoMeta.indicadores_dashboard.length > 0 && (
                   <div className="geracao-meta-bloco">
                     <h3>Indicadores sugeridos para o dashboard no CRM</h3>
                     <ul className="perguntas-ia-lista">
@@ -711,6 +896,7 @@ export function Mapeamento() {
               funil={funil}
               onChange={handleEtapasChange}
               somenteLeitura={versaoSelecionada !== versaoMaisRecente}
+              modo={modo}
             />
           ))}
         </>
