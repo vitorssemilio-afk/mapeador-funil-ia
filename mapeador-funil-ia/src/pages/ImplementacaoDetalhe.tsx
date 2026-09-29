@@ -15,6 +15,7 @@ import {
   type AtividadeResolvida,
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import { nomeConsultor } from '../lib/operacaoResumo';
 import {
   resolverResumoTrialKommo,
   STATUS_TRIAL_LABELS,
@@ -37,6 +38,7 @@ import type {
   CheckpointAdocao,
   Cliente,
   ConfiguracaoPipefy,
+  Consultor,
   CredencialApiKommoMeta,
   CredencialCrmListada,
   FrequenciaUsoCheckpoint,
@@ -47,6 +49,7 @@ import type {
   ImplementacaoStatusHistorico,
   IntencaoManutencaoCheckpoint,
   Mapeamento,
+  ImplementacaoConsultorHistorico,
   MarcoRemarcacao,
   UsoDiarioCheckpoint,
 } from '../types/database';
@@ -74,7 +77,8 @@ const INTENCAO_MANUTENCAO_LABELS: Record<IntencaoManutencaoCheckpoint, string> =
 
 type FormGeral = {
   nome_cliente: string;
-  consultor_responsavel: string;
+  consultor_responsavel_id: string;
+  consultor_apoio_id: string;
   stakeholder_decisor: string;
   status: ImplementacaoStatus;
   conta_criada_via_v4: boolean;
@@ -121,7 +125,8 @@ function preRequisitoCompleto(form: FormGeral): boolean {
 function paraFormGeral(impl: ImplementacaoCrm): FormGeral {
   return {
     nome_cliente: impl.nome_cliente,
-    consultor_responsavel: impl.consultor_responsavel ?? '',
+    consultor_responsavel_id: impl.consultor_responsavel_id ?? '',
+    consultor_apoio_id: impl.consultor_apoio_id ?? '',
     stakeholder_decisor: impl.stakeholder_decisor ?? '',
     status: impl.status,
     conta_criada_via_v4: impl.conta_criada_via_v4,
@@ -168,6 +173,8 @@ export function ImplementacaoDetalhe() {
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
   const [salvandoTrial, setSalvandoTrial] = useState(false);
   const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
+  const [consultores, setConsultores] = useState<Consultor[]>([]);
+  const [historicoConsultor, setHistoricoConsultor] = useState<ImplementacaoConsultorHistorico[]>([]);
   const [confirmandoCampo, setConfirmandoCampo] = useState<
     'conta_kommo_solicitada_em' | 'contratacao_kommo_solicitada_em' | null
   >(null);
@@ -331,6 +338,8 @@ export function ImplementacaoDetalhe() {
       { data: historicoData, error: historicoError },
       { data: checkpointData },
       { data: pipefyData },
+      { data: consultoresData },
+      { data: historicoConsultorData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -352,9 +361,17 @@ export function ImplementacaoDetalhe() {
         .eq('implementacao_id', implementacaoId)
         .maybeSingle(),
       supabase.from('configuracoes_pipefy').select('*').eq('id', true).single(),
+      supabase.from('consultores').select('*').order('nome', { ascending: true }),
+      supabase
+        .from('implementacao_consultor_historico')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('alterado_em', { ascending: false }),
     ]);
 
     setPipefyConfig(pipefyData ?? null);
+    setConsultores(consultoresData ?? []);
+    setHistoricoConsultor(historicoConsultorData ?? []);
 
     if (implError) {
       setError(implError.message);
@@ -622,14 +639,23 @@ export function ImplementacaoDetalhe() {
       return;
     }
 
+    if (!formGeral.consultor_responsavel_id) {
+      setError('Toda implementação precisa de um consultor responsável.');
+      return;
+    }
+
     setSalvandoGeral(true);
     setSalvoRecentemente(false);
+
+    const consultorMudou =
+      formGeral.consultor_responsavel_id !== (implementacao.consultor_responsavel_id ?? '');
 
     const { data, error: updateError } = await supabase
       .from('implementacoes_crm')
       .update({
         nome_cliente: formGeral.nome_cliente.trim(),
-        consultor_responsavel: formGeral.consultor_responsavel.trim() || null,
+        consultor_responsavel_id: formGeral.consultor_responsavel_id,
+        consultor_apoio_id: formGeral.consultor_apoio_id || null,
         stakeholder_decisor: formGeral.stakeholder_decisor.trim() || null,
         status: formGeral.status,
         conta_criada_via_v4: formGeral.conta_criada_via_v4,
@@ -644,6 +670,18 @@ export function ImplementacaoDetalhe() {
       .eq('id', implementacao.id)
       .select()
       .single();
+
+    // Troca de responsável fica registrada — quem era, quem passou a ser,
+    // quando e quem fez a mudança — mesmo que o resto do salvamento seja um
+    // só clique (não é uma ação separada, mas o histórico precisa existir).
+    if (!updateError && consultorMudou) {
+      await supabase.from('implementacao_consultor_historico').insert({
+        implementacao_id: implementacao.id,
+        consultor_anterior_id: implementacao.consultor_responsavel_id,
+        consultor_novo_id: formGeral.consultor_responsavel_id,
+        alterado_por_email: user?.email ?? null,
+      });
+    }
 
     setSalvandoGeral(false);
 
@@ -1360,13 +1398,50 @@ export function ImplementacaoDetalhe() {
               </label>
 
               <label className="field">
-                <span>Consultor responsável</span>
-                <input
-                  type="text"
-                  value={formGeral.consultor_responsavel}
-                  onChange={(e) => setFormGeral({ ...formGeral, consultor_responsavel: e.target.value })}
-                />
+                <span>Consultor responsável *</span>
+                <select
+                  required
+                  value={formGeral.consultor_responsavel_id}
+                  onChange={(e) => setFormGeral({ ...formGeral, consultor_responsavel_id: e.target.value })}
+                >
+                  <option value="">Selecione…</option>
+                  {consultores.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                      {!c.ativo ? ' (inativo)' : ''}
+                    </option>
+                  ))}
+                </select>
               </label>
+
+              <label className="field">
+                <span>Consultor de apoio (opcional)</span>
+                <select
+                  value={formGeral.consultor_apoio_id}
+                  onChange={(e) => setFormGeral({ ...formGeral, consultor_apoio_id: e.target.value })}
+                >
+                  <option value="">Nenhum</option>
+                  {consultores.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                      {!c.ativo ? ' (inativo)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {historicoConsultor.length > 0 && (
+                <p className="field-hint">
+                  Histórico de responsáveis:{' '}
+                  {historicoConsultor
+                    .map((h) => {
+                      const anterior = nomeConsultor(h.consultor_anterior_id, consultores) ?? 'ninguém';
+                      const novo = nomeConsultor(h.consultor_novo_id, consultores) ?? '—';
+                      return `${anterior} → ${novo} em ${new Date(h.alterado_em).toLocaleDateString('pt-BR')}${h.alterado_por_email ? ` (por ${h.alterado_por_email})` : ''}`;
+                    })
+                    .join(' · ')}
+                </p>
+              )}
 
               <label className="field">
                 <span>Stakeholder decisor</span>

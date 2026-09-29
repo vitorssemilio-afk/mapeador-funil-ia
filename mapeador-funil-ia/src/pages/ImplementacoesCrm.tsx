@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
+import { nomeConsultor } from '../lib/operacaoResumo';
 import { supabase } from '../lib/supabaseClient';
-import type { ImplementacaoCrm } from '../types/database';
+import type { Consultor, ImplementacaoCrm } from '../types/database';
 
 export function ImplementacoesCrm() {
   const [implementacoes, setImplementacoes] = useState<ImplementacaoCrm[]>([]);
+  const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -14,15 +16,16 @@ export function ImplementacoesCrm() {
 
     async function carregar() {
       setLoading(true);
-      const { data, error: fetchError } = await supabase
-        .from('implementacoes_crm')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [{ data, error: fetchError }, { data: consultoresData }] = await Promise.all([
+        supabase.from('implementacoes_crm').select('*').order('created_at', { ascending: false }),
+        supabase.from('consultores').select('*'),
+      ]);
 
       if (cancelled) return;
 
       if (fetchError) setError(fetchError.message);
       else setImplementacoes(data ?? []);
+      setConsultores(consultoresData ?? []);
       setLoading(false);
     }
 
@@ -80,7 +83,7 @@ export function ImplementacoesCrm() {
               {implementacoes.map((impl) => (
                 <tr key={impl.id}>
                   <td>{impl.nome_cliente}</td>
-                  <td>{impl.consultor_responsavel || '—'}</td>
+                  <td>{nomeConsultor(impl.consultor_responsavel_id, consultores) || '—'}</td>
                   <td>
                     <ImplementacaoStatusBadge status={impl.status} />
                   </td>
