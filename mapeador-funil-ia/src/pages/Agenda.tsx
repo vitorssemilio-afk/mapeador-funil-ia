@@ -13,6 +13,7 @@ import type {
   AtividadeCronograma,
   AtividadeStatusRow,
   Cliente,
+  ClienteOcorrencia,
   Consultor,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
@@ -47,6 +48,7 @@ export function Agenda() {
   const [statusRows, setStatusRows] = useState<AtividadeStatusRow[]>([]);
   const [historico, setHistorico] = useState<ImplementacaoStatusHistorico[]>([]);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
+  const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [marcando, setMarcando] = useState<string | null>(null);
@@ -63,6 +65,7 @@ export function Agenda() {
       { data: statusRowsData, error: statusRowsError },
       { data: historicoData, error: historicoError },
       { data: consultoresData },
+      { data: ocorrenciasData },
     ] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('mapeamentos').select('*').eq('tipo', 'vendas').order('created_at', { ascending: false }),
@@ -71,6 +74,7 @@ export function Agenda() {
       supabase.from('atividades_status').select('*'),
       supabase.from('implementacao_status_historico').select('*'),
       supabase.from('consultores').select('*'),
+      supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
     ]);
 
     const primeiroErro =
@@ -88,6 +92,7 @@ export function Agenda() {
     setStatusRows(statusRowsData ?? []);
     setHistorico(historicoData ?? []);
     setConsultores(consultoresData ?? []);
+    setOcorrenciasAbertas(ocorrenciasData ?? []);
     setLoading(false);
   }
 
@@ -107,9 +112,20 @@ export function Agenda() {
         atividadesStatus: statusRows,
         historico,
         consultores,
+        ocorrenciasAbertas,
         hoje,
       }),
-    [clientes, mapeamentosVendas, implementacoes, atividades, statusRows, historico, consultores, hoje],
+    [
+      clientes,
+      mapeamentosVendas,
+      implementacoes,
+      atividades,
+      statusRows,
+      historico,
+      consultores,
+      ocorrenciasAbertas,
+      hoje,
+    ],
   );
 
   const itensPorBucket = useMemo(() => {

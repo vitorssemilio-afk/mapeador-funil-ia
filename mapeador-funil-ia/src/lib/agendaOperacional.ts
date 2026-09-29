@@ -4,6 +4,7 @@
 // organizado por urgência. Itens sem data não desaparecem: entram no grupo
 // "sem_data", com o texto "Aguardando <marco>" quando é isso que falta.
 import { resolverAtividade, resolverMarcoAgendavel, type AtividadeResolvida } from './atividadesCronograma';
+import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
 import { nomeConsultor } from './operacaoResumo';
 import { MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
 import { resolverResumoTrialKommo } from './trialKommo';
@@ -11,6 +12,7 @@ import type {
   AtividadeCronograma,
   AtividadeStatusRow,
   Cliente,
+  ClienteOcorrencia,
   Consultor,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
@@ -259,6 +261,28 @@ function itemDeProximidadePrazoGeral(
   };
 }
 
+// Ocorrência aberta (ver src/pages/ClienteDetalhe.tsx) é uma pendência em
+// aberto sem data de vencimento — representa um incidente já acontecido que
+// ainda não foi resolvido, não um evento futuro agendado. Por isso cai
+// sempre no grupo "sem_data" (data: null), nunca em "Atrasados".
+function itemDeOcorrencia(ocorrencia: ClienteOcorrencia, cliente: Cliente): ItemAgendaOperacional {
+  return {
+    id: `ocorrencia:${ocorrencia.id}`,
+    clienteId: cliente.id,
+    clienteNome: cliente.nome_empresa,
+    tipo: 'alerta',
+    titulo: `Ocorrência: ${CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria]}`,
+    responsavel: null,
+    data: null,
+    aguardando: null,
+    status: 'Aberta',
+    acaoRecomendada: 'Resolver a ocorrência',
+    atrasado: false,
+    implementacaoId: null,
+    atividadeId: null,
+  };
+}
+
 export function construirAgendaOperacional(params: {
   clientes: Cliente[];
   mapeamentosVendas: Mapeamento[];
@@ -267,12 +291,27 @@ export function construirAgendaOperacional(params: {
   atividadesStatus: AtividadeStatusRow[];
   historico: ImplementacaoStatusHistorico[];
   consultores: Consultor[];
+  ocorrenciasAbertas?: ClienteOcorrencia[];
   hoje: Date;
 }): ItemAgendaOperacional[] {
-  const { clientes, mapeamentosVendas, implementacoes, atividades, atividadesStatus, historico, consultores, hoje } =
-    params;
+  const {
+    clientes,
+    mapeamentosVendas,
+    implementacoes,
+    atividades,
+    atividadesStatus,
+    historico,
+    consultores,
+    ocorrenciasAbertas = [],
+    hoje,
+  } = params;
 
   const itens: ItemAgendaOperacional[] = [];
+
+  for (const ocorrencia of ocorrenciasAbertas) {
+    const cliente = clientes.find((c) => c.id === ocorrencia.cliente_id);
+    if (cliente) itens.push(itemDeOcorrencia(ocorrencia, cliente));
+  }
 
   for (const cliente of clientes) {
     const vendas = mapeamentosVendas.find((m) => m.cliente_id === cliente.id) ?? null;
