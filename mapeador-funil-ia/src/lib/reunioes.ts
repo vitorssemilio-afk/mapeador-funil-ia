@@ -28,6 +28,11 @@ export const STATUS_REUNIAO_LABELS: Record<StatusReuniao, string> = {
   cancelada: 'Cancelada',
 };
 
+export const ORIGEM_REUNIAO_LABELS: Record<Reuniao['origem'], string> = {
+  manual: 'Cadastrado manualmente',
+  google_calendar: 'Sincronizado do Google Calendar',
+};
+
 export const STATUS_REUNIAO_TONE: Record<StatusReuniao, 'warning' | 'info' | 'success' | 'danger'> = {
   nao_agendada: 'warning',
   agendada: 'info',

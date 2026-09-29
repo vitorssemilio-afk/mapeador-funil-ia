@@ -1548,6 +1548,7 @@ export function ClienteDetalhe() {
                   <th>Título</th>
                   <th>Data</th>
                   <th>Status</th>
+                  <th>Google Meet</th>
                   <th>Consultor responsável</th>
                 </tr>
               </thead>
@@ -1555,12 +1556,31 @@ export function ClienteDetalhe() {
                 {reunioes.map((r) => (
                   <tr key={r.id}>
                     <td>{TIPO_REUNIAO_LABELS[r.tipo]}</td>
-                    <td>{r.titulo ?? '—'}</td>
+                    <td>
+                      {r.titulo ?? '—'}
+                      {r.origem === 'google_calendar' && (
+                        <>
+                          {' '}
+                          <span className="status-badge status-tone-info" title="Sincronizado do Google Calendar">
+                            Google Calendar
+                          </span>
+                        </>
+                      )}
+                    </td>
                     <td>{r.data_hora ? formatarDataHora(r.data_hora) : 'Não agendada'}</td>
                     <td>
                       <span className={`status-badge status-tone-${STATUS_REUNIAO_TONE[r.status]}`}>
                         {STATUS_REUNIAO_LABELS[r.status]}
                       </span>
+                    </td>
+                    <td>
+                      {r.google_meet_link ? (
+                        <a href={r.google_meet_link} target="_blank" rel="noopener noreferrer">
+                          Abrir
+                        </a>
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td>{nomeConsultor(r.consultor_responsavel_id, consultores) ?? '—'}</td>
                   </tr>
