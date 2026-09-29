@@ -20,6 +20,7 @@ import type {
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
+  Reuniao,
 } from '../types/database';
 
 const SAUDE_ORDEM: SaudeCliente[] = ['critico', 'atencao', 'aguardando_cliente', 'normal', 'concluido'];
@@ -36,6 +37,7 @@ export function Dashboard() {
   const [statusRows, setStatusRows] = useState<AtividadeStatusRow[]>([]);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
+  const [reunioes, setReunioes] = useState<Reuniao[]>([]);
 
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('');
@@ -65,6 +67,7 @@ export function Dashboard() {
         { data: statusRowsData },
         { data: consultoresData },
         { data: ocorrenciasData },
+        { data: reunioesData },
       ] = await Promise.all([
         supabase.from('clientes').select('*'),
         supabase.from('mapeamentos').select('*'),
@@ -74,6 +77,7 @@ export function Dashboard() {
         supabase.from('atividades_status').select('*'),
         supabase.from('consultores').select('*').order('nome', { ascending: true }),
         supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
+        supabase.from('reunioes').select('*'),
       ]);
 
       if (cancelled) return;
@@ -92,6 +96,7 @@ export function Dashboard() {
       setStatusRows(statusRowsData ?? []);
       setConsultores(consultoresData ?? []);
       setOcorrenciasAbertas(ocorrenciasData ?? []);
+      setReunioes(reunioesData ?? []);
       setLoading(false);
     }
 
@@ -117,8 +122,8 @@ export function Dashboard() {
   );
 
   const alertas = useMemo(
-    () => construirAlertas(resumos, hoje, ocorrenciasAbertas),
-    [resumos, hoje, ocorrenciasAbertas],
+    () => construirAlertas(resumos, hoje, ocorrenciasAbertas, reunioes),
+    [resumos, hoje, ocorrenciasAbertas, reunioes],
   );
 
   const itensHoje = useMemo(

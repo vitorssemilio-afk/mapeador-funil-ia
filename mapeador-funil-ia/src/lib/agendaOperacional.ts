@@ -6,6 +6,7 @@
 import { resolverAtividade, resolverMarcoAgendavel, type AtividadeResolvida } from './atividadesCronograma';
 import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
 import { nomeConsultor } from './operacaoResumo';
+import { alertaReuniaoObrigatoria, STATUS_REUNIAO_LABELS, TIPO_REUNIAO_LABELS, TIPOS_REUNIAO_OBRIGATORIOS } from './reunioes';
 import { MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
 import { resolverResumoTrialKommo } from './trialKommo';
 import type {
@@ -17,6 +18,7 @@ import type {
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
+  Reuniao,
 } from '../types/database';
 
 export type TipoItemAgenda =
@@ -283,6 +285,81 @@ function itemDeOcorrencia(ocorrencia: ClienteOcorrencia, cliente: Cliente): Item
   };
 }
 
+// checkin_1/checkin_2/reunião final — Kickoff/Treinamento continuam vindo de
+// resolverMarcoAgendavel (ver acima), essas 3 vêm direto da tabela reunioes.
+const TIPOS_REUNIAO_AGENDA: Reuniao['tipo'][] = ['checkin_1', 'checkin_2', 'reuniao_final'];
+
+function itensDeReunioesEstruturadas(
+  reunioesDoCliente: Reuniao[],
+  cliente: Cliente,
+  implementacao: ImplementacaoCrm,
+  consultores: Consultor[],
+): ItemAgendaOperacional[] {
+  const itens: ItemAgendaOperacional[] = [];
+
+  for (const tipo of TIPOS_REUNIAO_AGENDA) {
+    const reuniao = reunioesDoCliente.find((r) => r.tipo === tipo);
+    if (!reuniao || !reuniao.data_hora || reuniao.status !== 'agendada') continue;
+
+    const titulo = TIPO_REUNIAO_LABELS[tipo];
+    itens.push({
+      id: `reuniao:${reuniao.id}`,
+      clienteId: cliente.id,
+      clienteNome: cliente.nome_empresa,
+      tipo: 'reuniao',
+      titulo,
+      responsavel: nomeConsultor(reuniao.consultor_responsavel_id ?? implementacao.consultor_responsavel_id, consultores),
+      data: new Date(reuniao.data_hora),
+      aguardando: null,
+      status: STATUS_REUNIAO_LABELS[reuniao.status],
+      acaoRecomendada: `Confirmar ${titulo.toLowerCase()}`,
+      atrasado: false,
+      implementacaoId: implementacao.id,
+      atividadeId: null,
+    });
+  }
+
+  return itens;
+}
+
+function itensDeAlertaReuniaoObrigatoria(
+  reunioesDoCliente: Reuniao[],
+  cliente: Cliente,
+  implementacao: ImplementacaoCrm,
+  consultores: Consultor[],
+  hoje: Date,
+): ItemAgendaOperacional[] {
+  const itens: ItemAgendaOperacional[] = [];
+
+  for (const tipo of TIPOS_REUNIAO_OBRIGATORIOS) {
+    const alerta = alertaReuniaoObrigatoria({
+      tipo,
+      reunioesDoTipo: reunioesDoCliente.filter((r) => r.tipo === tipo),
+      kickoffRealizadoEm: cliente.kickoff_realizado_em,
+      hoje,
+    });
+    if (!alerta) continue;
+
+    itens.push({
+      id: `alerta-reuniao:${cliente.id}:${tipo}`,
+      clienteId: cliente.id,
+      clienteNome: cliente.nome_empresa,
+      tipo: 'alerta',
+      titulo: alerta.titulo,
+      responsavel: nomeConsultor(implementacao.consultor_responsavel_id, consultores),
+      data: null,
+      aguardando: null,
+      status: `${alerta.diasRestantesNoCiclo}d restantes no ciclo`,
+      acaoRecomendada: `Agendar ${TIPO_REUNIAO_LABELS[tipo].toLowerCase()}`,
+      atrasado: false,
+      implementacaoId: implementacao.id,
+      atividadeId: null,
+    });
+  }
+
+  return itens;
+}
+
 export function construirAgendaOperacional(params: {
   clientes: Cliente[];
   mapeamentosVendas: Mapeamento[];
@@ -292,6 +369,7 @@ export function construirAgendaOperacional(params: {
   historico: ImplementacaoStatusHistorico[];
   consultores: Consultor[];
   ocorrenciasAbertas?: ClienteOcorrencia[];
+  reunioes?: Reuniao[];
   hoje: Date;
 }): ItemAgendaOperacional[] {
   const {
@@ -303,6 +381,7 @@ export function construirAgendaOperacional(params: {
     historico,
     consultores,
     ocorrenciasAbertas = [],
+    reunioes = [],
     hoje,
   } = params;
 
@@ -371,6 +450,10 @@ export function construirAgendaOperacional(params: {
     });
     const itemTreinamento = itemDeAtividade(treinamento, cliente, implementacao, consultores);
     if (itemTreinamento) itens.push(itemTreinamento);
+
+    const reunioesDoCliente = reunioes.filter((r) => r.cliente_id === cliente.id);
+    itens.push(...itensDeReunioesEstruturadas(reunioesDoCliente, cliente, implementacao, consultores));
+    itens.push(...itensDeAlertaReuniaoObrigatoria(reunioesDoCliente, cliente, implementacao, consultores, hoje));
 
     itens.push(...itensDeTrial(cliente, implementacao, consultores, hoje));
 
