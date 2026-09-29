@@ -9,7 +9,6 @@ type FormConsultor = {
   cargo: string;
   avatar_url: string;
   ativo: boolean;
-  google_calendar_id: string;
 };
 
 const FORM_VAZIO: FormConsultor = {
@@ -19,7 +18,6 @@ const FORM_VAZIO: FormConsultor = {
   cargo: '',
   avatar_url: '',
   ativo: true,
-  google_calendar_id: '',
 };
 
 function paraForm(consultor: Consultor): FormConsultor {
@@ -30,7 +28,6 @@ function paraForm(consultor: Consultor): FormConsultor {
     cargo: consultor.cargo ?? '',
     avatar_url: consultor.avatar_url ?? '',
     ativo: consultor.ativo,
-    google_calendar_id: consultor.google_calendar_id ?? '',
   };
 }
 
@@ -48,22 +45,6 @@ export function Consultores() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [form, setForm] = useState<FormConsultor>(FORM_VAZIO);
-
-  // E-mail da conta de serviço usada pra ler o Google Calendar de cada
-  // consultor — não é segredo (é só o que se compartilha com qualquer app),
-  // só a chave privada é sensível e nunca chega no front-end.
-  const [emailContaServico, setEmailContaServico] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.functions
-      .invoke<{ email?: string; error?: string }>('google-calendar-service-account-email')
-      .then(({ data }) => {
-        if (data?.email) setEmailContaServico(data.email);
-      })
-      .catch(() => {
-        // Instrução de compartilhamento fica sem o e-mail pré-preenchido; não é bloqueante.
-      });
-  }, []);
 
   async function carregar() {
     setLoading(true);
@@ -115,7 +96,6 @@ export function Consultores() {
       cargo: form.cargo.trim() || null,
       avatar_url: form.avatar_url.trim() || null,
       ativo: form.ativo,
-      google_calendar_id: form.google_calendar_id.trim() || null,
     };
 
     const { error: saveError } = editandoId
@@ -229,22 +209,6 @@ export function Consultores() {
                 placeholder="https://..."
               />
             </label>
-            <label className="field">
-              <span>ID do Google Calendar (opcional)</span>
-              <input
-                type="text"
-                value={form.google_calendar_id}
-                onChange={(e) => setForm({ ...form, google_calendar_id: e.target.value })}
-                placeholder="nome@gmail.com"
-              />
-              <span className="field-hint">
-                Normalmente é o próprio e-mail da conta Google do consultor. Antes de preencher, ele
-                precisa compartilhar esse calendário com{' '}
-                {emailContaServico ? <code>{emailContaServico}</code> : 'a conta de serviço do sistema'} —
-                em Configurações do Google Calendar → Compartilhar com pessoas específicas → "Ver todos
-                os detalhes do evento". Sem isso, as reuniões desse consultor não são sincronizadas.
-              </span>
-            </label>
           </div>
           <label className="option-checkbox">
             <input
@@ -286,7 +250,6 @@ export function Consultores() {
                 <th>E-mail</th>
                 <th>Telefone</th>
                 <th>Cargo</th>
-                <th>Google Calendar</th>
                 <th>Status</th>
                 <th />
               </tr>
@@ -309,17 +272,6 @@ export function Consultores() {
                   <td>{c.email}</td>
                   <td>{c.telefone ?? '—'}</td>
                   <td>{c.cargo ?? '—'}</td>
-                  <td>
-                    {c.google_calendar_id ? (
-                      <span className="status-badge status-tone-success" title={c.google_calendar_id}>
-                        Conectado
-                        {c.google_calendar_sincronizado_em &&
-                          ` · sinc. ${new Date(c.google_calendar_sincronizado_em).toLocaleString('pt-BR')}`}
-                      </span>
-                    ) : (
-                      <span className="status-badge status-tone-warning">Não conectado</span>
-                    )}
-                  </td>
                   <td>
                     <span className={`status-badge status-tone-${c.ativo ? 'success' : 'danger'}`}>
                       {c.ativo ? 'Ativo' : 'Inativo'}
