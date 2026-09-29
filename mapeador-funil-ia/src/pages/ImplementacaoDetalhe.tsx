@@ -23,6 +23,11 @@ import {
   STATUS_CRITERIO_LABELS,
   STATUS_CRITERIO_TONE,
 } from '../lib/criteriosEntrega';
+import {
+  resolverDiagnosticoAdocao,
+  STATUS_DIAGNOSTICO_LABELS,
+  STATUS_DIAGNOSTICO_TONE,
+} from '../lib/diagnosticoAdocao';
 import { aprovarVersaoAtual } from '../lib/funilVersoes';
 import { nomeConsultor } from '../lib/operacaoResumo';
 import {
@@ -52,6 +57,9 @@ import { supabase } from '../lib/supabaseClient';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
+  AtividadesForaKommoCheckpoint,
+  AutonomiaEquipeCheckpoint,
+  CheckpointAcompanhamento,
   CheckpointAdocao,
   Cliente,
   ConfiguracaoPipefy,
@@ -71,6 +79,7 @@ import type {
   ImpactoResponsavel,
   ImplementacaoConsultorHistorico,
   MarcoRemarcacao,
+  PercentualProcessoKommo,
   Reuniao,
   ReuniaoRemarcacao,
   StatusContratacaoKommo,
@@ -78,6 +87,7 @@ import type {
   StatusReuniao,
   TipoReuniao,
   UsoDiarioCheckpoint,
+  UsoRelatoriosDecisaoCheckpoint,
 } from '../types/database';
 
 type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes';
@@ -193,6 +203,35 @@ const INTENCAO_MANUTENCAO_LABELS: Record<IntencaoManutencaoCheckpoint, string> =
   nao: 'Não',
 };
 
+const PERCENTUAL_PROCESSO_LABELS: Record<PercentualProcessoKommo, string> = {
+  praticamente_tudo: 'Praticamente tudo',
+  maior_parte: 'A maior parte',
+  cerca_metade: 'Cerca da metade',
+  pouco: 'Pouco',
+  quase_nada: 'Quase nada',
+};
+
+const AUTONOMIA_EQUIPE_LABELS: Record<AutonomiaEquipeCheckpoint, string> = {
+  sim_totalmente: 'Sim, totalmente',
+  maior_parte_vezes: 'Na maior parte das vezes',
+  precisamos_ajuda_frequente: 'Ainda precisamos de ajuda com frequência',
+  nao_conseguimos_sem_ajuda: 'Não conseguimos operar sem ajuda',
+};
+
+const USO_RELATORIOS_DECISAO_LABELS: Record<UsoRelatoriosDecisaoCheckpoint, string> = {
+  sim_mais_uma_vez: 'Sim, mais de uma vez',
+  sim_uma_vez: 'Sim, uma vez',
+  ainda_nao: 'Ainda não',
+  nao_sei_utilizar: 'Não sei utilizar os relatórios',
+};
+
+const ATIVIDADES_FORA_KOMMO_LABELS: Record<AtividadesForaKommoCheckpoint, string> = {
+  nao_tudo_no_kommo: 'Não, praticamente tudo está no Kommo',
+  sim_algumas: 'Sim, algumas atividades',
+  sim_varias: 'Sim, várias atividades',
+  voltou_processo_antigo: 'A equipe praticamente voltou ao processo antigo',
+};
+
 type FormGeral = {
   nome_cliente: string;
   consultor_responsavel_id: string;
@@ -277,6 +316,9 @@ export function ImplementacaoDetalhe() {
   const [credencialKommoMeta, setCredencialKommoMeta] = useState<CredencialApiKommoMeta | null>(null);
   const [historicoStatus, setHistoricoStatus] = useState<ImplementacaoStatusHistorico[]>([]);
   const [checkpointAdocao, setCheckpointAdocao] = useState<CheckpointAdocao | null>(null);
+  const [checkpointAcompanhamentos, setCheckpointAcompanhamentos] = useState<CheckpointAcompanhamento[]>([]);
+  const [novoAcompanhamento, setNovoAcompanhamento] = useState('');
+  const [salvandoAcompanhamento, setSalvandoAcompanhamento] = useState(false);
   const [linkCheckpointCopiado, setLinkCheckpointCopiado] = useState(false);
   const [aba, setAba] = useState<Aba>('geral');
   const [mapeamentoOrigem, setMapeamentoOrigem] = useState<Pick<
@@ -500,6 +542,7 @@ export function ImplementacaoDetalhe() {
       { data: historicoConsultorData },
       { data: criteriosData },
       { data: criteriosStatusData },
+      { data: checkpointAcompanhamentosData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -529,6 +572,11 @@ export function ImplementacaoDetalhe() {
         .order('alterado_em', { ascending: false }),
       supabase.from('criterios_entrega').select('*').order('ordem', { ascending: true }),
       supabase.from('criterios_entrega_status').select('*').eq('implementacao_id', implementacaoId),
+      supabase
+        .from('checkpoint_acompanhamentos')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('created_at', { ascending: false }),
     ]);
 
     setPipefyConfig(pipefyData ?? null);
@@ -536,6 +584,7 @@ export function ImplementacaoDetalhe() {
     setHistoricoConsultor(historicoConsultorData ?? []);
     setCriterios(criteriosData ?? []);
     setCriteriosStatus(criteriosStatusData ?? []);
+    setCheckpointAcompanhamentos(checkpointAcompanhamentosData ?? []);
 
     if (implError) {
       setError(implError.message);
@@ -1640,6 +1689,31 @@ export function ImplementacaoDetalhe() {
     await navigator.clipboard.writeText(link);
     setLinkCheckpointCopiado(true);
     setTimeout(() => setLinkCheckpointCopiado(false), 2000);
+  }
+
+  async function handleRegistrarAcompanhamento(e: FormEvent) {
+    e.preventDefault();
+    if (!implementacao || !novoAcompanhamento.trim()) return;
+
+    setSalvandoAcompanhamento(true);
+    const { data, error: insertError } = await supabase
+      .from('checkpoint_acompanhamentos')
+      .insert({
+        implementacao_id: implementacao.id,
+        descricao: novoAcompanhamento.trim(),
+        autor_email: user?.email ?? null,
+      })
+      .select()
+      .single();
+    setSalvandoAcompanhamento(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    setCheckpointAcompanhamentos((prev) => [data, ...prev]);
+    setNovoAcompanhamento('');
   }
 
   async function handleCriarFunilNoKommo(funil: FunilGerado) {
@@ -2927,39 +3001,144 @@ export function ImplementacaoDetalhe() {
             </>
           )}
 
-          {checkpointAdocao && (
-            <>
-              {checkpointAdocao.risco_churn && (
-                <p className="form-error">
-                  Sinal de risco de churn: o cliente respondeu que voltou a usar planilha/WhatsApp
-                  em paralelo ao Kommo. Vale acionar o comercial ou reforçar o acompanhamento.
-                </p>
-              )}
+          {checkpointAdocao &&
+            (() => {
+              const diagnostico = resolverDiagnosticoAdocao(checkpointAdocao);
+              return (
+                <>
+                  {checkpointAdocao.risco_churn && (
+                    <p className="form-error">
+                      Sinal de risco de churn: o cliente respondeu que voltou a usar planilha/WhatsApp
+                      em paralelo ao Kommo. Vale acionar o comercial ou reforçar o acompanhamento.
+                    </p>
+                  )}
 
-              <ul className="historico-status-lista">
-                <li className="historico-status-item">
-                  <span className="historico-status-data">Uso diário</span>
-                  <span>{USO_DIARIO_LABELS[checkpointAdocao.uso_diario]}</span>
-                </li>
-                <li className="historico-status-item">
-                  <span className="historico-status-data">Frequência de uso dos relatórios</span>
-                  <span>{FREQUENCIA_USO_LABELS[checkpointAdocao.frequencia_uso]}</span>
-                </li>
-                <li className="historico-status-item">
-                  <span className="historico-status-data">Obstáculo relatado</span>
-                  <span>{checkpointAdocao.obstaculo || '—'}</span>
-                </li>
-                <li className="historico-status-item">
-                  <span className="historico-status-data">Contrataria manutenção?</span>
-                  <span>{INTENCAO_MANUTENCAO_LABELS[checkpointAdocao.intencao_manutencao]}</span>
-                </li>
-                <li className="historico-status-item">
-                  <span className="historico-status-data">Respondido em</span>
-                  <span>{new Date(checkpointAdocao.respondido_em).toLocaleString('pt-BR')}</span>
-                </li>
-              </ul>
-            </>
-          )}
+                  <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                    <h3 style={{ marginBottom: 0 }}>Adoção</h3>
+                    <span className={`status-badge status-tone-${STATUS_DIAGNOSTICO_TONE[diagnostico.status]}`}>
+                      {STATUS_DIAGNOSTICO_LABELS[diagnostico.status]}
+                    </span>
+                  </div>
+                  <p className="field-hint">
+                    <strong>Principais sinais:</strong>
+                  </p>
+                  <ul className="observacoes-lista">
+                    {diagnostico.sinais.map((sinal, i) => (
+                      <li key={i} className="field-hint">
+                        {sinal}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="field-hint">
+                    <strong>Recomendações:</strong>
+                  </p>
+                  <ul className="observacoes-lista">
+                    {diagnostico.recomendacoes.map((rec, i) => (
+                      <li key={i} className="field-hint">
+                        {rec}
+                      </li>
+                    ))}
+                  </ul>
+
+                  <h3>Respostas</h3>
+                  <ul className="historico-status-lista">
+                    <li className="historico-status-item">
+                      <span className="historico-status-data">Data do Checkpoint</span>
+                      <span>{new Date(checkpointAdocao.respondido_em).toLocaleString('pt-BR')}</span>
+                    </li>
+                    <li className="historico-status-item">
+                      <span className="historico-status-data">Uso diário</span>
+                      <span>{USO_DIARIO_LABELS[checkpointAdocao.uso_diario]}</span>
+                    </li>
+                    <li className="historico-status-item">
+                      <span className="historico-status-data">Frequência de uso dos relatórios</span>
+                      <span>{FREQUENCIA_USO_LABELS[checkpointAdocao.frequencia_uso]}</span>
+                    </li>
+                    <li className="historico-status-item">
+                      <span className="historico-status-data">Obstáculo relatado</span>
+                      <span>{checkpointAdocao.obstaculo || '—'}</span>
+                    </li>
+                    <li className="historico-status-item">
+                      <span className="historico-status-data">Contrataria manutenção?</span>
+                      <span>{INTENCAO_MANUTENCAO_LABELS[checkpointAdocao.intencao_manutencao]}</span>
+                    </li>
+                    {checkpointAdocao.percentual_processo_kommo && (
+                      <li className="historico-status-item">
+                        <span className="historico-status-data">% do processo dentro do Kommo</span>
+                        <span>{PERCENTUAL_PROCESSO_LABELS[checkpointAdocao.percentual_processo_kommo]}</span>
+                      </li>
+                    )}
+                    {checkpointAdocao.autonomia_equipe && (
+                      <li className="historico-status-item">
+                        <span className="historico-status-data">Autonomia da equipe</span>
+                        <span>{AUTONOMIA_EQUIPE_LABELS[checkpointAdocao.autonomia_equipe]}</span>
+                      </li>
+                    )}
+                    {checkpointAdocao.uso_relatorios_decisao && (
+                      <li className="historico-status-item">
+                        <span className="historico-status-data">Usou relatório para decisão</span>
+                        <span>{USO_RELATORIOS_DECISAO_LABELS[checkpointAdocao.uso_relatorios_decisao]}</span>
+                      </li>
+                    )}
+                    {checkpointAdocao.atividades_fora_kommo && (
+                      <li className="historico-status-item">
+                        <span className="historico-status-data">Atividades fora do Kommo</span>
+                        <span>{ATIVIDADES_FORA_KOMMO_LABELS[checkpointAdocao.atividades_fora_kommo]}</span>
+                      </li>
+                    )}
+                    {checkpointAdocao.quais_atividades_fora_kommo && (
+                      <li className="historico-status-item">
+                        <span className="historico-status-data">Quais atividades</span>
+                        <span>{checkpointAdocao.quais_atividades_fora_kommo}</span>
+                      </li>
+                    )}
+                    {checkpointAdocao.principal_dificuldade && (
+                      <li className="historico-status-item">
+                        <span className="historico-status-data">Principal dificuldade</span>
+                        <span>{checkpointAdocao.principal_dificuldade}</span>
+                      </li>
+                    )}
+                  </ul>
+
+                  <h3>Ações de acompanhamento</h3>
+                  <form onSubmit={handleRegistrarAcompanhamento} className="card form-card">
+                    <label className="field">
+                      <span>Registrar ação após analisar as respostas</span>
+                      <textarea
+                        rows={2}
+                        value={novoAcompanhamento}
+                        onChange={(e) => setNovoAcompanhamento(e.target.value)}
+                        placeholder="Ex: liguei pro cliente pra reforçar o treinamento de relatórios"
+                      />
+                    </label>
+                    <div className="wizard-actions">
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-auto"
+                        disabled={salvandoAcompanhamento || !novoAcompanhamento.trim()}
+                      >
+                        {salvandoAcompanhamento ? 'Salvando…' : 'Registrar ação'}
+                      </button>
+                    </div>
+                  </form>
+                  {checkpointAcompanhamentos.length > 0 && (
+                    <ul className="observacoes-lista">
+                      {checkpointAcompanhamentos.map((a) => (
+                        <li key={a.id} className="observacao-item">
+                          <div className="observacao-item-header">
+                            <span className="observacao-item-meta">
+                              {new Date(a.created_at).toLocaleString('pt-BR')}
+                              {a.autor_email ? ` · ${a.autor_email}` : ''}
+                            </span>
+                          </div>
+                          <p className="observacao-item-texto">{a.descricao}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              );
+            })()}
         </section>
       )}
 

@@ -11,10 +11,16 @@ import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
 import { construirResumoClientes, nomeConsultor, SAUDE_LABELS, type SaudeCliente } from '../lib/operacaoResumo';
 import { STATUS_REUNIAO_LABELS, STATUS_REUNIAO_TONE, TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
+import {
+  resolverDiagnosticoAdocao,
+  STATUS_DIAGNOSTICO_LABELS,
+  STATUS_DIAGNOSTICO_TONE,
+} from '../lib/diagnosticoAdocao';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
   CategoriaOcorrencia,
+  CheckpointAdocao,
   Cliente,
   ClienteArquivo,
   ClienteContato,
@@ -222,6 +228,7 @@ export function ClienteDetalhe() {
   const [formMarcos, setFormMarcos] = useState<FormMarcos | null>(null);
   const [salvandoMarcos, setSalvandoMarcos] = useState(false);
   const [checkpointRespondidoEm, setCheckpointRespondidoEm] = useState<string | null>(null);
+  const [checkpointAdocao, setCheckpointAdocao] = useState<CheckpointAdocao | null>(null);
 
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
@@ -381,10 +388,11 @@ export function ClienteDetalhe() {
     if (implementacaoData) {
       const { data: checkpointData } = await supabase
         .from('checkpoints_adocao')
-        .select('respondido_em')
+        .select('*')
         .eq('implementacao_id', implementacaoData.id)
         .maybeSingle();
       setCheckpointRespondidoEm(checkpointData?.respondido_em ?? null);
+      setCheckpointAdocao(checkpointData ?? null);
 
       const [{ data: atividadesData }, { data: statusData }] = await Promise.all([
         supabase
@@ -1237,6 +1245,38 @@ export function ClienteDetalhe() {
             <button type="button" className="btn btn-secondary btn-auto" onClick={() => setAba('trial')}>
               Ver Trial Kommo
             </button>
+          </section>
+
+          <section className="card">
+            <span className="etapa-card-label">Adoção</span>
+            {checkpointAdocao ? (
+              (() => {
+                const diagnostico = resolverDiagnosticoAdocao(checkpointAdocao);
+                return (
+                  <>
+                    <p>
+                      <span className={`status-badge status-tone-${STATUS_DIAGNOSTICO_TONE[diagnostico.status]}`}>
+                        {STATUS_DIAGNOSTICO_LABELS[diagnostico.status]}
+                      </span>
+                    </p>
+                    <ul className="observacoes-lista">
+                      {diagnostico.sinais.slice(0, 3).map((sinal, i) => (
+                        <li key={i} className="field-hint">
+                          {sinal}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                );
+              })()
+            ) : (
+              <p className="field-hint">Checkpoint de 30 dias ainda não respondido.</p>
+            )}
+            {implementacao && (
+              <Link to={`/implementacoes/${implementacao.id}`} className="btn btn-secondary btn-auto">
+                Ver Indicadores de Adoção
+              </Link>
+            )}
           </section>
 
           <section className="card">

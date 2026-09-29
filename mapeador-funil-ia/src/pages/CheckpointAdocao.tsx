@@ -2,10 +2,14 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import type {
+  AtividadesForaKommoCheckpoint,
+  AutonomiaEquipeCheckpoint,
   CheckpointPublico,
   FrequenciaUsoCheckpoint,
   IntencaoManutencaoCheckpoint,
+  PercentualProcessoKommo,
   UsoDiarioCheckpoint,
+  UsoRelatoriosDecisaoCheckpoint,
 } from '../types/database';
 
 const OPCOES_USO_DIARIO: { value: UsoDiarioCheckpoint; label: string }[] = [
@@ -27,6 +31,35 @@ const OPCOES_INTENCAO: { value: IntencaoManutencaoCheckpoint; label: string }[] 
   { value: 'nao', label: 'Não' },
 ];
 
+const OPCOES_PERCENTUAL: { value: PercentualProcessoKommo; label: string }[] = [
+  { value: 'praticamente_tudo', label: 'Praticamente tudo' },
+  { value: 'maior_parte', label: 'A maior parte' },
+  { value: 'cerca_metade', label: 'Cerca da metade' },
+  { value: 'pouco', label: 'Pouco' },
+  { value: 'quase_nada', label: 'Quase nada' },
+];
+
+const OPCOES_AUTONOMIA: { value: AutonomiaEquipeCheckpoint; label: string }[] = [
+  { value: 'sim_totalmente', label: 'Sim, totalmente' },
+  { value: 'maior_parte_vezes', label: 'Na maior parte das vezes' },
+  { value: 'precisamos_ajuda_frequente', label: 'Ainda precisamos de ajuda com frequência' },
+  { value: 'nao_conseguimos_sem_ajuda', label: 'Não conseguimos operar sem ajuda' },
+];
+
+const OPCOES_USO_RELATORIOS: { value: UsoRelatoriosDecisaoCheckpoint; label: string }[] = [
+  { value: 'sim_mais_uma_vez', label: 'Sim, mais de uma vez' },
+  { value: 'sim_uma_vez', label: 'Sim, uma vez' },
+  { value: 'ainda_nao', label: 'Ainda não' },
+  { value: 'nao_sei_utilizar', label: 'Não sei utilizar os relatórios' },
+];
+
+const OPCOES_ATIVIDADES_FORA: { value: AtividadesForaKommoCheckpoint; label: string }[] = [
+  { value: 'nao_tudo_no_kommo', label: 'Não, praticamente tudo está no Kommo' },
+  { value: 'sim_algumas', label: 'Sim, algumas atividades' },
+  { value: 'sim_varias', label: 'Sim, várias atividades' },
+  { value: 'voltou_processo_antigo', label: 'A equipe praticamente voltou ao processo antigo' },
+];
+
 export function CheckpointAdocao() {
   const { codigo } = useParams<{ codigo: string }>();
   const [checkpoint, setCheckpoint] = useState<CheckpointPublico | null>(null);
@@ -39,6 +72,12 @@ export function CheckpointAdocao() {
   const [frequenciaUso, setFrequenciaUso] = useState<FrequenciaUsoCheckpoint | ''>('');
   const [obstaculo, setObstaculo] = useState('');
   const [intencaoManutencao, setIntencaoManutencao] = useState<IntencaoManutencaoCheckpoint | ''>('');
+  const [percentualProcesso, setPercentualProcesso] = useState<PercentualProcessoKommo | ''>('');
+  const [autonomiaEquipe, setAutonomiaEquipe] = useState<AutonomiaEquipeCheckpoint | ''>('');
+  const [usoRelatoriosDecisao, setUsoRelatoriosDecisao] = useState<UsoRelatoriosDecisaoCheckpoint | ''>('');
+  const [atividadesForaKommo, setAtividadesForaKommo] = useState<AtividadesForaKommoCheckpoint | ''>('');
+  const [quaisAtividadesFora, setQuaisAtividadesFora] = useState('');
+  const [principalDificuldade, setPrincipalDificuldade] = useState('');
 
   useEffect(() => {
     const tituloAnterior = document.title;
@@ -80,9 +119,18 @@ export function CheckpointAdocao() {
     };
   }, [codigo]);
 
+  const formCompleto =
+    !!usoDiario &&
+    !!frequenciaUso &&
+    !!intencaoManutencao &&
+    !!percentualProcesso &&
+    !!autonomiaEquipe &&
+    !!usoRelatoriosDecisao &&
+    !!atividadesForaKommo;
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!codigo || !usoDiario || !frequenciaUso || !intencaoManutencao) return;
+    if (!codigo || !formCompleto) return;
 
     setEnviando(true);
     setError(null);
@@ -93,6 +141,12 @@ export function CheckpointAdocao() {
       p_frequencia_uso: frequenciaUso,
       p_obstaculo: obstaculo || null,
       p_intencao_manutencao: intencaoManutencao,
+      p_percentual_processo_kommo: percentualProcesso,
+      p_autonomia_equipe: autonomiaEquipe,
+      p_uso_relatorios_decisao: usoRelatoriosDecisao,
+      p_atividades_fora_kommo: atividadesForaKommo,
+      p_quais_atividades_fora_kommo: atividadesForaKommo !== 'nao_tudo_no_kommo' ? quaisAtividadesFora || null : null,
+      p_principal_dificuldade: principalDificuldade || null,
     });
 
     setEnviando(false);
@@ -212,12 +266,110 @@ export function CheckpointAdocao() {
                   </div>
                 </fieldset>
 
+                <fieldset className="field">
+                  <legend>Hoje, aproximadamente quanto do processo comercial acontece dentro do Kommo?</legend>
+                  <div className="options-list">
+                    {OPCOES_PERCENTUAL.map((opcao) => (
+                      <label key={opcao.value} className="option-radio">
+                        <input
+                          type="radio"
+                          name="percentual_processo"
+                          value={opcao.value}
+                          checked={percentualProcesso === opcao.value}
+                          onChange={() => setPercentualProcesso(opcao.value)}
+                          required
+                        />
+                        <span>{opcao.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+                <fieldset className="field">
+                  <legend>
+                    Hoje sua equipe consegue realizar as atividades do dia a dia no Kommo sem
+                    precisar pedir ajuda ao consultor?
+                  </legend>
+                  <div className="options-list">
+                    {OPCOES_AUTONOMIA.map((opcao) => (
+                      <label key={opcao.value} className="option-radio">
+                        <input
+                          type="radio"
+                          name="autonomia_equipe"
+                          value={opcao.value}
+                          checked={autonomiaEquipe === opcao.value}
+                          onChange={() => setAutonomiaEquipe(opcao.value)}
+                          required
+                        />
+                        <span>{opcao.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+                <fieldset className="field">
+                  <legend>
+                    Nos últimos 30 dias, você utilizou algum relatório do Kommo para tomar uma
+                    decisão sobre vendas, equipe ou leads?
+                  </legend>
+                  <div className="options-list">
+                    {OPCOES_USO_RELATORIOS.map((opcao) => (
+                      <label key={opcao.value} className="option-radio">
+                        <input
+                          type="radio"
+                          name="uso_relatorios_decisao"
+                          value={opcao.value}
+                          checked={usoRelatoriosDecisao === opcao.value}
+                          onChange={() => setUsoRelatoriosDecisao(opcao.value)}
+                          required
+                        />
+                        <span>{opcao.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+                <fieldset className="field">
+                  <legend>Existem atividades que sua equipe voltou a fazer fora do Kommo?</legend>
+                  <div className="options-list">
+                    {OPCOES_ATIVIDADES_FORA.map((opcao) => (
+                      <label key={opcao.value} className="option-radio">
+                        <input
+                          type="radio"
+                          name="atividades_fora_kommo"
+                          value={opcao.value}
+                          checked={atividadesForaKommo === opcao.value}
+                          onChange={() => setAtividadesForaKommo(opcao.value)}
+                          required
+                        />
+                        <span>{opcao.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+                {atividadesForaKommo && atividadesForaKommo !== 'nao_tudo_no_kommo' && (
+                  <label className="field">
+                    <span>Quais atividades ainda estão sendo feitas fora do Kommo?</span>
+                    <textarea
+                      rows={2}
+                      value={quaisAtividadesFora}
+                      onChange={(e) => setQuaisAtividadesFora(e.target.value)}
+                    />
+                  </label>
+                )}
+
+                <label className="field">
+                  <span>Qual é hoje a principal dificuldade da equipe com o CRM? (opcional)</span>
+                  <textarea
+                    rows={3}
+                    value={principalDificuldade}
+                    onChange={(e) => setPrincipalDificuldade(e.target.value)}
+                  />
+                </label>
+
                 <div className="wizard-actions">
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={enviando || !usoDiario || !frequenciaUso || !intencaoManutencao}
-                  >
+                  <button type="submit" className="btn btn-primary" disabled={enviando || !formCompleto}>
                     {enviando ? 'Enviando…' : 'Enviar respostas'}
                   </button>
                 </div>
