@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { atividadesDaAgenda, type ItemAgenda } from '../lib/agendaImplementacao';
 import { supabase } from '../lib/supabaseClient';
+import { resolverResumoTrialKommo } from '../lib/trialKommo';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
@@ -132,6 +133,15 @@ export function Agenda() {
     [implementacoes, atividades, statusRows, clientes, historico, diaSelecionado],
   );
 
+  const alertasTrial = useMemo(() => {
+    const hoje = inicioDoDia(new Date());
+    return clientes
+      .map((c) => ({ cliente: c, resumo: resolverResumoTrialKommo(c, hoje) }))
+      .filter((x): x is { cliente: Cliente; resumo: NonNullable<ReturnType<typeof resolverResumoTrialKommo>> } =>
+        !!x.resumo?.precisaAlerta,
+      );
+  }, [clientes]);
+
   const agrupadoPorCliente = useMemo(() => {
     const grupos = new Map<string, ItemAgenda[]>();
     for (const entrada of itensAgenda) {
@@ -221,6 +231,20 @@ export function Agenda() {
 
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="page-loading">Carregando…</p>}
+
+      {!loading && alertasTrial.length > 0 && (
+        <section className="card form-card">
+          <h2>Alertas de Trial Kommo</h2>
+          <div className="options-list">
+            {alertasTrial.map(({ cliente, resumo }) => (
+              <p key={cliente.id} className="form-error">
+                <Link to={`/clientes/${cliente.id}`}>{cliente.nome_empresa}</Link> — Trial vence em{' '}
+                {resumo.diasRestantes}d e a extensão de {resumo.proximaExtensao?.rotulo} ainda não foi solicitada.
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
 
       {!loading && agrupadoPorCliente.size === 0 && (
         <div className="empty-state">

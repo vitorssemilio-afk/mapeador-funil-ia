@@ -7,6 +7,7 @@
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { prazoFaseAtual, prazoGeral, type PrazoFase, type PrazoGeral } from './cronograma';
 import { funilValidado, MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
+import { resolverResumoTrialKommo } from './trialKommo';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
@@ -235,6 +236,16 @@ export function construirAlertas(resumos: ClienteResumo[], hoje: Date): AlertaOp
         ...base,
         motivo: 'Prazo geral da implementação atrasado',
         severidade: r.prazoProcesso.diasAtraso > 3 ? 'critico' : 'atencao',
+      });
+      continue;
+    }
+
+    const resumoTrial = resolverResumoTrialKommo(r.cliente, hoje);
+    if (resumoTrial?.precisaAlerta) {
+      alertas.push({
+        ...base,
+        motivo: `Trial Kommo vence em ${resumoTrial.diasRestantes}d — extensão de ${resumoTrial.proximaExtensao?.rotulo} ainda não solicitada`,
+        severidade: resumoTrial.diasRestantes <= 1 ? 'critico' : 'atencao',
       });
       continue;
     }

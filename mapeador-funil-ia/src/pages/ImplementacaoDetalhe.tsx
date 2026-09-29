@@ -15,6 +15,11 @@ import {
   type AtividadeResolvida,
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import {
+  resolverResumoTrialKommo,
+  STATUS_TRIAL_LABELS,
+  STATUS_TRIAL_TONE,
+} from '../lib/trialKommo';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import {
   PX_POR_DIA,
@@ -160,6 +165,7 @@ export function ImplementacaoDetalhe() {
   const [linkPosVendaCopiado, setLinkPosVendaCopiado] = useState(false);
   const [kickoffRealizadoEm, setKickoffRealizadoEm] = useState<string | null>(null);
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
+  const [salvandoTrial, setSalvandoTrial] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -202,6 +208,10 @@ export function ImplementacaoDetalhe() {
   // "Dia X/40" + "Ciclo X — Dias X–Y", sempre visível — contado só do
   // Kickoff realizado, independente de status manual ou de remarcações.
   const diaCiclo = useMemo(() => calcularDiaCiclo(kickoffRealizadoEm, hoje), [kickoffRealizadoEm, hoje]);
+
+  // Trial Kommo — indicador totalmente separado do prazo de 40 dias da
+  // implementação (esse é ancorado no Kickoff, o Trial em conta_kommo_criada_em).
+  const resumoTrial = useMemo(() => (cliente ? resolverResumoTrialKommo(cliente, hoje) : null), [cliente, hoje]);
 
   const tempoReuniao = useMemo(
     () =>
@@ -637,6 +647,35 @@ export function ImplementacaoDetalhe() {
     setTimeout(() => setSalvoRecentemente(false), 2000);
   }
 
+  // Registra a solicitação/aprovação da extensão de Trial atual — grava
+  // direto no marco correspondente em `clientes` (extensao_14/7_solicitada_em
+  // ou _aprovada_em), com a data de hoje. A aprovação da extensão de 14 dias
+  // é o que recalcula o vencimento pra incluir a 2ª extensão (+7) como
+  // próxima opção — ver resolverResumoTrialKommo.
+  async function handleRegistrarEventoTrial(
+    campo: 'extensao_14_solicitada_em' | 'extensao_14_aprovada_em' | 'extensao_7_solicitada_em' | 'extensao_7_aprovada_em',
+  ) {
+    if (!cliente) return;
+    setSalvandoTrial(true);
+
+    const atualizacao: Partial<Cliente> = { [campo]: new Date().toISOString().slice(0, 10) };
+    const { data, error: updateError } = await supabase
+      .from('clientes')
+      .update(atualizacao)
+      .eq('id', cliente.id)
+      .select()
+      .single();
+
+    setSalvandoTrial(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setCliente(data);
+  }
+
   async function handleGerarPosVenda() {
     if (!implementacao || !mapeamentoOrigem || !user) return;
     setCriandoPosVenda(true);
@@ -938,6 +977,90 @@ export function ImplementacaoDetalhe() {
             </span>
           </div>
         </div>
+      )}
+
+      {/* Indicador totalmente separado do "Dia X/40" acima — o Trial conta a
+          partir da conta Kommo criada, a implementação a partir do Kickoff. */}
+      {resumoTrial && (
+        <section className="card form-card">
+          <div className="page-header">
+            <h2 style={{ marginBottom: 0 }}>Trial Kommo</h2>
+            <span className={`status-badge status-tone-${STATUS_TRIAL_TONE[resumoTrial.status]}`}>
+              {STATUS_TRIAL_LABELS[resumoTrial.status]}
+            </span>
+          </div>
+
+          <div className="stats-grid">
+            <div className="stat-card">
+              <span className="stat-value">{resumoTrial.periodoAtual}</span>
+              <span className="stat-label">
+                Dia {resumoTrial.diaAtualPeriodo}/{resumoTrial.duracaoPeriodoAtual}
+              </span>
+            </div>
+            <div className="stat-card">
+              <span className="stat-value">
+                {resumoTrial.usoTotalDias}/{resumoTrial.usoTotalMaximo}
+              </span>
+              <span className="stat-label">Uso total</span>
+            </div>
+            <div className={`stat-card${resumoTrial.diasRestantes < 0 ? ' stat-card-danger' : ''}`}>
+              <span className="stat-value">
+                {resumoTrial.diasRestantes < 0
+                  ? `${-resumoTrial.diasRestantes}d vencido`
+                  : `${resumoTrial.diasRestantes}d restantes`}
+              </span>
+              <span className="stat-label">Vence em {resumoTrial.vencimento.toLocaleDateString('pt-BR')}</span>
+            </div>
+          </div>
+
+          {resumoTrial.proximaExtensao ? (
+            <div className="form-info form-info-com-acao">
+              <span>
+                Próxima extensão: <strong>{resumoTrial.proximaExtensao.rotulo}</strong>
+                {' — '}
+                {resumoTrial.proximaExtensao.aprovadaEm
+                  ? `aprovada em ${new Date(`${resumoTrial.proximaExtensao.aprovadaEm}T12:00:00`).toLocaleDateString('pt-BR')}`
+                  : resumoTrial.proximaExtensao.solicitadaEm
+                    ? `solicitada em ${new Date(`${resumoTrial.proximaExtensao.solicitadaEm}T12:00:00`).toLocaleDateString('pt-BR')}, aguardando aprovação`
+                    : 'Não solicitada'}
+              </span>
+              {!resumoTrial.proximaExtensao.solicitadaEm && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={salvandoTrial}
+                  onClick={() =>
+                    handleRegistrarEventoTrial(
+                      resumoTrial.proximaExtensao!.rotulo === '+14 dias'
+                        ? 'extensao_14_solicitada_em'
+                        : 'extensao_7_solicitada_em',
+                    )
+                  }
+                >
+                  Registrar solicitação
+                </button>
+              )}
+              {resumoTrial.proximaExtensao.solicitadaEm && !resumoTrial.proximaExtensao.aprovadaEm && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={salvandoTrial}
+                  onClick={() =>
+                    handleRegistrarEventoTrial(
+                      resumoTrial.proximaExtensao!.rotulo === '+14 dias'
+                        ? 'extensao_14_aprovada_em'
+                        : 'extensao_7_aprovada_em',
+                    )
+                  }
+                >
+                  Registrar aprovação
+                </button>
+              )}
+            </div>
+          ) : (
+            <p className="field-hint">As duas extensões já foram usadas — não há mais prorrogação possível.</p>
+          )}
+        </section>
       )}
 
       {(prazoSemanaAtual || prazoProcesso || tempoReuniao) && (

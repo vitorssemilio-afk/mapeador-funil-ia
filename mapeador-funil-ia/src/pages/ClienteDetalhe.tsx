@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
 import { IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
+import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import type {
   Cliente,
   ClienteArquivo,
@@ -914,6 +915,34 @@ export function ClienteDetalhe() {
           )}
         </section>
       )}
+
+      {cliente &&
+        (() => {
+          const resumoTrial = resolverResumoTrialKommo(cliente, new Date());
+          if (!resumoTrial) return null;
+          return (
+            <section className="card form-card">
+              <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                <h2 style={{ marginBottom: 0 }}>Trial Kommo</h2>
+                <span className={`status-badge status-tone-${STATUS_TRIAL_TONE[resumoTrial.status]}`}>
+                  {STATUS_TRIAL_LABELS[resumoTrial.status]}
+                </span>
+              </div>
+              <p className="field-hint">
+                {resumoTrial.periodoAtual} — dia {resumoTrial.diaAtualPeriodo}/{resumoTrial.duracaoPeriodoAtual} ·
+                uso total {resumoTrial.usoTotalDias}/{resumoTrial.usoTotalMaximo} · vence em{' '}
+                {resumoTrial.vencimento.toLocaleDateString('pt-BR')}
+              </p>
+              {resumoTrial.precisaAlerta && (
+                <p className="form-error">
+                  Trial vence em {resumoTrial.diasRestantes}d e a extensão de {resumoTrial.proximaExtensao?.rotulo}{' '}
+                  ainda não foi solicitada.{' '}
+                  {implementacao && <Link to={`/implementacoes/${implementacao.id}`}>Registrar na implementação →</Link>}
+                </p>
+              )}
+            </section>
+          );
+        })()}
 
       <section className="card form-card">
         <h2>Anexos</h2>
