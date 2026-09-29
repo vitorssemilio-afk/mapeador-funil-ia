@@ -1,29 +1,22 @@
-// Sincronização periódica dos calendários dos consultores (polling, não
-// webhook — ver decisão registrada na migration 0042 e no PR). Pensado pra
-// ser chamado por um cron job (pg_cron + pg_net) com a service role key,
-// não pelo navegador do usuário: por isso usa a service role (ignora RLS) e
-// não depende de sessão de usuário nenhuma.
+// Sincronização periódica dos calendários dos consultores via o "endereço
+// secreto no formato iCal" que cada um gera sozinho (ver migration 0043 —
+// trocamos da API com conta de serviço pra isso porque a v4company restringe
+// compartilhamento externo de agenda e não quer abrir exceção nem via
+// delegação em todo o domínio). Pensado pra ser chamado por um cron job
+// (pg_cron + pg_net) com a service role key, não pelo navegador do usuário.
 //
-// Pra cada consultor com google_calendar_id configurado:
-//   1. busca o que mudou no Google Calendar desde a última sincronização
-//      (ou uma janela de -7/+120 dias, na primeira vez);
+// Pra cada consultor com google_calendar_ical_url configurado:
+//   1. baixa o feed ICS inteiro (não existe sync incremental em iCal);
 //   2. espelha em google_calendar_eventos_pendentes, com sugestão de
-//      cliente/tipo quando ainda não está vinculado a uma reunião;
+//      cliente/tipo quando ainda não está vinculado a uma reunião (só por
+//      título/descrição — o feed privado não traz e-mails de convidados);
 //   3. se já está vinculado a uma reunião: atualiza data/meet-link, registra
 //      remarcação em auditoria quando o horário muda, e marca como
-//      cancelada quando o evento é cancelado no Google (nunca sobrescreve
-//      uma reunião já 'realizada').
+//      cancelada quando o evento some do feed ou vem com STATUS:CANCELLED
+//      (nunca sobrescreve uma reunião já 'realizada').
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.110.8';
 import { corsHeaders } from '../_shared/cors.ts';
-import {
-  buscarEventosCalendar,
-  dataHoraDoEvento,
-  extrairMeetLink,
-  obterAccessTokenCalendar,
-  statusGoogleParaInterno,
-  type EventoGoogleCalendar,
-  type ServiceAccountCredenciais,
-} from '../_shared/googleCalendar.ts';
+import { buscarEventosIcs, type EventoIcs } from '../_shared/googleCalendarIcs.ts';
 import { sugerirClienteParaEvento, sugerirTipoParaEvento } from '../../../src/lib/googleCalendarEventos.ts';
 import type { Cliente, ClienteContato, Consultor, Reuniao } from '../../../src/types/database.ts';
 
@@ -37,31 +30,51 @@ function jsonResponse(body: unknown, status = 200): Response {
 async function sincronizarConsultor(params: {
   supabase: SupabaseClient;
   consultor: Consultor;
-  credenciais: ServiceAccountCredenciais;
   clientes: Cliente[];
   contatos: ClienteContato[];
 }): Promise<{ consultorId: string; eventosProcessados: number; erro?: string }> {
-  const { supabase, consultor, credenciais, clientes, contatos } = params;
-  const calendarId = consultor.google_calendar_id!;
+  const { supabase, consultor, clientes, contatos } = params;
 
   try {
-    const accessToken = await obterAccessTokenCalendar(credenciais);
-    const { eventos, nextSyncToken, syncTokenInvalido } = await buscarEventosCalendar({
-      accessToken,
-      calendarId,
-      syncToken: consultor.google_calendar_sync_token,
-    });
+    const eventos = await buscarEventosIcs(consultor.google_calendar_ical_url!);
+    const uidsNoFeed = new Set(eventos.map((e) => e.uid));
 
     for (const evento of eventos) {
-      await processarEvento({ supabase, consultor, calendarId, evento, clientes, contatos });
+      await processarEvento({ supabase, consultor, evento, cancelado: evento.cancelado, clientes, contatos });
+    }
+
+    // Um evento que sumiu do feed (não veio nem com STATUS:CANCELLED) é
+    // tratado como cancelado também — o Google às vezes só remove em vez de
+    // marcar o status.
+    const { data: cacheDesseConsultor } = await supabase
+      .from('google_calendar_eventos_pendentes')
+      .select('*')
+      .eq('consultor_id', consultor.id)
+      .eq('status_google', 'confirmed');
+
+    for (const cache of cacheDesseConsultor ?? []) {
+      if (uidsNoFeed.has(cache.google_event_id)) continue;
+      await processarEvento({
+        supabase,
+        consultor,
+        evento: {
+          uid: cache.google_event_id,
+          titulo: cache.titulo,
+          descricao: cache.descricao,
+          inicio: cache.data_inicio,
+          fim: cache.data_fim,
+          cancelado: true,
+          meetLink: cache.meet_link,
+        },
+        cancelado: true,
+        clientes,
+        contatos,
+      });
     }
 
     await supabase
       .from('consultores')
-      .update({
-        google_calendar_sync_token: nextSyncToken ?? (syncTokenInvalido ? null : consultor.google_calendar_sync_token),
-        google_calendar_sincronizado_em: new Date().toISOString(),
-      })
+      .update({ google_calendar_sincronizado_em: new Date().toISOString() })
       .eq('id', consultor.id);
 
     return { consultorId: consultor.id, eventosProcessados: eventos.length };
@@ -73,52 +86,49 @@ async function sincronizarConsultor(params: {
 async function processarEvento(params: {
   supabase: SupabaseClient;
   consultor: Consultor;
-  calendarId: string;
-  evento: EventoGoogleCalendar;
+  evento: EventoIcs;
+  cancelado: boolean;
   clientes: Cliente[];
   contatos: ClienteContato[];
 }): Promise<void> {
-  const { supabase, consultor, calendarId, evento, clientes, contatos } = params;
-
-  const statusGoogle = statusGoogleParaInterno(evento.status);
-  const dataInicio = dataHoraDoEvento(evento.start);
-  const dataFim = dataHoraDoEvento(evento.end);
-  const meetLink = extrairMeetLink(evento);
-  const attendees = evento.attendees?.map((a) => ({ email: a.email, displayName: a.displayName })) ?? null;
+  const { supabase, consultor, evento, cancelado, clientes, contatos } = params;
+  const statusGoogle: 'confirmed' | 'cancelled' = cancelado ? 'cancelled' : 'confirmed';
 
   const { data: cacheExistente } = await supabase
     .from('google_calendar_eventos_pendentes')
     .select('*')
     .eq('consultor_id', consultor.id)
-    .eq('google_event_id', evento.id)
+    .eq('google_event_id', evento.uid)
     .maybeSingle();
 
+  // O feed privado não traz e-mails de convidados, então o match automático
+  // aqui é só por título/descrição.
   const sugestaoClienteId =
     cacheExistente?.reuniao_id != null
       ? cacheExistente.sugestao_cliente_id
       : sugerirClienteParaEvento({
-          attendees,
-          titulo: evento.summary ?? null,
-          descricao: evento.description ?? null,
+          attendees: null,
+          titulo: evento.titulo,
+          descricao: evento.descricao,
           clientes,
           contatos,
         });
   const sugestaoTipo =
     cacheExistente?.reuniao_id != null
       ? cacheExistente.sugestao_tipo
-      : sugerirTipoParaEvento({ titulo: evento.summary ?? null, descricao: evento.description ?? null });
+      : sugerirTipoParaEvento({ titulo: evento.titulo, descricao: evento.descricao });
 
   await supabase.from('google_calendar_eventos_pendentes').upsert(
     {
       consultor_id: consultor.id,
-      google_calendar_id: calendarId,
-      google_event_id: evento.id,
-      titulo: evento.summary ?? null,
-      descricao: evento.description ?? null,
-      data_inicio: dataInicio,
-      data_fim: dataFim,
-      meet_link: meetLink,
-      attendees,
+      google_calendar_id: consultor.id,
+      google_event_id: evento.uid,
+      titulo: evento.titulo,
+      descricao: evento.descricao,
+      data_inicio: evento.inicio,
+      data_fim: evento.fim,
+      meet_link: evento.meetLink,
+      attendees: null,
       status_google: statusGoogle,
       reuniao_id: cacheExistente?.reuniao_id ?? null,
       sugestao_cliente_id: sugestaoClienteId,
@@ -153,7 +163,7 @@ async function processarEvento(params: {
 
   const patch: Partial<Reuniao> = {
     google_status: 'confirmed',
-    google_meet_link: meetLink,
+    google_meet_link: evento.meetLink,
   };
   // Evento reativado no Google depois de ter sido cancelado por lá — volta
   // a ficar agendado; qualquer outro status manual (agendada/remarcada/
@@ -162,37 +172,23 @@ async function processarEvento(params: {
     patch.status = 'agendada';
   }
 
-  if (dataInicio && reuniao.data_hora !== dataInicio) {
+  if (evento.inicio && reuniao.data_hora !== evento.inicio) {
     await supabase.from('reuniao_remarcacoes').insert({
       reuniao_id: reuniao.id,
       data_anterior: reuniao.data_hora,
-      data_nova: dataInicio,
+      data_nova: evento.inicio,
       motivo: 'Remarcado no Google Calendar',
       responsavel_impacto: 'outro',
     });
-    patch.data_hora = dataInicio;
+    patch.data_hora = evento.inicio;
   }
 
-  if (Object.keys(patch).length > 0) {
-    await supabase.from('reunioes').update(patch).eq('id', reuniao.id);
-  }
+  await supabase.from('reunioes').update(patch).eq('id', reuniao.id);
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
-  }
-
-  const serviceAccountRaw = Deno.env.get('GOOGLE_SERVICE_ACCOUNT_JSON');
-  if (!serviceAccountRaw) {
-    return jsonResponse({ error: 'Secret GOOGLE_SERVICE_ACCOUNT_JSON não configurado.' }, 500);
-  }
-
-  let credenciais: ServiceAccountCredenciais;
-  try {
-    credenciais = JSON.parse(serviceAccountRaw);
-  } catch {
-    return jsonResponse({ error: 'GOOGLE_SERVICE_ACCOUNT_JSON não é um JSON válido.' }, 500);
   }
 
   const supabase = createClient(
@@ -201,7 +197,7 @@ Deno.serve(async (req: Request) => {
   );
 
   const [{ data: consultores, error: consultoresError }, { data: clientes }, { data: contatos }] = await Promise.all([
-    supabase.from('consultores').select('*').eq('ativo', true).not('google_calendar_id', 'is', null),
+    supabase.from('consultores').select('*').eq('ativo', true).not('google_calendar_ical_url', 'is', null),
     supabase.from('clientes').select('*'),
     supabase.from('cliente_contatos').select('*'),
   ]);
@@ -216,7 +212,6 @@ Deno.serve(async (req: Request) => {
       await sincronizarConsultor({
         supabase,
         consultor,
-        credenciais,
         clientes: (clientes ?? []) as Cliente[],
         contatos: (contatos ?? []) as ClienteContato[],
       }),

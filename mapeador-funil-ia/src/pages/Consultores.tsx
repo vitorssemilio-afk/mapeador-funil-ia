@@ -9,7 +9,7 @@ type FormConsultor = {
   cargo: string;
   avatar_url: string;
   ativo: boolean;
-  google_calendar_id: string;
+  google_calendar_ical_url: string;
 };
 
 const FORM_VAZIO: FormConsultor = {
@@ -19,7 +19,7 @@ const FORM_VAZIO: FormConsultor = {
   cargo: '',
   avatar_url: '',
   ativo: true,
-  google_calendar_id: '',
+  google_calendar_ical_url: '',
 };
 
 function paraForm(consultor: Consultor): FormConsultor {
@@ -30,7 +30,7 @@ function paraForm(consultor: Consultor): FormConsultor {
     cargo: consultor.cargo ?? '',
     avatar_url: consultor.avatar_url ?? '',
     ativo: consultor.ativo,
-    google_calendar_id: consultor.google_calendar_id ?? '',
+    google_calendar_ical_url: consultor.google_calendar_ical_url ?? '',
   };
 }
 
@@ -48,22 +48,6 @@ export function Consultores() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [form, setForm] = useState<FormConsultor>(FORM_VAZIO);
-
-  // E-mail da conta de serviço usada pra ler o Google Calendar de cada
-  // consultor — não é segredo (é só o que se compartilha com qualquer app),
-  // só a chave privada é sensível e nunca chega no front-end.
-  const [emailContaServico, setEmailContaServico] = useState<string | null>(null);
-
-  useEffect(() => {
-    supabase.functions
-      .invoke<{ email?: string; error?: string }>('google-calendar-service-account-email')
-      .then(({ data }) => {
-        if (data?.email) setEmailContaServico(data.email);
-      })
-      .catch(() => {
-        // Instrução de compartilhamento fica sem o e-mail pré-preenchido; não é bloqueante.
-      });
-  }, []);
 
   async function carregar() {
     setLoading(true);
@@ -115,7 +99,7 @@ export function Consultores() {
       cargo: form.cargo.trim() || null,
       avatar_url: form.avatar_url.trim() || null,
       ativo: form.ativo,
-      google_calendar_id: form.google_calendar_id.trim() || null,
+      google_calendar_ical_url: form.google_calendar_ical_url.trim() || null,
     };
 
     const { error: saveError } = editandoId
@@ -230,19 +214,19 @@ export function Consultores() {
               />
             </label>
             <label className="field">
-              <span>ID do Google Calendar (opcional)</span>
+              <span>Endereço secreto do Google Calendar em formato iCal (opcional)</span>
               <input
-                type="text"
-                value={form.google_calendar_id}
-                onChange={(e) => setForm({ ...form, google_calendar_id: e.target.value })}
-                placeholder="nome@gmail.com"
+                type="url"
+                value={form.google_calendar_ical_url}
+                onChange={(e) => setForm({ ...form, google_calendar_ical_url: e.target.value })}
+                placeholder="https://calendar.google.com/calendar/ical/.../basic.ics"
               />
               <span className="field-hint">
-                Normalmente é o próprio e-mail da conta Google do consultor. Antes de preencher, ele
-                precisa compartilhar esse calendário com{' '}
-                {emailContaServico ? <code>{emailContaServico}</code> : 'a conta de serviço do sistema'} —
-                em Configurações do Google Calendar → Compartilhar com pessoas específicas → "Ver todos
-                os detalhes do evento". Sem isso, as reuniões desse consultor não são sincronizadas.
+                O próprio consultor gera esse link, sem precisar de nenhum admin: no Google Calendar,
+                em Configurações → o nome da agenda dele → "Integrar agenda" → copiar o "Endereço
+                secreto no formato iCal". Cole esse link aqui. Sem isso, as reuniões desse consultor não
+                são sincronizadas. Trate esse link como uma senha — quem o tiver consegue ler a agenda
+                completa dele.
               </span>
             </label>
           </div>
@@ -310,8 +294,8 @@ export function Consultores() {
                   <td>{c.telefone ?? '—'}</td>
                   <td>{c.cargo ?? '—'}</td>
                   <td>
-                    {c.google_calendar_id ? (
-                      <span className="status-badge status-tone-success" title={c.google_calendar_id}>
+                    {c.google_calendar_ical_url ? (
+                      <span className="status-badge status-tone-success">
                         Conectado
                         {c.google_calendar_sincronizado_em &&
                           ` · sinc. ${new Date(c.google_calendar_sincronizado_em).toLocaleString('pt-BR')}`}

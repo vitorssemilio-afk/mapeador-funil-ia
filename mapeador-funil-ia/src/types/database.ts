@@ -316,13 +316,15 @@ export type Consultor = {
   cargo: string | null;
   avatar_url: string | null;
   ativo: boolean;
-  // Integração com Google Calendar (ver src/lib/reunioes.ts e a migration
-  // 0042): o consultor compartilha esse calendário com a conta de serviço,
-  // e a sincronização periódica usa google_calendar_sync_token pra buscar
-  // só o que mudou desde a última vez.
+  // Integração com Google Calendar via o "endereço secreto no formato iCal"
+  // que o próprio consultor gera (migration 0043) — sem depender de conta de
+  // serviço nem de nenhuma política de compartilhamento do Workspace.
+  // google_calendar_id/google_calendar_sync_token (migration 0042, quando a
+  // ideia era usar a API com conta de serviço) ficaram sem uso.
   google_calendar_id: string | null;
   google_calendar_sync_token: string | null;
   google_calendar_sincronizado_em: string | null;
+  google_calendar_ical_url: string | null;
   created_at: string;
   updated_at: string;
 };
