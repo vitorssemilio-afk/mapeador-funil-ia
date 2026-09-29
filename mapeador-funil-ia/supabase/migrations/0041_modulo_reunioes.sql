@@ -97,9 +97,8 @@ begin
     )
     returning id into v_reuniao_id;
 
-    insert into public.reuniao_remarcacoes (reuniao_id, data_anterior, data_nova, motivo, responsavel_impacto, alterado_por_email, created_at)
-    select v_reuniao_id, r.data_anterior, r.data_nova, r.motivo, r.responsavel_impacto,
-           r.alterado_por_email, r.created_at
+    insert into public.reuniao_remarcacoes (reuniao_id, data_anterior, data_nova, motivo, responsavel_impacto, created_at)
+    select v_reuniao_id, r.data_anterior, r.data_nova, r.motivo, r.responsavel_impacto, r.created_at
     from public.marco_remarcacoes r
     where r.cliente_id = c.id and r.campo_marco = 'kickoff_agendado_para';
   end loop;
@@ -119,9 +118,8 @@ begin
     )
     returning id into v_reuniao_id;
 
-    insert into public.reuniao_remarcacoes (reuniao_id, data_anterior, data_nova, motivo, responsavel_impacto, alterado_por_email, created_at)
-    select v_reuniao_id, r.data_anterior, r.data_nova, r.motivo, r.responsavel_impacto,
-           r.alterado_por_email, r.created_at
+    insert into public.reuniao_remarcacoes (reuniao_id, data_anterior, data_nova, motivo, responsavel_impacto, created_at)
+    select v_reuniao_id, r.data_anterior, r.data_nova, r.motivo, r.responsavel_impacto, r.created_at
     from public.marco_remarcacoes r
     where r.cliente_id = c.id and r.campo_marco = 'treinamento_agendado_para';
   end loop;
