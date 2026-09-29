@@ -285,6 +285,41 @@ export type ImplementacaoStatusHistorico = {
   alterado_em: string;
 };
 
+// Atividades do cronograma da implementação, com dependência explícita
+// entre marcos — substitui o checklist fixo por semana (que ainda existe no
+// banco por segurança/histórico, mas não é mais lido pelo produto). Uma
+// atividade só ganha data planejada depois que sua dependência de fato
+// acontece (nunca todas de uma vez na contratação).
+export type AtividadeCronograma = {
+  id: string;
+  chave: string | null;
+  nome: string;
+  ciclo: string;
+  ordem: number;
+  responsavel_padrao: string | null;
+  // 'marco:<campo de Cliente>' | 'ciclo:<ImplementacaoStatus>' | null (sem dependência).
+  depende_de: string | null;
+  prazo_dias: number | null;
+  requer_evidencia: boolean;
+  // null = item do template global (compartilhado); preenchido = item
+  // derivado automaticamente do funil dessa implementação específica.
+  implementacao_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AtividadeStatusRow = {
+  id: string;
+  implementacao_id: string;
+  atividade_id: string;
+  data_real: string | null;
+  agendado_para: string | null;
+  bloqueado_pelo_cliente: boolean;
+  evidencia: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ChecklistGrupoImplementacao = {
   id: string;
   chave: string;
@@ -479,6 +514,18 @@ export type Database = {
         Insert: Partial<ImplementacaoCrm> &
           Pick<ImplementacaoCrm, 'mapeamento_id' | 'user_id' | 'nome_cliente'>;
         Update: Partial<ImplementacaoCrm>;
+        Relationships: [];
+      };
+      atividades_cronograma: {
+        Row: AtividadeCronograma;
+        Insert: Partial<AtividadeCronograma> & Pick<AtividadeCronograma, 'nome' | 'ciclo'>;
+        Update: Partial<AtividadeCronograma>;
+        Relationships: [];
+      };
+      atividades_status: {
+        Row: AtividadeStatusRow;
+        Insert: Partial<AtividadeStatusRow> & Pick<AtividadeStatusRow, 'implementacao_id' | 'atividade_id'>;
+        Update: Partial<AtividadeStatusRow>;
         Relationships: [];
       };
       checklist_grupos_implementacao: {
