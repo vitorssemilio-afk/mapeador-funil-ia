@@ -29,6 +29,7 @@ import {
   STATUS_TRIAL_LABELS,
   STATUS_TRIAL_TONE,
 } from '../lib/trialKommo';
+import { emOuAposProntoKickoff, emOuAposRevisaoInterna, funilJaGerado } from '../lib/statusFluxo';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import {
   PX_POR_DIA,
@@ -94,6 +95,18 @@ type FormReuniao = {
   pendencias_cliente: string;
   pendencias_internas: string;
   proximos_passos: string;
+};
+
+// Só perguntado ao marcar o Kickoff como "Realizado" pela primeira vez —
+// decide se o funil da implementação já pode ser considerado validado ou
+// se ainda precisa de uma rodada de ajustes (ver PROXIMOS_STATUS_MAPEAMENTO
+// em statusFluxo.ts, que já modela exatamente essas duas saídas).
+type ValidacaoFunilKickoff = 'sem_ajustes' | 'pequenos_ajustes' | 'precisa_revisar';
+
+const VALIDACAO_FUNIL_KICKOFF_LABELS: Record<ValidacaoFunilKickoff, string> = {
+  sem_ajustes: 'Sim, sem ajustes',
+  pequenos_ajustes: 'Sim, com pequenos ajustes',
+  precisa_revisar: 'Não, precisa revisar',
 };
 
 function isoParaInputDatetime(iso: string | null): string {
@@ -254,7 +267,7 @@ export function ImplementacaoDetalhe() {
   const [aba, setAba] = useState<Aba>('geral');
   const [mapeamentoOrigem, setMapeamentoOrigem] = useState<Pick<
     Mapeamento,
-    'id' | 'nome_negocio' | 'enviado_em' | 'created_at'
+    'id' | 'nome_negocio' | 'enviado_em' | 'created_at' | 'status'
   > | null>(null);
   const [posVendaMapeamento, setPosVendaMapeamento] = useState<{
     id: string;
@@ -269,6 +282,8 @@ export function ImplementacaoDetalhe() {
   const [editandoReuniaoTipo, setEditandoReuniaoTipo] = useState<TipoReuniao | null>(null);
   const [editandoReuniaoId, setEditandoReuniaoId] = useState<string | null>(null);
   const [formReuniao, setFormReuniao] = useState<FormReuniao | null>(null);
+  const [statusOriginalReuniaoEmEdicao, setStatusOriginalReuniaoEmEdicao] = useState<StatusReuniao | null>(null);
+  const [validacaoFunilKickoff, setValidacaoFunilKickoff] = useState<ValidacaoFunilKickoff | ''>('');
   const [salvandoReuniao, setSalvandoReuniao] = useState(false);
   const [remarcandoReuniaoId, setRemarcandoReuniaoId] = useState<string | null>(null);
   const [formRemarcacaoReuniao, setFormRemarcacaoReuniao] = useState({
@@ -514,7 +529,7 @@ export function ImplementacaoDetalhe() {
     const [{ data: mapeamentoOrigemData }, { data: posVendaData }, { data: clienteData }] = await Promise.all([
       supabase
         .from('mapeamentos')
-        .select('id, nome_negocio, enviado_em, created_at')
+        .select('id, nome_negocio, enviado_em, created_at, status')
         .eq('id', implData.mapeamento_id)
         .single(),
       supabase
@@ -909,12 +924,16 @@ export function ImplementacaoDetalhe() {
     setEditandoReuniaoTipo(tipo);
     setEditandoReuniaoId(reuniao?.id ?? null);
     setFormReuniao(reuniao ? paraFormReuniao(reuniao) : formReuniaoVazio(tipo));
+    setStatusOriginalReuniaoEmEdicao(reuniao?.status ?? null);
+    setValidacaoFunilKickoff('');
   }
 
   function fecharFormReuniao() {
     setEditandoReuniaoTipo(null);
     setEditandoReuniaoId(null);
     setFormReuniao(null);
+    setStatusOriginalReuniaoEmEdicao(null);
+    setValidacaoFunilKickoff('');
   }
 
   // Kickoff/Treinamento continuam também escrevendo em
@@ -957,12 +976,24 @@ export function ImplementacaoDetalhe() {
     setKickoffRealizadoEm(data.kickoff_realizado_em);
   }
 
+  // Só quando o Kickoff está virando "Realizado" agora (não quando já
+  // estava e a edição é só de outro campo) — é o gatilho da pergunta "o
+  // cliente validou o funil?", que não deve reaparecer numa edição comum.
+  const confirmandoRealizacaoKickoff =
+    formReuniao?.tipo === 'kickoff' &&
+    formReuniao.status === 'realizada' &&
+    statusOriginalReuniaoEmEdicao !== 'realizada';
+
   async function handleSalvarReuniao(e: FormEvent) {
     e.preventDefault();
     if (!implementacao || !formReuniao) return;
     const clienteId = implementacao.cliente_id;
     if (!clienteId) {
       setError('Esta implementação ainda não está vinculada a um cliente.');
+      return;
+    }
+    if (confirmandoRealizacaoKickoff && !validacaoFunilKickoff) {
+      setError('Selecione se o cliente validou o funil antes de confirmar o Kickoff como realizado.');
       return;
     }
 
@@ -1012,6 +1043,22 @@ export function ImplementacaoDetalhe() {
     });
 
     if (cliente) await sincronizarMarcoCliente(data, cliente);
+
+    if (confirmandoRealizacaoKickoff && mapeamentoOrigem) {
+      const novoStatusMapeamento = validacaoFunilKickoff === 'precisa_revisar' ? 'ajustes_solicitados' : 'funil_validado';
+      const { data: mapeamentoAtualizado, error: statusError } = await supabase
+        .from('mapeamentos')
+        .update({ status: novoStatusMapeamento })
+        .eq('id', mapeamentoOrigem.id)
+        .select('id, nome_negocio, enviado_em, created_at, status')
+        .single();
+
+      if (statusError) {
+        setError(statusError.message);
+      } else {
+        setMapeamentoOrigem(mapeamentoAtualizado);
+      }
+    }
 
     setSalvandoReuniao(false);
     fecharFormReuniao();
@@ -1149,6 +1196,34 @@ export function ImplementacaoDetalhe() {
             </select>
           </label>
         </div>
+
+        {confirmandoRealizacaoKickoff && (
+          <fieldset className="field">
+            <legend>O cliente validou o funil?</legend>
+            {(Object.entries(VALIDACAO_FUNIL_KICKOFF_LABELS) as [ValidacaoFunilKickoff, string][]).map(
+              ([valor, rotulo]) => (
+                <label key={valor} className="option-checkbox">
+                  <input
+                    type="radio"
+                    name="validacao-funil-kickoff"
+                    required
+                    checked={validacaoFunilKickoff === valor}
+                    onChange={() => setValidacaoFunilKickoff(valor)}
+                  />
+                  <span>{rotulo}</span>
+                </label>
+              ),
+            )}
+            <span className="field-hint">
+              {validacaoFunilKickoff === 'precisa_revisar'
+                ? 'O funil da implementação vai para "Ajustes solicitados".'
+                : validacaoFunilKickoff
+                  ? 'O funil da implementação vai para "Funil validado".'
+                  : 'Isso também atualiza o status do funil desta implementação.'}
+            </span>
+          </fieldset>
+        )}
+
         <label className="field">
           <span>Participantes</span>
           <textarea
@@ -2642,6 +2717,32 @@ export function ImplementacaoDetalhe() {
                       </button>
                     )}
                   </div>
+
+                  {tipo === 'kickoff' && !cliente.kickoff_realizado_em && (
+                    <ul className="form-grid" style={{ marginBottom: 12 }}>
+                      {[
+                        { label: 'Formulário respondido', feito: !!mapeamentoOrigem?.enviado_em },
+                        {
+                          label: 'Funil gerado',
+                          feito: !!mapeamentoOrigem && funilJaGerado(mapeamentoOrigem.status),
+                        },
+                        {
+                          label: 'Revisão interna',
+                          feito: !!mapeamentoOrigem && emOuAposRevisaoInterna(mapeamentoOrigem.status),
+                        },
+                        {
+                          label: 'Apresentação preparada',
+                          feito: !!mapeamentoOrigem && emOuAposProntoKickoff(mapeamentoOrigem.status),
+                        },
+                      ].map((item) => (
+                        <li key={item.label} style={{ listStyle: 'none' }}>
+                          <span className={`status-badge status-tone-${item.feito ? 'success' : 'warning'}`}>
+                            {item.feito ? '✓' : '—'} {item.label}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {editando ? (
                     renderFormReuniao()
