@@ -103,6 +103,17 @@ const TIPOS_REUNIAO_ESTRUTURADOS: TipoReuniao[] = [
 ];
 const TIPOS_REUNIAO_AD_HOC: TipoReuniao[] = ['tira_duvidas', 'extraordinaria'];
 
+// Ordem explícita de exibição das seções do checklist de implementação — não
+// pode depender da coluna `ordem` de atividades_cronograma nem da ordem de
+// carregamento (ver comentário em atividadesPorCiclo). "Ciclo N — ..." vira N;
+// "Trial Kommo" (trilha independente dos 4 ciclos) sempre por último; qualquer
+// rótulo inesperado cai no fim também, como fallback seguro.
+function rankCiclo(ciclo: string): number {
+  const match = ciclo.match(/^Ciclo (\d+)/);
+  if (match) return Number(match[1]);
+  return Number.POSITIVE_INFINITY;
+}
+
 type FormReuniao = {
   tipo: TipoReuniao;
   titulo: string;
@@ -514,16 +525,25 @@ export function ImplementacaoDetalhe() {
     return resolvidas;
   }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, remarcacoes, hoje]);
 
-  // Agrupadas por ciclo, preservando a ordem de carregamento (já vem
-  // ordenado por `ordem` da query) — Trial Kommo cai sozinho no seu próprio
-  // grupo, por já ter `ciclo: 'Trial Kommo'`.
+  // Agrupadas por ciclo. Dentro de cada grupo, a ordem preserva a ordem de
+  // carregamento (já vem ordenado por `ordem` da query) — mas a ORDEM DOS
+  // GRUPOS não pode depender de qual ciclo aparece primeiro nessa lista: os
+  // valores de `ordem` em atividades_cronograma se repetem entre ciclos
+  // diferentes (itens novos de cada ciclo foram cadastrados sempre a partir
+  // de 100, ver migration 0037), então empates fazem o Postgres devolver as
+  // linhas em uma ordem não-determinística entre ciclos — na prática, isso
+  // fazia o Ciclo 4 às vezes aparecer antes do 2 e do 3. Por isso a ordem
+  // dos GRUPOS é sempre decidida explicitamente por `rankCiclo` abaixo, nunca
+  // pela ordem de inserção do Map.
   const atividadesPorCiclo = useMemo(() => {
     const mapa = new Map<string, AtividadeResolvida[]>();
     for (const atividade of atividadesResolvidas) {
       if (!mapa.has(atividade.ciclo)) mapa.set(atividade.ciclo, []);
       mapa.get(atividade.ciclo)!.push(atividade);
     }
-    return mapa;
+    return new Map(
+      Array.from(mapa.entries()).sort(([cicloA], [cicloB]) => rankCiclo(cicloA) - rankCiclo(cicloB)),
+    );
   }, [atividadesResolvidas]);
 
   async function carregar(implementacaoId: string) {
