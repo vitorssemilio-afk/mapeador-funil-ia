@@ -7,6 +7,7 @@
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { prazoFaseAtual, prazoGeral, type PrazoFase, type PrazoGeral } from './cronograma';
 import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
+import { alertaReuniaoObrigatoria, TIPOS_REUNIAO_OBRIGATORIOS } from './reunioes';
 import { funilValidado, MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
 import { resolverResumoTrialKommo } from './trialKommo';
 import type {
@@ -18,6 +19,7 @@ import type {
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
+  Reuniao,
 } from '../types/database';
 
 export function nomeConsultor(consultorId: string | null, consultores: Consultor[]): string | null {
@@ -232,6 +234,7 @@ export function construirAlertas(
   resumos: ClienteResumo[],
   hoje: Date,
   ocorrenciasAbertas: ClienteOcorrencia[] = [],
+  reunioes: Reuniao[] = [],
 ): AlertaOperacao[] {
   const alertas: AlertaOperacao[] = [];
 
@@ -279,6 +282,20 @@ export function construirAlertas(
         motivo: `Trial Kommo vence em ${resumoTrial.diasRestantes}d — extensão de ${resumoTrial.proximaExtensao?.rotulo} ainda não solicitada`,
         severidade: resumoTrial.diasRestantes <= 1 ? 'critico' : 'atencao',
       });
+      continue;
+    }
+
+    const reunioesDoCliente = reunioes.filter((reuniao) => reuniao.cliente_id === r.cliente.id);
+    const alertaReuniao = TIPOS_REUNIAO_OBRIGATORIOS.map((tipo) =>
+      alertaReuniaoObrigatoria({
+        tipo,
+        reunioesDoTipo: reunioesDoCliente.filter((reuniao) => reuniao.tipo === tipo),
+        kickoffRealizadoEm: r.cliente.kickoff_realizado_em,
+        hoje,
+      }),
+    ).find((alerta) => alerta != null);
+    if (alertaReuniao) {
+      alertas.push({ ...base, motivo: alertaReuniao.titulo, severidade: 'atencao' });
       continue;
     }
 

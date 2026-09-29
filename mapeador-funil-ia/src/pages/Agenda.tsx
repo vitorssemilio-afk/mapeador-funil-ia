@@ -18,6 +18,7 @@ import type {
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
+  Reuniao,
 } from '../types/database';
 
 const BUCKETS_ORDENADOS: BucketAgenda[] = ['atrasados', 'hoje', 'amanha', 'proximos7', 'sem_data'];
@@ -49,6 +50,7 @@ export function Agenda() {
   const [historico, setHistorico] = useState<ImplementacaoStatusHistorico[]>([]);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
+  const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [marcando, setMarcando] = useState<string | null>(null);
@@ -66,6 +68,7 @@ export function Agenda() {
       { data: historicoData, error: historicoError },
       { data: consultoresData },
       { data: ocorrenciasData },
+      { data: reunioesData },
     ] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('mapeamentos').select('*').eq('tipo', 'vendas').order('created_at', { ascending: false }),
@@ -75,6 +78,7 @@ export function Agenda() {
       supabase.from('implementacao_status_historico').select('*'),
       supabase.from('consultores').select('*'),
       supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
+      supabase.from('reunioes').select('*'),
     ]);
 
     const primeiroErro =
@@ -93,6 +97,7 @@ export function Agenda() {
     setHistorico(historicoData ?? []);
     setConsultores(consultoresData ?? []);
     setOcorrenciasAbertas(ocorrenciasData ?? []);
+    setReunioes(reunioesData ?? []);
     setLoading(false);
   }
 
@@ -113,6 +118,7 @@ export function Agenda() {
         historico,
         consultores,
         ocorrenciasAbertas,
+        reunioes,
         hoje,
       }),
     [
@@ -124,6 +130,7 @@ export function Agenda() {
       historico,
       consultores,
       ocorrenciasAbertas,
+      reunioes,
       hoje,
     ],
   );

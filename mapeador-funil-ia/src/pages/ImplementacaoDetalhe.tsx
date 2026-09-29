@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import {
   calcularDiaCiclo,
+  IMPACTO_RESPONSAVEL_LABELS,
   resolverAtividade,
   resolverMarcoAgendavel,
   resolverMarcoSimples,
@@ -16,6 +17,13 @@ import {
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
 import { nomeConsultor } from '../lib/operacaoResumo';
+import {
+  alertaReuniaoObrigatoria,
+  STATUS_REUNIAO_LABELS,
+  STATUS_REUNIAO_TONE,
+  TIPO_REUNIAO_LABELS,
+  TIPOS_REUNIAO_OBRIGATORIOS,
+} from '../lib/reunioes';
 import {
   resolverResumoTrialKommo,
   STATUS_TRIAL_LABELS,
@@ -49,12 +57,97 @@ import type {
   ImplementacaoStatusHistorico,
   IntencaoManutencaoCheckpoint,
   Mapeamento,
+  ImpactoResponsavel,
   ImplementacaoConsultorHistorico,
   MarcoRemarcacao,
+  Reuniao,
+  ReuniaoRemarcacao,
+  StatusReuniao,
+  TipoReuniao,
   UsoDiarioCheckpoint,
 } from '../types/database';
 
-type Aba = 'geral' | 'checklist' | 'cronograma' | 'credenciais' | 'checkpoint';
+type Aba = 'geral' | 'checklist' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes';
+
+// Ordem fixa de exibição — os 5 tipos "estruturados" (um card cada, sempre
+// visível) vêm antes dos 2 ad-hoc (lista + "nova reunião", pode ter várias).
+const TIPOS_REUNIAO_ESTRUTURADOS: TipoReuniao[] = [
+  'kickoff',
+  'treinamento',
+  'checkin_1',
+  'checkin_2',
+  'reuniao_final',
+];
+const TIPOS_REUNIAO_AD_HOC: TipoReuniao[] = ['tira_duvidas', 'extraordinaria'];
+
+type FormReuniao = {
+  tipo: TipoReuniao;
+  titulo: string;
+  data_hora: string;
+  consultor_responsavel_id: string;
+  participantes: string;
+  link: string;
+  status: StatusReuniao;
+  ata: string;
+  resumo: string;
+  decisoes: string;
+  pendencias_cliente: string;
+  pendencias_internas: string;
+  proximos_passos: string;
+};
+
+function isoParaInputDatetime(iso: string | null): string {
+  if (!iso) return '';
+  const data = new Date(iso);
+  const local = new Date(data.getTime() - data.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
+function formatarDataHoraLocal(iso: string): string {
+  return new Date(iso).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formReuniaoVazio(tipo: TipoReuniao): FormReuniao {
+  return {
+    tipo,
+    titulo: '',
+    data_hora: '',
+    consultor_responsavel_id: '',
+    participantes: '',
+    link: '',
+    status: 'nao_agendada',
+    ata: '',
+    resumo: '',
+    decisoes: '',
+    pendencias_cliente: '',
+    pendencias_internas: '',
+    proximos_passos: '',
+  };
+}
+
+function paraFormReuniao(reuniao: Reuniao): FormReuniao {
+  return {
+    tipo: reuniao.tipo,
+    titulo: reuniao.titulo ?? '',
+    data_hora: isoParaInputDatetime(reuniao.data_hora),
+    consultor_responsavel_id: reuniao.consultor_responsavel_id ?? '',
+    participantes: reuniao.participantes ?? '',
+    link: reuniao.link ?? '',
+    status: reuniao.status,
+    ata: reuniao.ata ?? '',
+    resumo: reuniao.resumo ?? '',
+    decisoes: reuniao.decisoes ?? '',
+    pendencias_cliente: reuniao.pendencias_cliente ?? '',
+    pendencias_internas: reuniao.pendencias_internas ?? '',
+    proximos_passos: reuniao.proximos_passos ?? '',
+  };
+}
 
 const USO_DIARIO_LABELS: Record<UsoDiarioCheckpoint, string> = {
   so_kommo: 'Só Kommo',
@@ -171,6 +264,19 @@ export function ImplementacaoDetalhe() {
   const [linkPosVendaCopiado, setLinkPosVendaCopiado] = useState(false);
   const [kickoffRealizadoEm, setKickoffRealizadoEm] = useState<string | null>(null);
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
+  const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [reuniaoRemarcacoes, setReuniaoRemarcacoes] = useState<ReuniaoRemarcacao[]>([]);
+  const [editandoReuniaoTipo, setEditandoReuniaoTipo] = useState<TipoReuniao | null>(null);
+  const [editandoReuniaoId, setEditandoReuniaoId] = useState<string | null>(null);
+  const [formReuniao, setFormReuniao] = useState<FormReuniao | null>(null);
+  const [salvandoReuniao, setSalvandoReuniao] = useState(false);
+  const [remarcandoReuniaoId, setRemarcandoReuniaoId] = useState<string | null>(null);
+  const [formRemarcacaoReuniao, setFormRemarcacaoReuniao] = useState({
+    data_nova: '',
+    motivo: '',
+    responsavel_impacto: 'cliente' as ImpactoResponsavel,
+  });
+  const [salvandoRemarcacaoReuniao, setSalvandoRemarcacaoReuniao] = useState(false);
   const [salvandoTrial, setSalvandoTrial] = useState(false);
   const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
@@ -236,6 +342,18 @@ export function ImplementacaoDetalhe() {
     const datas = fasesCronograma.flatMap((fase) => [fase.inicio, fase.fim ?? hoje]);
     return calcularEscala(datas, hoje);
   }, [fasesCronograma, hoje]);
+
+  const alertasReunioes = useMemo(() => {
+    if (!cliente) return [];
+    return TIPOS_REUNIAO_OBRIGATORIOS.map((tipo) =>
+      alertaReuniaoObrigatoria({
+        tipo,
+        reunioesDoTipo: reunioes.filter((r) => r.tipo === tipo),
+        kickoffRealizadoEm: cliente.kickoff_realizado_em,
+        hoje,
+      }),
+    ).filter((alerta): alerta is NonNullable<typeof alerta> => alerta != null);
+  }, [cliente, reunioes, hoje]);
 
   // Cada atividade do template global (ou derivada desta implementação) +
   // a atividade virtual do Trial Kommo, todas já resolvidas com datas,
@@ -420,8 +538,30 @@ export function ImplementacaoDetalhe() {
         .select('*')
         .eq('cliente_id', clienteData.id);
       setRemarcacoes(remarcacoesData ?? []);
+
+      // Reuniões são escopadas por cliente_id (não implementacao_id) — um
+      // Kickoff pode existir antes de a implementação ser criada.
+      const { data: reunioesData } = await supabase
+        .from('reunioes')
+        .select('*')
+        .eq('cliente_id', clienteData.id)
+        .order('data_hora', { ascending: true });
+      setReunioes(reunioesData ?? []);
+
+      const idsReunioes = (reunioesData ?? []).map((r) => r.id);
+      if (idsReunioes.length > 0) {
+        const { data: reuniaoRemarcacoesData } = await supabase
+          .from('reuniao_remarcacoes')
+          .select('*')
+          .in('reuniao_id', idsReunioes);
+        setReuniaoRemarcacoes(reuniaoRemarcacoesData ?? []);
+      } else {
+        setReuniaoRemarcacoes([]);
+      }
     } else {
       setRemarcacoes([]);
+      setReunioes([]);
+      setReuniaoRemarcacoes([]);
     }
 
     const idsMapeamentos = [implData.mapeamento_id, ...(posVendaData ?? []).map((m) => m.id)];
@@ -763,6 +903,370 @@ export function ImplementacaoDetalhe() {
 
     setCliente(data);
     setConfirmandoCampo(null);
+  }
+
+  function abrirFormReuniao(tipo: TipoReuniao, reuniao: Reuniao | null) {
+    setEditandoReuniaoTipo(tipo);
+    setEditandoReuniaoId(reuniao?.id ?? null);
+    setFormReuniao(reuniao ? paraFormReuniao(reuniao) : formReuniaoVazio(tipo));
+  }
+
+  function fecharFormReuniao() {
+    setEditandoReuniaoTipo(null);
+    setEditandoReuniaoId(null);
+    setFormReuniao(null);
+  }
+
+  // Kickoff/Treinamento continuam também escrevendo em
+  // clientes.kickoff_realizado_em/treinamento_realizado_em (e seus pares
+  // "_agendado_para") — isso é o que ancora o prazo de 40 dias e o gate do
+  // treinamento em outros lugares do produto (ver src/lib/cronograma.ts e
+  // src/lib/atividadesCronograma.ts). Nunca sobrescreve uma data já
+  // realizada (isso seria uma remarcação silenciosa de um evento concluído).
+  async function sincronizarMarcoCliente(reuniao: Reuniao, clienteAtual: Cliente) {
+    if (reuniao.tipo !== 'kickoff' && reuniao.tipo !== 'treinamento') return;
+
+    const campoRealizado = reuniao.tipo === 'kickoff' ? 'kickoff_realizado_em' : 'treinamento_realizado_em';
+    const campoAgendado = reuniao.tipo === 'kickoff' ? 'kickoff_agendado_para' : 'treinamento_agendado_para';
+
+    const patch: Partial<
+      Pick<Cliente, 'kickoff_realizado_em' | 'kickoff_agendado_para' | 'treinamento_realizado_em' | 'treinamento_agendado_para'>
+    > = {};
+
+    if (reuniao.status === 'realizada' && reuniao.data_hora && !clienteAtual[campoRealizado]) {
+      patch[campoRealizado] = reuniao.data_hora;
+    }
+    if (reuniao.data_hora && reuniao.status !== 'cancelada') {
+      patch[campoAgendado] = reuniao.data_hora;
+    }
+    if (Object.keys(patch).length === 0) return;
+
+    const { data, error: updateError } = await supabase
+      .from('clientes')
+      .update(patch)
+      .eq('id', clienteAtual.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setCliente(data);
+    setKickoffRealizadoEm(data.kickoff_realizado_em);
+  }
+
+  async function handleSalvarReuniao(e: FormEvent) {
+    e.preventDefault();
+    if (!implementacao || !formReuniao) return;
+    const clienteId = implementacao.cliente_id;
+    if (!clienteId) {
+      setError('Esta implementação ainda não está vinculada a um cliente.');
+      return;
+    }
+
+    setSalvandoReuniao(true);
+    setError(null);
+
+    const payload = {
+      titulo: formReuniao.titulo.trim() || TIPO_REUNIAO_LABELS[formReuniao.tipo],
+      data_hora: formReuniao.data_hora ? new Date(formReuniao.data_hora).toISOString() : null,
+      consultor_responsavel_id: formReuniao.consultor_responsavel_id || null,
+      participantes: formReuniao.participantes.trim() || null,
+      link: formReuniao.link.trim() || null,
+      status: formReuniao.status,
+      ata: formReuniao.ata.trim() || null,
+      resumo: formReuniao.resumo.trim() || null,
+      decisoes: formReuniao.decisoes.trim() || null,
+      pendencias_cliente: formReuniao.pendencias_cliente.trim() || null,
+      pendencias_internas: formReuniao.pendencias_internas.trim() || null,
+      proximos_passos: formReuniao.proximos_passos.trim() || null,
+    };
+
+    const { data, error: saveError } = editandoReuniaoId
+      ? await supabase.from('reunioes').update(payload).eq('id', editandoReuniaoId).select().single()
+      : await supabase
+          .from('reunioes')
+          .insert({
+            ...payload,
+            cliente_id: clienteId,
+            implementacao_id: implementacao.id,
+            tipo: formReuniao.tipo,
+          })
+          .select()
+          .single();
+
+    if (saveError) {
+      setSalvandoReuniao(false);
+      setError(saveError.message);
+      return;
+    }
+
+    setReunioes((prev) => {
+      const idx = prev.findIndex((r) => r.id === data.id);
+      if (idx === -1) return [...prev, data];
+      const copia = [...prev];
+      copia[idx] = data;
+      return copia;
+    });
+
+    if (cliente) await sincronizarMarcoCliente(data, cliente);
+
+    setSalvandoReuniao(false);
+    fecharFormReuniao();
+  }
+
+  function abrirRemarcacaoReuniao(reuniao: Reuniao) {
+    setRemarcandoReuniaoId(reuniao.id);
+    setFormRemarcacaoReuniao({
+      data_nova: isoParaInputDatetime(reuniao.data_hora),
+      motivo: '',
+      responsavel_impacto: 'cliente',
+    });
+  }
+
+  function fecharRemarcacaoReuniao() {
+    setRemarcandoReuniaoId(null);
+  }
+
+  // Ação distinta de editar a reunião pelo formulário: preserva a data
+  // anterior (vai pro log de auditoria), exige motivo e responsável pelo
+  // impacto, mantém o status como estava (não força "remarcada") e nunca
+  // mexe numa reunião já realizada.
+  async function handleConfirmarRemarcacaoReuniao(e: FormEvent) {
+    e.preventDefault();
+    const reuniao = reunioes.find((r) => r.id === remarcandoReuniaoId);
+    if (!reuniao || !formRemarcacaoReuniao.data_nova || !formRemarcacaoReuniao.motivo.trim()) return;
+
+    setSalvandoRemarcacaoReuniao(true);
+    setError(null);
+
+    const dataNovaIso = new Date(formRemarcacaoReuniao.data_nova).toISOString();
+
+    const { error: insertError } = await supabase.from('reuniao_remarcacoes').insert({
+      reuniao_id: reuniao.id,
+      data_anterior: reuniao.data_hora,
+      data_nova: dataNovaIso,
+      motivo: formRemarcacaoReuniao.motivo.trim(),
+      responsavel_impacto: formRemarcacaoReuniao.responsavel_impacto,
+      alterado_por_email: user?.email ?? null,
+    });
+
+    if (insertError) {
+      setSalvandoRemarcacaoReuniao(false);
+      setError(insertError.message);
+      return;
+    }
+
+    const { data, error: updateError } = await supabase
+      .from('reunioes')
+      .update({ data_hora: dataNovaIso })
+      .eq('id', reuniao.id)
+      .select()
+      .single();
+
+    if (updateError) {
+      setSalvandoRemarcacaoReuniao(false);
+      setError(updateError.message);
+      return;
+    }
+
+    setReunioes((prev) => prev.map((r) => (r.id === data.id ? data : r)));
+
+    const { data: reuniaoRemarcacoesData } = await supabase
+      .from('reuniao_remarcacoes')
+      .select('*')
+      .eq('reuniao_id', reuniao.id);
+    setReuniaoRemarcacoes((prev) => [
+      ...prev.filter((r) => r.reuniao_id !== reuniao.id),
+      ...(reuniaoRemarcacoesData ?? []),
+    ]);
+
+    if (cliente) await sincronizarMarcoCliente(data, cliente);
+
+    setSalvandoRemarcacaoReuniao(false);
+    setRemarcandoReuniaoId(null);
+  }
+
+  function renderFormReuniao() {
+    if (!formReuniao) return null;
+    return (
+      <form onSubmit={handleSalvarReuniao} className="card form-card">
+        <div className="form-grid">
+          <label className="field">
+            <span>Título</span>
+            <input
+              type="text"
+              value={formReuniao.titulo}
+              placeholder={TIPO_REUNIAO_LABELS[formReuniao.tipo]}
+              onChange={(e) => setFormReuniao({ ...formReuniao, titulo: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Data e horário</span>
+            <input
+              type="datetime-local"
+              value={formReuniao.data_hora}
+              onChange={(e) => setFormReuniao({ ...formReuniao, data_hora: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Consultor responsável</span>
+            <select
+              value={formReuniao.consultor_responsavel_id}
+              onChange={(e) => setFormReuniao({ ...formReuniao, consultor_responsavel_id: e.target.value })}
+            >
+              <option value="">Selecione…</option>
+              {consultores.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                  {!c.ativo ? ' (inativo)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Link</span>
+            <input
+              type="url"
+              placeholder="https://..."
+              value={formReuniao.link}
+              onChange={(e) => setFormReuniao({ ...formReuniao, link: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Status</span>
+            <select
+              value={formReuniao.status}
+              onChange={(e) => setFormReuniao({ ...formReuniao, status: e.target.value as StatusReuniao })}
+            >
+              {Object.entries(STATUS_REUNIAO_LABELS).map(([valor, rotulo]) => (
+                <option key={valor} value={valor}>
+                  {rotulo}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <label className="field">
+          <span>Participantes</span>
+          <textarea
+            rows={2}
+            placeholder="Um nome por linha"
+            value={formReuniao.participantes}
+            onChange={(e) => setFormReuniao({ ...formReuniao, participantes: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Ata</span>
+          <textarea
+            rows={3}
+            value={formReuniao.ata}
+            onChange={(e) => setFormReuniao({ ...formReuniao, ata: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Resumo</span>
+          <textarea
+            rows={3}
+            value={formReuniao.resumo}
+            onChange={(e) => setFormReuniao({ ...formReuniao, resumo: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Decisões</span>
+          <textarea
+            rows={2}
+            value={formReuniao.decisoes}
+            onChange={(e) => setFormReuniao({ ...formReuniao, decisoes: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Pendências do cliente</span>
+          <textarea
+            rows={2}
+            value={formReuniao.pendencias_cliente}
+            onChange={(e) => setFormReuniao({ ...formReuniao, pendencias_cliente: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Pendências internas</span>
+          <textarea
+            rows={2}
+            value={formReuniao.pendencias_internas}
+            onChange={(e) => setFormReuniao({ ...formReuniao, pendencias_internas: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Próximos passos</span>
+          <textarea
+            rows={2}
+            value={formReuniao.proximos_passos}
+            onChange={(e) => setFormReuniao({ ...formReuniao, proximos_passos: e.target.value })}
+          />
+        </label>
+        <div className="wizard-actions">
+          <button type="button" className="btn btn-secondary" onClick={fecharFormReuniao}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={salvandoReuniao}>
+            {salvandoReuniao ? 'Salvando…' : 'Salvar reunião'}
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  function renderFormRemarcacaoReuniao() {
+    return (
+      <form onSubmit={handleConfirmarRemarcacaoReuniao} className="card form-card">
+        <label className="field">
+          <span>Nova data e horário</span>
+          <input
+            type="datetime-local"
+            required
+            value={formRemarcacaoReuniao.data_nova}
+            onChange={(e) => setFormRemarcacaoReuniao({ ...formRemarcacaoReuniao, data_nova: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Motivo</span>
+          <textarea
+            rows={2}
+            required
+            value={formRemarcacaoReuniao.motivo}
+            onChange={(e) => setFormRemarcacaoReuniao({ ...formRemarcacaoReuniao, motivo: e.target.value })}
+          />
+        </label>
+        <label className="field">
+          <span>Responsável pelo impacto</span>
+          <select
+            value={formRemarcacaoReuniao.responsavel_impacto}
+            onChange={(e) =>
+              setFormRemarcacaoReuniao({
+                ...formRemarcacaoReuniao,
+                responsavel_impacto: e.target.value as ImpactoResponsavel,
+              })
+            }
+          >
+            {Object.entries(IMPACTO_RESPONSAVEL_LABELS).map(([valor, rotulo]) => (
+              <option key={valor} value={valor}>
+                {rotulo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="wizard-actions">
+          <button type="button" className="btn btn-secondary" onClick={fecharRemarcacaoReuniao}>
+            Cancelar
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={salvandoRemarcacaoReuniao}>
+            {salvandoRemarcacaoReuniao ? 'Salvando…' : 'Confirmar remarcação'}
+          </button>
+        </div>
+      </form>
+    );
   }
 
   async function handleGerarPosVenda() {
@@ -1349,6 +1853,14 @@ export function ImplementacaoDetalhe() {
         >
           Checkpoint 30 dias
           {checkpointAdocao?.risco_churn && <span className="badge-danger">Risco</span>}
+        </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'reunioes' ? ' active' : ''}`}
+          onClick={() => setAba('reunioes')}
+        >
+          Reuniões
+          {alertasReunioes.length > 0 && <span className="badge-danger">{alertasReunioes.length}</span>}
         </button>
       </div>
 
@@ -2080,6 +2592,223 @@ export function ImplementacaoDetalhe() {
           )}
         </section>
       )}
+
+      {aba === 'reunioes' &&
+        (!cliente ? (
+          <section className="card form-card">
+            <p className="field-hint">Esta implementação ainda não está vinculada a um cliente.</p>
+          </section>
+        ) : (
+          <>
+            {alertasReunioes.length > 0 && (
+              <section className="card form-card">
+                {alertasReunioes.map((alerta) => (
+                  <p key={alerta.tipo} className="form-error">
+                    {alerta.titulo}
+                  </p>
+                ))}
+              </section>
+            )}
+
+            {TIPOS_REUNIAO_ESTRUTURADOS.map((tipo) => {
+              const reuniao = reunioes.find((r) => r.tipo === tipo) ?? null;
+              const remarcacoesDaReuniao = reuniao
+                ? reuniaoRemarcacoes.filter((rr) => rr.reuniao_id === reuniao.id)
+                : [];
+              const podeRemarcar = !!(reuniao?.data_hora && reuniao.status !== 'realizada');
+              const editando = editandoReuniaoTipo === tipo;
+
+              return (
+                <section key={tipo} className="card form-card">
+                  <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                    <h2 style={{ marginBottom: 0 }}>
+                      {TIPO_REUNIAO_LABELS[tipo]}
+                      {reuniao && (
+                        <>
+                          {' '}
+                          <span className={`status-badge status-tone-${STATUS_REUNIAO_TONE[reuniao.status]}`}>
+                            {STATUS_REUNIAO_LABELS[reuniao.status]}
+                          </span>
+                        </>
+                      )}
+                    </h2>
+                    {!editando && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-auto"
+                        onClick={() => abrirFormReuniao(tipo, reuniao)}
+                      >
+                        {reuniao ? 'Editar' : 'Agendar'}
+                      </button>
+                    )}
+                  </div>
+
+                  {editando ? (
+                    renderFormReuniao()
+                  ) : reuniao ? (
+                    <>
+                      <div className="form-grid">
+                        <p>
+                          <strong>Título:</strong> {reuniao.titulo ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Data e horário:</strong>{' '}
+                          {reuniao.data_hora ? formatarDataHoraLocal(reuniao.data_hora) : 'Não agendada'}
+                        </p>
+                        <p>
+                          <strong>Consultor responsável:</strong>{' '}
+                          {nomeConsultor(reuniao.consultor_responsavel_id, consultores) ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Participantes:</strong> {reuniao.participantes ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Link:</strong>{' '}
+                          {reuniao.link ? (
+                            <a href={reuniao.link} target="_blank" rel="noopener noreferrer">
+                              {reuniao.link}
+                            </a>
+                          ) : (
+                            '—'
+                          )}
+                        </p>
+                      </div>
+                      <div className="form-grid">
+                        <p>
+                          <strong>Ata:</strong> {reuniao.ata ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Resumo:</strong> {reuniao.resumo ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Decisões:</strong> {reuniao.decisoes ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Pendências do cliente:</strong> {reuniao.pendencias_cliente ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Pendências internas:</strong> {reuniao.pendencias_internas ?? '—'}
+                        </p>
+                        <p>
+                          <strong>Próximos passos:</strong> {reuniao.proximos_passos ?? '—'}
+                        </p>
+                      </div>
+                      {podeRemarcar && remarcandoReuniaoId !== reuniao.id && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-auto"
+                          onClick={() => abrirRemarcacaoReuniao(reuniao)}
+                        >
+                          Remarcar
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <p className="field-hint">Ainda não agendada.</p>
+                  )}
+
+                  {reuniao && remarcandoReuniaoId === reuniao.id && renderFormRemarcacaoReuniao()}
+
+                  {remarcacoesDaReuniao.length > 0 && (
+                    <p className="field-hint">
+                      Histórico de remarcação:{' '}
+                      {remarcacoesDaReuniao
+                        .map(
+                          (rr) =>
+                            `${rr.data_anterior ? formatarDataHoraLocal(rr.data_anterior) : '—'} → ${formatarDataHoraLocal(rr.data_nova)} (motivo: ${rr.motivo}, impacto: ${IMPACTO_RESPONSAVEL_LABELS[rr.responsavel_impacto]})`,
+                        )
+                        .join(' · ')}
+                    </p>
+                  )}
+                </section>
+              );
+            })}
+
+            {TIPOS_REUNIAO_AD_HOC.map((tipo) => {
+              const reunioesDoTipo = [...reunioes]
+                .filter((r) => r.tipo === tipo)
+                .sort(
+                  (a, b) =>
+                    new Date(b.data_hora ?? b.created_at).getTime() - new Date(a.data_hora ?? a.created_at).getTime(),
+                );
+              const formAberto = editandoReuniaoTipo === tipo;
+
+              return (
+                <section key={tipo} className="card form-card">
+                  <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                    <h2 style={{ marginBottom: 0 }}>{TIPO_REUNIAO_LABELS[tipo]}</h2>
+                    {!formAberto && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-auto"
+                        onClick={() => abrirFormReuniao(tipo, null)}
+                      >
+                        + Nova reunião
+                      </button>
+                    )}
+                  </div>
+
+                  {reunioesDoTipo.length === 0 ? (
+                    <p className="field-hint">Nenhuma reunião registrada ainda.</p>
+                  ) : (
+                    <ul className="observacoes-lista">
+                      {reunioesDoTipo.map((r) => {
+                        const remarcacoesDaReuniao = reuniaoRemarcacoes.filter((rr) => rr.reuniao_id === r.id);
+                        const podeRemarcar = r.data_hora && r.status !== 'realizada';
+                        return (
+                          <li key={r.id} className="observacao-item">
+                            <div className="observacao-item-header">
+                              <span className="observacao-item-meta">
+                                <span className={`status-badge status-tone-${STATUS_REUNIAO_TONE[r.status]}`}>
+                                  {STATUS_REUNIAO_LABELS[r.status]}
+                                </span>{' '}
+                                <strong style={{ color: 'var(--color-text)' }}>
+                                  {r.titulo ?? TIPO_REUNIAO_LABELS[tipo]}
+                                </strong>
+                                {' · '}
+                                {r.data_hora ? formatarDataHoraLocal(r.data_hora) : 'Não agendada'}
+                              </span>
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => abrirFormReuniao(tipo, r)}
+                              >
+                                Editar
+                              </button>
+                            </div>
+                            {podeRemarcar && remarcandoReuniaoId !== r.id && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-auto"
+                                onClick={() => abrirRemarcacaoReuniao(r)}
+                              >
+                                Remarcar
+                              </button>
+                            )}
+                            {remarcandoReuniaoId === r.id && renderFormRemarcacaoReuniao()}
+                            {remarcacoesDaReuniao.length > 0 && (
+                              <p className="field-hint">
+                                Histórico de remarcação:{' '}
+                                {remarcacoesDaReuniao
+                                  .map(
+                                    (rr) =>
+                                      `${rr.data_anterior ? formatarDataHoraLocal(rr.data_anterior) : '—'} → ${formatarDataHoraLocal(rr.data_nova)} (motivo: ${rr.motivo}, impacto: ${IMPACTO_RESPONSAVEL_LABELS[rr.responsavel_impacto]})`,
+                                  )
+                                  .join(' · ')}
+                              </p>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+
+                  {formAberto && renderFormReuniao()}
+                </section>
+              );
+            })}
+          </>
+        ))}
     </div>
   );
 }

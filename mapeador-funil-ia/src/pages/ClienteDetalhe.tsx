@@ -8,6 +8,8 @@ import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marc
 import { funilValidado } from '../lib/statusFluxo';
 import { IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
+import { nomeConsultor } from '../lib/operacaoResumo';
+import { STATUS_REUNIAO_LABELS, STATUS_REUNIAO_TONE, TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import type {
   AtividadeCronograma,
@@ -18,10 +20,12 @@ import type {
   ClienteContato,
   ClienteObservacao,
   ClienteOcorrencia,
+  Consultor,
   ImpactoResponsavel,
   ImplementacaoCrm,
   Mapeamento,
   MarcoRemarcacao,
+  Reuniao,
   StatusOcorrencia,
 } from '../types/database';
 
@@ -215,13 +219,8 @@ export function ClienteDetalhe() {
   const [checkpointRespondidoEm, setCheckpointRespondidoEm] = useState<string | null>(null);
 
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
-  const [remarcandoCampo, setRemarcandoCampo] = useState<CampoRemarcavel | null>(null);
-  const [formRemarcacao, setFormRemarcacao] = useState({
-    data_nova: '',
-    motivo: '',
-    responsavel_impacto: 'cliente' as ImpactoResponsavel,
-  });
-  const [salvandoRemarcacao, setSalvandoRemarcacao] = useState(false);
+  const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [consultores, setConsultores] = useState<Consultor[]>([]);
 
   const [editandoInfo, setEditandoInfo] = useState(false);
   const [formInfo, setFormInfo] = useState<FormInfoCliente | null>(null);
@@ -255,6 +254,8 @@ export function ClienteDetalhe() {
       { data: remarcacoesData },
       { data: contatosData },
       { data: ocorrenciasData },
+      { data: reunioesData },
+      { data: consultoresData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -305,6 +306,12 @@ export function ClienteDetalhe() {
         .select('*')
         .eq('cliente_id', clienteId)
         .order('data_ocorrencia', { ascending: false }),
+      supabase
+        .from('reunioes')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('data_hora', { ascending: true }),
+      supabase.from('consultores').select('*').order('nome', { ascending: true }),
     ]);
 
     if (clienteError || !clienteData) {
@@ -325,6 +332,8 @@ export function ClienteDetalhe() {
     setRemarcacoes(remarcacoesData ?? []);
     setContatos(contatosData ?? []);
     setOcorrencias(ocorrenciasData ?? []);
+    setReunioes(reunioesData ?? []);
+    setConsultores(consultoresData ?? []);
 
     if (implementacaoData) {
       const { data: checkpointData } = await supabase
@@ -410,69 +419,6 @@ export function ClienteDetalhe() {
     setCliente(data);
     setFormMarcos(paraFormMarcos(data));
     setEditandoMarcos(false);
-  }
-
-  function abrirRemarcacao(campo: CampoRemarcavel) {
-    setRemarcandoCampo(campo);
-    setFormRemarcacao({
-      data_nova: cliente ? isoParaInput(cliente[campo], false) : '',
-      motivo: '',
-      responsavel_impacto: 'cliente',
-    });
-  }
-
-  function fecharRemarcacao() {
-    setRemarcandoCampo(null);
-  }
-
-  // Ação distinta de editar o marco pelo formulário genérico: preserva a
-  // data anterior (nunca perdida — vai pro log de auditoria), exige motivo e
-  // responsável pelo impacto, e nunca mexe num marco já realizado.
-  async function handleConfirmarRemarcacao(e: FormEvent) {
-    e.preventDefault();
-    if (!cliente || !remarcandoCampo) return;
-    if (!formRemarcacao.data_nova || !formRemarcacao.motivo.trim()) return;
-
-    setSalvandoRemarcacao(true);
-
-    const dataNovaIso = inputParaIso(formRemarcacao.data_nova, false)!;
-
-    const { error: insertError } = await supabase.from('marco_remarcacoes').insert({
-      cliente_id: cliente.id,
-      campo_marco: remarcandoCampo,
-      data_anterior: cliente[remarcandoCampo],
-      data_nova: dataNovaIso,
-      motivo: formRemarcacao.motivo.trim(),
-      responsavel_impacto: formRemarcacao.responsavel_impacto,
-    });
-
-    if (insertError) {
-      setSalvandoRemarcacao(false);
-      setError(insertError.message);
-      return;
-    }
-
-    const atualizacao: Partial<Pick<Cliente, CampoRemarcavel>> = {
-      [remarcandoCampo]: dataNovaIso,
-    };
-    const { data, error: updateError } = await supabase
-      .from('clientes')
-      .update(atualizacao)
-      .eq('id', cliente.id)
-      .select()
-      .single();
-
-    setSalvandoRemarcacao(false);
-
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-
-    setCliente(data);
-    setFormMarcos(paraFormMarcos(data));
-    setRemarcandoCampo(null);
-    if (id) await carregar(id);
   }
 
   async function handleCriarMapeamentoVendas() {
@@ -912,8 +858,22 @@ export function ClienteDetalhe() {
       }
     }
 
+    // Kickoff/Treinamento já entram acima via MARCOS_ORDENADOS — não
+    // duplicar aqui. Os outros 5 tipos de reunião não têm marco equivalente,
+    // então entram só a partir do módulo de Reuniões.
+    for (const reuniao of reunioes) {
+      if (reuniao.tipo === 'kickoff' || reuniao.tipo === 'treinamento') continue;
+      if (reuniao.status !== 'realizada' || !reuniao.data_hora) continue;
+      itens.push({
+        data: new Date(reuniao.data_hora),
+        tipo: `${TIPO_REUNIAO_LABELS[reuniao.tipo]} realizado(a)`,
+        descricao: reuniao.resumo || reuniao.titulo || TIPO_REUNIAO_LABELS[reuniao.tipo],
+        usuario: null,
+      });
+    }
+
     return itens.sort((a, b) => b.data.getTime() - a.data.getTime());
-  }, [cliente, remarcacoes, implementacao, atividadesAutomacao, statusAutomacao]);
+  }, [cliente, remarcacoes, implementacao, atividadesAutomacao, statusAutomacao, reunioes]);
 
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error && !cliente) return <p className="form-error">{error}</p>;
@@ -1526,66 +1486,17 @@ export function ClienteDetalhe() {
                         </span>
                       )}
                       {remarcavel && !jaRealizado && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-auto"
-                          onClick={() => abrirRemarcacao(campo)}
-                        >
-                          Remarcar
-                        </button>
+                        <span className="field-hint">
+                          {' '}
+                          ·{' '}
+                          {implementacao ? (
+                            <Link to={`/implementacoes/${implementacao.id}`}>Gerenciar em Reuniões →</Link>
+                          ) : (
+                            'Gerencie pelo módulo de Reuniões, dentro da implementação'
+                          )}
+                        </span>
                       )}
                     </span>
-
-                    {remarcandoCampo === campo && (
-                      <form onSubmit={handleConfirmarRemarcacao} className="card form-card">
-                        <label className="field">
-                          <span>Nova data e horário</span>
-                          <input
-                            type="datetime-local"
-                            required
-                            value={formRemarcacao.data_nova}
-                            onChange={(e) =>
-                              setFormRemarcacao({ ...formRemarcacao, data_nova: e.target.value })
-                            }
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Motivo</span>
-                          <textarea
-                            rows={2}
-                            required
-                            value={formRemarcacao.motivo}
-                            onChange={(e) => setFormRemarcacao({ ...formRemarcacao, motivo: e.target.value })}
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Responsável pelo impacto</span>
-                          <select
-                            value={formRemarcacao.responsavel_impacto}
-                            onChange={(e) =>
-                              setFormRemarcacao({
-                                ...formRemarcacao,
-                                responsavel_impacto: e.target.value as ImpactoResponsavel,
-                              })
-                            }
-                          >
-                            {Object.entries(IMPACTO_RESPONSAVEL_LABELS).map(([valor, rotulo]) => (
-                              <option key={valor} value={valor}>
-                                {rotulo}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <div className="wizard-actions">
-                          <button type="button" className="btn btn-secondary" onClick={fecharRemarcacao}>
-                            Cancelar
-                          </button>
-                          <button type="submit" className="btn btn-primary" disabled={salvandoRemarcacao}>
-                            {salvandoRemarcacao ? 'Salvando…' : 'Confirmar remarcação'}
-                          </button>
-                        </div>
-                      </form>
-                    )}
                   </li>
                 );
               })}
@@ -1610,6 +1521,53 @@ export function ClienteDetalhe() {
               ))}
             </ul>
           </>
+        )}
+      </section>
+
+      <section className="card form-card">
+        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <h2 style={{ marginBottom: 0 }}>Reuniões</h2>
+          {implementacao && (
+            <Link to={`/implementacoes/${implementacao.id}`} className="btn btn-secondary btn-auto">
+              Gerenciar reuniões
+            </Link>
+          )}
+        </div>
+        <p className="field-hint">
+          Só leitura aqui — agendar, editar e remarcar reuniões acontece na aba "Reuniões" da
+          implementação.
+        </p>
+        {reunioes.length === 0 ? (
+          <p className="field-hint">Nenhuma reunião registrada ainda.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Tipo</th>
+                  <th>Título</th>
+                  <th>Data</th>
+                  <th>Status</th>
+                  <th>Consultor responsável</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reunioes.map((r) => (
+                  <tr key={r.id}>
+                    <td>{TIPO_REUNIAO_LABELS[r.tipo]}</td>
+                    <td>{r.titulo ?? '—'}</td>
+                    <td>{r.data_hora ? formatarDataHora(r.data_hora) : 'Não agendada'}</td>
+                    <td>
+                      <span className={`status-badge status-tone-${STATUS_REUNIAO_TONE[r.status]}`}>
+                        {STATUS_REUNIAO_LABELS[r.status]}
+                      </span>
+                    </td>
+                    <td>{nomeConsultor(r.consultor_responsavel_id, consultores) ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
