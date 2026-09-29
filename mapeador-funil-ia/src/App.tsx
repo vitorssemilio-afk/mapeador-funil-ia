@@ -7,6 +7,7 @@ import { Agenda } from './pages/Agenda';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { CheckpointAdocao } from './pages/CheckpointAdocao';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
+import { ConfiguracoesPipefy } from './pages/ConfiguracoesPipefy';
 import { Cronograma } from './pages/Cronograma';
 import { Dashboard } from './pages/Dashboard';
 import { FormularioAdmin } from './pages/FormularioAdmin';
@@ -65,6 +66,7 @@ function App() {
               <Route path="/formulario" element={<FormularioAdmin />} />
               <Route path="/implementacoes" element={<ImplementacoesCrm />} />
               <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
+              <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
               <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
