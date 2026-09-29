@@ -237,7 +237,7 @@ export function resolverAtividade(params: {
       const valorAgendado = campoIrmao ? cliente?.[campoIrmao] : null;
       if (typeof valorAgendado === 'string' && valorAgendado.length > 0) {
         liberada = true;
-        dataLiberacao = new Date(`${valorAgendado}T12:00:00`);
+        dataLiberacao = new Date(valorAgendado);
       }
     }
   } else if (atividade.depende_de?.startsWith('ciclo:')) {
@@ -384,7 +384,7 @@ export function resolverMarcoAgendavel(params: {
   } = params;
 
   const dataReal = realizadoEm ? new Date(realizadoEm) : null;
-  const agendadoPara = agendadoParaRaw ? new Date(`${agendadoParaRaw}T12:00:00`) : null;
+  const agendadoPara = agendadoParaRaw ? new Date(agendadoParaRaw) : null;
   const dataPlanejada = agendadoPara;
 
   let status: StatusAtividade;
@@ -410,7 +410,7 @@ export function resolverMarcoAgendavel(params: {
     const maisAntiga = [...remarcacoes].sort(
       (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
     )[0];
-    const dataOriginal = maisAntiga.data_anterior ? new Date(`${maisAntiga.data_anterior}T12:00:00`) : null;
+    const dataOriginal = maisAntiga.data_anterior ? new Date(maisAntiga.data_anterior) : null;
     const dataAtual = dataReal ?? agendadoPara;
     if (dataOriginal && dataAtual) {
       deslocamentoDias = diferencaEmDias(dataAtual, dataOriginal);

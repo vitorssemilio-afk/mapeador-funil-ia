@@ -280,7 +280,11 @@ export function ClienteDetalhe() {
 
   function abrirRemarcacao(campo: CampoRemarcavel) {
     setRemarcandoCampo(campo);
-    setFormRemarcacao({ data_nova: '', motivo: '', responsavel_impacto: 'cliente' });
+    setFormRemarcacao({
+      data_nova: cliente ? isoParaInput(cliente[campo], false) : '',
+      motivo: '',
+      responsavel_impacto: 'cliente',
+    });
   }
 
   function fecharRemarcacao() {
@@ -297,11 +301,13 @@ export function ClienteDetalhe() {
 
     setSalvandoRemarcacao(true);
 
+    const dataNovaIso = inputParaIso(formRemarcacao.data_nova, false)!;
+
     const { error: insertError } = await supabase.from('marco_remarcacoes').insert({
       cliente_id: cliente.id,
       campo_marco: remarcandoCampo,
       data_anterior: cliente[remarcandoCampo],
-      data_nova: formRemarcacao.data_nova,
+      data_nova: dataNovaIso,
       motivo: formRemarcacao.motivo.trim(),
       responsavel_impacto: formRemarcacao.responsavel_impacto,
     });
@@ -313,7 +319,7 @@ export function ClienteDetalhe() {
     }
 
     const atualizacao: Partial<Pick<Cliente, CampoRemarcavel>> = {
-      [remarcandoCampo]: formRemarcacao.data_nova,
+      [remarcandoCampo]: dataNovaIso,
     };
     const { data, error: updateError } = await supabase
       .from('clientes')
@@ -720,8 +726,7 @@ export function ClienteDetalhe() {
                 const deslocamentoDias =
                   maisAntiga?.data_anterior && cliente[campo]
                     ? Math.round(
-                        (new Date(`${cliente[campo]}T12:00:00`).getTime() -
-                          new Date(`${maisAntiga.data_anterior}T12:00:00`).getTime()) /
+                        (new Date(cliente[campo]!).getTime() - new Date(maisAntiga.data_anterior).getTime()) /
                           (24 * 60 * 60 * 1000),
                       )
                     : null;
@@ -756,9 +761,9 @@ export function ClienteDetalhe() {
                     {remarcandoCampo === campo && (
                       <form onSubmit={handleConfirmarRemarcacao} className="card form-card">
                         <label className="field">
-                          <span>Nova data</span>
+                          <span>Nova data e horário</span>
                           <input
-                            type="date"
+                            type="datetime-local"
                             required
                             value={formRemarcacao.data_nova}
                             onChange={(e) =>
