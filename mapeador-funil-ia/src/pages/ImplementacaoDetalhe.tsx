@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import {
   resolverAtividade,
+  resolverMarcoAgendavel,
   resolverTrialKommo,
   STATUS_ATIVIDADE_LABELS,
   STATUS_ATIVIDADE_TONE,
@@ -38,6 +39,7 @@ import type {
   ImplementacaoStatusHistorico,
   IntencaoManutencaoCheckpoint,
   Mapeamento,
+  MarcoRemarcacao,
   UsoDiarioCheckpoint,
 } from '../types/database';
 
@@ -167,6 +169,7 @@ export function ImplementacaoDetalhe() {
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
   const [linkPosVendaCopiado, setLinkPosVendaCopiado] = useState(false);
   const [kickoffRealizadoEm, setKickoffRealizadoEm] = useState<string | null>(null);
+  const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -231,9 +234,36 @@ export function ImplementacaoDetalhe() {
         hoje,
       }),
     );
-    if (cliente) resolvidas.push(resolverTrialKommo(cliente, hoje));
+    if (cliente) {
+      resolvidas.push(resolverTrialKommo(cliente, hoje));
+      resolvidas.push(
+        resolverMarcoAgendavel({
+          nome: 'Kickoff',
+          ciclo: 'Marcos',
+          agendadoPara: cliente.kickoff_agendado_para,
+          realizadoEm: cliente.kickoff_realizado_em,
+          remarcacoes: remarcacoes.filter((r) => r.campo_marco === 'kickoff_agendado_para'),
+          kickoffRealizadoEm: cliente.kickoff_realizado_em,
+          diaLimiteCiclo: 0,
+          dependenciaLabel: null,
+          hoje,
+        }),
+      );
+      resolvidas.push(
+        resolverMarcoAgendavel({
+          nome: 'Treinamento',
+          ciclo: 'Marcos',
+          agendadoPara: cliente.treinamento_agendado_para,
+          realizadoEm: cliente.treinamento_realizado_em,
+          remarcacoes: remarcacoes.filter((r) => r.campo_marco === 'treinamento_agendado_para'),
+          kickoffRealizadoEm: cliente.kickoff_realizado_em,
+          diaLimiteCiclo: 10,
+          hoje,
+        }),
+      );
+    }
     return resolvidas;
-  }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, hoje]);
+  }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, remarcacoes, hoje]);
 
   // Agrupadas por ciclo, preservando a ordem de carregamento (já vem
   // ordenado por `ordem` da query) — Trial Kommo cai sozinho no seu próprio
@@ -320,6 +350,16 @@ export function ImplementacaoDetalhe() {
     setCliente(clienteData ?? null);
     setKickoffRealizadoEm(clienteData?.kickoff_realizado_em ?? null);
     setPosVendaMapeamento(posVendaData?.[0] ?? null);
+
+    if (clienteData) {
+      const { data: remarcacoesData } = await supabase
+        .from('marco_remarcacoes')
+        .select('*')
+        .eq('cliente_id', clienteData.id);
+      setRemarcacoes(remarcacoesData ?? []);
+    } else {
+      setRemarcacoes([]);
+    }
 
     const idsMapeamentos = [implData.mapeamento_id, ...(posVendaData ?? []).map((m) => m.id)];
     const funisPorMapeamento = await Promise.all(idsMapeamentos.map(buscarFunisMaisRecentes));
@@ -1358,6 +1398,8 @@ export function ImplementacaoDetalhe() {
                       <th>Prazo</th>
                       <th>Responsável</th>
                       <th>Dependência</th>
+                      <th>Dia</th>
+                      <th>Ciclo</th>
                       <th>Data planejada</th>
                       <th>Data real</th>
                       <th>Atraso</th>
@@ -1375,7 +1417,7 @@ export function ImplementacaoDetalhe() {
                       const statusRow = atividadesStatus.find((s) => s.atividade_id === atividade.id);
 
                       return (
-                        <Fragment key={atividade.id ?? 'trial-kommo'}>
+                        <Fragment key={atividade.id ?? `${atividade.ciclo}-${atividade.nome}`}>
                           <tr>
                             <td>
                               {!virtual && (
@@ -1394,7 +1436,26 @@ export function ImplementacaoDetalhe() {
                             <td>{atividade.prazoDias != null ? `${atividade.prazoDias}d` : '—'}</td>
                             <td>{atividade.responsavel ?? '—'}</td>
                             <td>{atividade.dependenciaLabel ?? '—'}</td>
-                            <td>{atividade.dataPlanejada?.toLocaleDateString('pt-BR') ?? '—'}</td>
+                            <td>{atividade.diaDesdeKickoff != null ? `Dia ${atividade.diaDesdeKickoff}` : '—'}</td>
+                            <td>
+                              {atividade.foraDaJanelaDoCiclo ? (
+                                <span className="ops-prazo-atrasado">
+                                  {atividade.diasAcimaDaJanela}d acima do ciclo
+                                </span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                            <td>
+                              {atividade.dataPlanejada?.toLocaleDateString('pt-BR') ?? '—'}
+                              {atividade.deslocamentoDias != null && (
+                                <span className="field-hint">
+                                  {' '}
+                                  (remarcado em {atividade.deslocamentoDias >= 0 ? '+' : ''}
+                                  {atividade.deslocamentoDias}d)
+                                </span>
+                              )}
+                            </td>
                             <td>{atividade.dataReal?.toLocaleDateString('pt-BR') ?? '—'}</td>
                             <td>{atividade.atrasoDias > 0 ? `${atividade.atrasoDias}d` : '—'}</td>
                             <td>
@@ -1423,7 +1484,7 @@ export function ImplementacaoDetalhe() {
                           </tr>
                           {!virtual && requerEvidencia && (
                             <tr>
-                              <td colSpan={10}>
+                              <td colSpan={12}>
                                 <input
                                   type="text"
                                   className="option-livre-input evidencia-input"
