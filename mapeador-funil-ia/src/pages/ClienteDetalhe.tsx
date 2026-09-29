@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { StatusBadge } from '../components/StatusBadge';
@@ -7,15 +7,22 @@ import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
 import { IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
+import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
 import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import type {
+  AtividadeCronograma,
+  AtividadeStatusRow,
+  CategoriaOcorrencia,
   Cliente,
   ClienteArquivo,
+  ClienteContato,
   ClienteObservacao,
+  ClienteOcorrencia,
   ImpactoResponsavel,
   ImplementacaoCrm,
   Mapeamento,
   MarcoRemarcacao,
+  StatusOcorrencia,
 } from '../types/database';
 
 // Só esses dois marcos têm a ação dedicada de "Remarcar" — os únicos com par
@@ -91,6 +98,87 @@ function paraForm(cliente: Cliente): FormCliente {
   };
 }
 
+type FormInfoCliente = {
+  nome_fantasia: string;
+  razao_social: string;
+  cnpj: string;
+  site: string;
+  cidade: string;
+  uf: string;
+};
+
+function paraFormInfo(cliente: Cliente): FormInfoCliente {
+  return {
+    nome_fantasia: cliente.nome_fantasia ?? '',
+    razao_social: cliente.razao_social ?? '',
+    cnpj: cliente.cnpj ?? '',
+    site: cliente.site ?? '',
+    cidade: cliente.cidade ?? '',
+    uf: cliente.uf ?? '',
+  };
+}
+
+type FormContato = {
+  nome: string;
+  cargo: string;
+  email: string;
+  telefone: string;
+  whatsapp: string;
+  papel_projeto: string;
+  principal: boolean;
+};
+
+const FORM_CONTATO_VAZIO: FormContato = {
+  nome: '',
+  cargo: '',
+  email: '',
+  telefone: '',
+  whatsapp: '',
+  papel_projeto: '',
+  principal: false,
+};
+
+function paraFormContato(contato: ClienteContato): FormContato {
+  return {
+    nome: contato.nome,
+    cargo: contato.cargo ?? '',
+    email: contato.email ?? '',
+    telefone: contato.telefone ?? '',
+    whatsapp: contato.whatsapp ?? '',
+    papel_projeto: contato.papel_projeto ?? '',
+    principal: contato.principal,
+  };
+}
+
+type FormOcorrencia = {
+  categoria: CategoriaOcorrencia;
+  descricao: string;
+  responsavel_impacto: ImpactoResponsavel;
+  data_ocorrencia: string;
+  impacta_cronograma: boolean;
+  dias_impacto: string;
+};
+
+function formOcorrenciaVazio(): FormOcorrencia {
+  return {
+    categoria: 'outro',
+    descricao: '',
+    responsavel_impacto: 'cliente',
+    data_ocorrencia: isoParaInput(new Date().toISOString(), false),
+    impacta_cronograma: false,
+    dias_impacto: '',
+  };
+}
+
+type ItemHistorico = {
+  data: Date;
+  tipo: string;
+  descricao: string;
+  usuario: string | null;
+};
+
+const CICLOS_AUTOMACAO = ['Ciclo 2 — Automações I e Check-in 1', 'Ciclo 3 — Automações II e Check-in 2'];
+
 export function ClienteDetalhe() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -135,6 +223,24 @@ export function ClienteDetalhe() {
   });
   const [salvandoRemarcacao, setSalvandoRemarcacao] = useState(false);
 
+  const [editandoInfo, setEditandoInfo] = useState(false);
+  const [formInfo, setFormInfo] = useState<FormInfoCliente | null>(null);
+  const [salvandoInfo, setSalvandoInfo] = useState(false);
+
+  const [contatos, setContatos] = useState<ClienteContato[]>([]);
+  const [formContato, setFormContato] = useState<FormContato | null>(null);
+  const [editandoContatoId, setEditandoContatoId] = useState<string | null>(null);
+  const [salvandoContato, setSalvandoContato] = useState(false);
+  const [excluindoContatoId, setExcluindoContatoId] = useState<string | null>(null);
+
+  const [atividadesAutomacao, setAtividadesAutomacao] = useState<AtividadeCronograma[]>([]);
+  const [statusAutomacao, setStatusAutomacao] = useState<AtividadeStatusRow[]>([]);
+
+  const [ocorrencias, setOcorrencias] = useState<ClienteOcorrencia[]>([]);
+  const [formOcorrencia, setFormOcorrencia] = useState<FormOcorrencia | null>(null);
+  const [salvandoOcorrencia, setSalvandoOcorrencia] = useState(false);
+  const [resolvendoOcorrenciaId, setResolvendoOcorrenciaId] = useState<string | null>(null);
+
   async function carregar(clienteId: string) {
     setLoading(true);
     setError(null);
@@ -147,6 +253,8 @@ export function ClienteDetalhe() {
       { data: observacoesData },
       { data: arquivosData },
       { data: remarcacoesData },
+      { data: contatosData },
+      { data: ocorrenciasData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -187,6 +295,16 @@ export function ClienteDetalhe() {
         .select('*')
         .eq('cliente_id', clienteId)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('cliente_contatos')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('principal', { ascending: false }),
+      supabase
+        .from('cliente_ocorrencias')
+        .select('*')
+        .eq('cliente_id', clienteId)
+        .order('data_ocorrencia', { ascending: false }),
     ]);
 
     if (clienteError || !clienteData) {
@@ -198,12 +316,15 @@ export function ClienteDetalhe() {
     setCliente(clienteData);
     setForm(paraForm(clienteData));
     setFormMarcos(paraFormMarcos(clienteData));
+    setFormInfo(paraFormInfo(clienteData));
     setMapeamentoVendas(vendasData ?? null);
     setMapeamentoPosVenda(posVendaData ?? null);
     setImplementacao(implementacaoData ?? null);
     setObservacoes(observacoesData ?? []);
     setArquivos(arquivosData ?? []);
     setRemarcacoes(remarcacoesData ?? []);
+    setContatos(contatosData ?? []);
+    setOcorrencias(ocorrenciasData ?? []);
 
     if (implementacaoData) {
       const { data: checkpointData } = await supabase
@@ -212,8 +333,21 @@ export function ClienteDetalhe() {
         .eq('implementacao_id', implementacaoData.id)
         .maybeSingle();
       setCheckpointRespondidoEm(checkpointData?.respondido_em ?? null);
+
+      const [{ data: atividadesData }, { data: statusData }] = await Promise.all([
+        supabase
+          .from('atividades_cronograma')
+          .select('*')
+          .or(`implementacao_id.is.null,implementacao_id.eq.${implementacaoData.id}`)
+          .in('ciclo', CICLOS_AUTOMACAO),
+        supabase.from('atividades_status').select('*').eq('implementacao_id', implementacaoData.id),
+      ]);
+      setAtividadesAutomacao(atividadesData ?? []);
+      setStatusAutomacao(statusData ?? []);
     } else {
       setCheckpointRespondidoEm(null);
+      setAtividadesAutomacao([]);
+      setStatusAutomacao([]);
     }
 
     setLoading(false);
@@ -552,6 +686,235 @@ export function ClienteDetalhe() {
     setArquivos((prev) => prev.filter((a) => a.id !== arquivo.id));
   }
 
+  async function handleSalvarInfo(e: FormEvent) {
+    e.preventDefault();
+    if (!cliente || !formInfo) return;
+
+    setSalvandoInfo(true);
+    const { data, error: updateError } = await supabase
+      .from('clientes')
+      .update({
+        nome_fantasia: formInfo.nome_fantasia.trim() || null,
+        razao_social: formInfo.razao_social.trim() || null,
+        cnpj: formInfo.cnpj.trim() || null,
+        site: formInfo.site.trim() || null,
+        cidade: formInfo.cidade.trim() || null,
+        uf: formInfo.uf.trim() || null,
+      })
+      .eq('id', cliente.id)
+      .select()
+      .single();
+    setSalvandoInfo(false);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setCliente(data);
+    setFormInfo(paraFormInfo(data));
+    setEditandoInfo(false);
+  }
+
+  function abrirNovoContato() {
+    setEditandoContatoId(null);
+    setFormContato(FORM_CONTATO_VAZIO);
+  }
+
+  function abrirEdicaoContato(contato: ClienteContato) {
+    setEditandoContatoId(contato.id);
+    setFormContato(paraFormContato(contato));
+  }
+
+  function fecharFormContato() {
+    setFormContato(null);
+    setEditandoContatoId(null);
+  }
+
+  async function handleSalvarContato(e: FormEvent) {
+    e.preventDefault();
+    if (!cliente || !formContato || !formContato.nome.trim()) return;
+
+    setSalvandoContato(true);
+    setError(null);
+
+    // Só um contato principal por cliente — sem trigger no banco pra isso,
+    // então desmarca os outros antes de gravar este como principal.
+    if (formContato.principal) {
+      const { error: unsetError } = await supabase
+        .from('cliente_contatos')
+        .update({ principal: false })
+        .eq('cliente_id', cliente.id)
+        .neq('id', editandoContatoId ?? '00000000-0000-0000-0000-000000000000');
+      if (unsetError) {
+        setSalvandoContato(false);
+        setError(unsetError.message);
+        return;
+      }
+    }
+
+    const payload = {
+      nome: formContato.nome.trim(),
+      cargo: formContato.cargo.trim() || null,
+      email: formContato.email.trim() || null,
+      telefone: formContato.telefone.trim() || null,
+      whatsapp: formContato.whatsapp.trim() || null,
+      papel_projeto: formContato.papel_projeto.trim() || null,
+      principal: formContato.principal,
+    };
+
+    const { error: saveError } = editandoContatoId
+      ? await supabase.from('cliente_contatos').update(payload).eq('id', editandoContatoId)
+      : await supabase.from('cliente_contatos').insert({ ...payload, cliente_id: cliente.id });
+
+    setSalvandoContato(false);
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    fecharFormContato();
+    if (id) carregar(id);
+  }
+
+  async function handleExcluirContato(contato: ClienteContato) {
+    if (!window.confirm(`Excluir o contato "${contato.nome}"?`)) return;
+
+    setExcluindoContatoId(contato.id);
+    const { error: deleteError } = await supabase.from('cliente_contatos').delete().eq('id', contato.id);
+    setExcluindoContatoId(null);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setContatos((prev) => prev.filter((c) => c.id !== contato.id));
+  }
+
+  function abrirNovaOcorrencia() {
+    setFormOcorrencia(formOcorrenciaVazio());
+  }
+
+  function fecharFormOcorrencia() {
+    setFormOcorrencia(null);
+  }
+
+  async function handleSalvarOcorrencia(e: FormEvent) {
+    e.preventDefault();
+    if (!cliente || !user || !formOcorrencia || !formOcorrencia.descricao.trim()) return;
+
+    setSalvandoOcorrencia(true);
+    const { data, error: insertError } = await supabase
+      .from('cliente_ocorrencias')
+      .insert({
+        cliente_id: cliente.id,
+        categoria: formOcorrencia.categoria,
+        descricao: formOcorrencia.descricao.trim(),
+        responsavel_impacto: formOcorrencia.responsavel_impacto,
+        data_ocorrencia: inputParaIso(formOcorrencia.data_ocorrencia, false) ?? new Date().toISOString(),
+        impacta_cronograma: formOcorrencia.impacta_cronograma,
+        dias_impacto: formOcorrencia.impacta_cronograma && formOcorrencia.dias_impacto
+          ? Number(formOcorrencia.dias_impacto)
+          : null,
+        status: 'aberta',
+        autor_email: user.email ?? null,
+      })
+      .select()
+      .single();
+    setSalvandoOcorrencia(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    setOcorrencias((prev) => [data, ...prev]);
+    setFormOcorrencia(null);
+  }
+
+  async function handleResolverOcorrencia(ocorrencia: ClienteOcorrencia) {
+    setResolvendoOcorrenciaId(ocorrencia.id);
+    const { data, error: updateError } = await supabase
+      .from('cliente_ocorrencias')
+      .update({ status: 'resolvida' as StatusOcorrencia, resolvida_em: new Date().toISOString() })
+      .eq('id', ocorrencia.id)
+      .select()
+      .single();
+    setResolvendoOcorrenciaId(null);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setOcorrencias((prev) => prev.map((o) => (o.id === ocorrencia.id ? data : o)));
+  }
+
+  const ocorrenciasOrdenadas = useMemo(() => {
+    return [...ocorrencias].sort((a, b) => {
+      if (a.status !== b.status) return a.status === 'aberta' ? -1 : 1;
+      return new Date(b.data_ocorrencia).getTime() - new Date(a.data_ocorrencia).getTime();
+    });
+  }, [ocorrencias]);
+
+  const contatosOrdenados = useMemo(() => {
+    return [...contatos].sort((a, b) => {
+      if (a.principal !== b.principal) return a.principal ? -1 : 1;
+      return a.nome.localeCompare(b.nome);
+    });
+  }, [contatos]);
+
+  // Linha do tempo automática — combina marcos do cliente, remarcações de
+  // Kickoff/Treinamento e conclusões de atividades de automação, sem criar
+  // tabela de eventos própria. Só leitura: cada fonte já tem seu próprio
+  // formulário de edição em outra seção desta página.
+  const historicoTimeline = useMemo<ItemHistorico[]>(() => {
+    if (!cliente) return [];
+
+    const itens: ItemHistorico[] = [];
+
+    for (const { campo, label, apenasData } of MARCOS_ORDENADOS) {
+      const valor = cliente[campo];
+      if (!valor) continue;
+      itens.push({
+        data: apenasData ? new Date(`${valor}T12:00:00`) : new Date(valor),
+        tipo: label,
+        descricao: label,
+        usuario: null,
+      });
+    }
+
+    for (const remarcacao of remarcacoes) {
+      const tipo = remarcacao.campo_marco === 'kickoff_agendado_para' ? 'Kickoff remarcado' : 'Treinamento remarcado';
+      const dataAnteriorTexto = remarcacao.data_anterior ? formatarDataHora(remarcacao.data_anterior) : '—';
+      itens.push({
+        data: new Date(remarcacao.created_at),
+        tipo,
+        descricao: `de ${dataAnteriorTexto} para ${formatarDataHora(remarcacao.data_nova)} — motivo: ${remarcacao.motivo} (impacto: ${IMPACTO_RESPONSAVEL_LABELS[remarcacao.responsavel_impacto]})`,
+        usuario: null,
+      });
+    }
+
+    if (implementacao) {
+      for (const atividade of atividadesAutomacao) {
+        const statusRow = statusAutomacao.find(
+          (s) => s.atividade_id === atividade.id && s.implementacao_id === implementacao.id,
+        );
+        if (!statusRow?.data_real) continue;
+        itens.push({
+          data: new Date(statusRow.data_real),
+          tipo: 'Automação concluída',
+          descricao: atividade.nome,
+          usuario: null,
+        });
+      }
+    }
+
+    return itens.sort((a, b) => b.data.getTime() - a.data.getTime());
+  }, [cliente, remarcacoes, implementacao, atividadesAutomacao, statusAutomacao]);
+
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error && !cliente) return <p className="form-error">{error}</p>;
   if (!cliente || !form) return <p className="form-error">Cliente não encontrado.</p>;
@@ -652,6 +1015,421 @@ export function ClienteDetalhe() {
           </div>
         )
       )}
+
+      <section className="card form-card">
+        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <h2 style={{ marginBottom: 0 }}>Informações do cliente</h2>
+          {!editandoInfo && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-auto"
+              onClick={() => {
+                setFormInfo(paraFormInfo(cliente));
+                setEditandoInfo(true);
+              }}
+            >
+              Editar informações
+            </button>
+          )}
+        </div>
+
+        {editandoInfo && formInfo ? (
+          <form onSubmit={handleSalvarInfo}>
+            <div className="form-grid">
+              <label className="field">
+                <span>Nome fantasia</span>
+                <input
+                  type="text"
+                  value={formInfo.nome_fantasia}
+                  onChange={(e) => setFormInfo({ ...formInfo, nome_fantasia: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Razão social</span>
+                <input
+                  type="text"
+                  value={formInfo.razao_social}
+                  onChange={(e) => setFormInfo({ ...formInfo, razao_social: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>CNPJ</span>
+                <input
+                  type="text"
+                  value={formInfo.cnpj}
+                  onChange={(e) => setFormInfo({ ...formInfo, cnpj: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Site</span>
+                <input
+                  type="url"
+                  value={formInfo.site}
+                  onChange={(e) => setFormInfo({ ...formInfo, site: e.target.value })}
+                  placeholder="https://..."
+                />
+              </label>
+              <label className="field">
+                <span>Cidade</span>
+                <input
+                  type="text"
+                  value={formInfo.cidade}
+                  onChange={(e) => setFormInfo({ ...formInfo, cidade: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>UF</span>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={formInfo.uf}
+                  onChange={(e) => setFormInfo({ ...formInfo, uf: e.target.value.toUpperCase() })}
+                />
+              </label>
+            </div>
+            <div className="wizard-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setFormInfo(paraFormInfo(cliente));
+                  setEditandoInfo(false);
+                }}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={salvandoInfo}>
+                {salvandoInfo ? 'Salvando…' : 'Salvar'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="form-grid">
+            <p>
+              <strong>Nome fantasia:</strong> {cliente.nome_fantasia ?? '—'}
+            </p>
+            <p>
+              <strong>Razão social:</strong> {cliente.razao_social ?? '—'}
+            </p>
+            <p>
+              <strong>CNPJ:</strong> {cliente.cnpj ?? '—'}
+            </p>
+            <p>
+              <strong>Site:</strong> {cliente.site ?? '—'}
+            </p>
+            <p>
+              <strong>Cidade:</strong> {cliente.cidade ?? '—'}
+            </p>
+            <p>
+              <strong>UF:</strong> {cliente.uf ?? '—'}
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="card form-card">
+        <h2>Contatos</h2>
+        <p className="field-hint">Pessoas envolvidas no projeto por parte do cliente — pode haver mais de uma.</p>
+
+        {contatosOrdenados.length === 0 ? (
+          <p className="field-hint">Nenhum contato cadastrado ainda.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Cargo</th>
+                  <th>E-mail</th>
+                  <th>Telefone</th>
+                  <th>WhatsApp</th>
+                  <th>Papel no projeto</th>
+                  <th></th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {contatosOrdenados.map((contato) => (
+                  <tr key={contato.id}>
+                    <td>{contato.nome}</td>
+                    <td>{contato.cargo ?? '—'}</td>
+                    <td>{contato.email ?? '—'}</td>
+                    <td>{contato.telefone ?? '—'}</td>
+                    <td>{contato.whatsapp ?? '—'}</td>
+                    <td>{contato.papel_projeto ?? '—'}</td>
+                    <td>
+                      {contato.principal && <span className="status-badge status-tone-info">Principal</span>}
+                    </td>
+                    <td className="table-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => abrirEdicaoContato(contato)}
+                      >
+                        Editar
+                      </button>{' '}
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => handleExcluirContato(contato)}
+                        disabled={excluindoContatoId === contato.id}
+                      >
+                        {excluindoContatoId === contato.id ? 'Excluindo…' : 'Excluir'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {formContato ? (
+          <form onSubmit={handleSalvarContato} className="card form-card">
+            <h3>{editandoContatoId ? 'Editar contato' : 'Novo contato'}</h3>
+            <div className="form-grid">
+              <label className="field">
+                <span>Nome</span>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={formContato.nome}
+                  onChange={(e) => setFormContato({ ...formContato, nome: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Cargo</span>
+                <input
+                  type="text"
+                  value={formContato.cargo}
+                  onChange={(e) => setFormContato({ ...formContato, cargo: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>E-mail</span>
+                <input
+                  type="email"
+                  value={formContato.email}
+                  onChange={(e) => setFormContato({ ...formContato, email: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Telefone</span>
+                <input
+                  type="text"
+                  value={formContato.telefone}
+                  onChange={(e) => setFormContato({ ...formContato, telefone: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>WhatsApp</span>
+                <input
+                  type="text"
+                  value={formContato.whatsapp}
+                  onChange={(e) => setFormContato({ ...formContato, whatsapp: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Papel no projeto</span>
+                <input
+                  type="text"
+                  value={formContato.papel_projeto}
+                  onChange={(e) => setFormContato({ ...formContato, papel_projeto: e.target.value })}
+                  placeholder="Ex: Decisor, usuário do CRM"
+                />
+              </label>
+            </div>
+            <label className="option-checkbox">
+              <input
+                type="checkbox"
+                checked={formContato.principal}
+                onChange={(e) => setFormContato({ ...formContato, principal: e.target.checked })}
+              />
+              <span>Contato principal (marca este e desmarca qualquer outro contato principal)</span>
+            </label>
+            <div className="wizard-actions">
+              <button type="button" className="btn btn-secondary" onClick={fecharFormContato}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={salvandoContato}>
+                {salvandoContato ? 'Salvando…' : 'Salvar contato'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button type="button" className="btn btn-secondary btn-auto" onClick={abrirNovoContato}>
+            + Adicionar contato
+          </button>
+        )}
+      </section>
+
+      <section className="card form-card">
+        <h2>Histórico</h2>
+        <p className="field-hint">
+          Linha do tempo automática, montada a partir dos marcos, remarcações e atividades já
+          registradas neste cliente — não editável diretamente aqui.
+        </p>
+        {historicoTimeline.length === 0 ? (
+          <p className="field-hint">Nenhum evento registrado ainda.</p>
+        ) : (
+          <ol className="timeline-marcos">
+            {historicoTimeline.map((item, index) => (
+              <li key={index}>
+                <span className="timeline-marco-label">{item.tipo}</span>
+                <span className="timeline-marco-data">
+                  {formatarDataHora(item.data.toISOString())} — {item.descricao}
+                  {item.usuario ? ` — usuário: ${item.usuario}` : ''}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+
+      <section className="card form-card">
+        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <h2 style={{ marginBottom: 0 }}>Ocorrências</h2>
+          {!formOcorrencia && (
+            <button type="button" className="btn btn-secondary btn-auto" onClick={abrirNovaOcorrencia}>
+              + Registrar ocorrência
+            </button>
+          )}
+        </div>
+        <p className="field-hint">
+          Incidentes que afetam o andamento do projeto — reunião cancelada, acesso pendente, mudança
+          de escopo etc.
+        </p>
+
+        {formOcorrencia && (
+          <form onSubmit={handleSalvarOcorrencia} className="card form-card">
+            <h3>Nova ocorrência</h3>
+            <div className="form-grid">
+              <label className="field">
+                <span>Categoria</span>
+                <select
+                  required
+                  value={formOcorrencia.categoria}
+                  onChange={(e) =>
+                    setFormOcorrencia({ ...formOcorrencia, categoria: e.target.value as CategoriaOcorrencia })
+                  }
+                >
+                  {Object.entries(CATEGORIA_OCORRENCIA_LABELS).map(([valor, rotulo]) => (
+                    <option key={valor} value={valor}>
+                      {rotulo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Responsável pelo impacto</span>
+                <select
+                  required
+                  value={formOcorrencia.responsavel_impacto}
+                  onChange={(e) =>
+                    setFormOcorrencia({
+                      ...formOcorrencia,
+                      responsavel_impacto: e.target.value as ImpactoResponsavel,
+                    })
+                  }
+                >
+                  {Object.entries(IMPACTO_RESPONSAVEL_LABELS).map(([valor, rotulo]) => (
+                    <option key={valor} value={valor}>
+                      {rotulo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Data</span>
+                <input
+                  type="datetime-local"
+                  required
+                  value={formOcorrencia.data_ocorrencia}
+                  onChange={(e) => setFormOcorrencia({ ...formOcorrencia, data_ocorrencia: e.target.value })}
+                />
+              </label>
+            </div>
+            <label className="field">
+              <span>Descrição</span>
+              <textarea
+                rows={3}
+                required
+                value={formOcorrencia.descricao}
+                onChange={(e) => setFormOcorrencia({ ...formOcorrencia, descricao: e.target.value })}
+              />
+            </label>
+            <label className="option-checkbox">
+              <input
+                type="checkbox"
+                checked={formOcorrencia.impacta_cronograma}
+                onChange={(e) =>
+                  setFormOcorrencia({
+                    ...formOcorrencia,
+                    impacta_cronograma: e.target.checked,
+                    dias_impacto: e.target.checked ? formOcorrencia.dias_impacto : '',
+                  })
+                }
+              />
+              <span>Impacta o cronograma</span>
+            </label>
+            <label className="field">
+              <span>Dias de impacto</span>
+              <input
+                type="number"
+                min={0}
+                disabled={!formOcorrencia.impacta_cronograma}
+                value={formOcorrencia.dias_impacto}
+                onChange={(e) => setFormOcorrencia({ ...formOcorrencia, dias_impacto: e.target.value })}
+              />
+            </label>
+            <div className="wizard-actions">
+              <button type="button" className="btn btn-secondary" onClick={fecharFormOcorrencia}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={salvandoOcorrencia}>
+                {salvandoOcorrencia ? 'Salvando…' : 'Salvar ocorrência'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {ocorrenciasOrdenadas.length === 0 ? (
+          <p className="field-hint">Nenhuma ocorrência registrada ainda.</p>
+        ) : (
+          <ul className="observacoes-lista">
+            {ocorrenciasOrdenadas.map((o) => (
+              <li key={o.id} className="observacao-item" style={o.status === 'aberta' ? { borderLeft: '3px solid var(--color-danger)' } : undefined}>
+                <div className="observacao-item-header">
+                  <span className="observacao-item-meta">
+                    <span className={`status-badge status-tone-${o.status === 'aberta' ? 'danger' : 'success'}`}>
+                      {o.status === 'aberta' ? 'Aberta' : 'Resolvida'}
+                    </span>{' '}
+                    <strong style={{ color: 'var(--color-text)' }}>{CATEGORIA_OCORRENCIA_LABELS[o.categoria]}</strong>
+                    {' · '}
+                    {formatarDataHora(o.data_ocorrencia)} · impacto: {IMPACTO_RESPONSAVEL_LABELS[o.responsavel_impacto]}
+                    {o.impacta_cronograma ? ` · impacta cronograma (${o.dias_impacto ?? 0}d)` : ''}
+                    {o.autor_email ? ` · ${o.autor_email}` : ''}
+                  </span>
+                  {o.status === 'aberta' ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => handleResolverOcorrencia(o)}
+                      disabled={resolvendoOcorrenciaId === o.id}
+                    >
+                      {resolvendoOcorrenciaId === o.id ? 'Salvando…' : 'Marcar como resolvida'}
+                    </button>
+                  ) : (
+                    <span className="field-hint">Resolvida em {formatarDataHora(o.resolvida_em!)}</span>
+                  )}
+                </div>
+                <p className="observacao-item-texto">{o.descricao}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="card form-card">
         <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>

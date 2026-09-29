@@ -4,12 +4,16 @@
 // organizado por urgência. Itens sem data não desaparecem: entram no grupo
 // "sem_data", com o texto "Aguardando <marco>" quando é isso que falta.
 import { resolverAtividade, resolverMarcoAgendavel, type AtividadeResolvida } from './atividadesCronograma';
+import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
+import { nomeConsultor } from './operacaoResumo';
 import { MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
 import { resolverResumoTrialKommo } from './trialKommo';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
   Cliente,
+  ClienteOcorrencia,
+  Consultor,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
@@ -100,6 +104,7 @@ function itemDeAtividade(
   atividade: AtividadeResolvida,
   cliente: Cliente,
   implementacao: ImplementacaoCrm,
+  consultores: Consultor[],
 ): ItemAgendaOperacional | null {
   if (atividade.status === 'concluido' || atividade.status === 'bloqueado_cliente') return null;
 
@@ -113,7 +118,7 @@ function itemDeAtividade(
     clienteNome: cliente.nome_empresa,
     tipo,
     titulo: atividade.nome,
-    responsavel: implementacao.consultor_responsavel,
+    responsavel: nomeConsultor(implementacao.consultor_responsavel_id, consultores),
     data: atividade.dataPlanejada,
     aguardando,
     status: atividade.status,
@@ -196,6 +201,7 @@ function itemDePendenciaClienteFormulario(
 function itensDeTrial(
   cliente: Cliente,
   implementacao: ImplementacaoCrm | null,
+  consultores: Consultor[],
   hoje: Date,
 ): ItemAgendaOperacional[] {
   const resumo = resolverResumoTrialKommo(cliente, hoje);
@@ -210,7 +216,7 @@ function itensDeTrial(
       clienteNome: cliente.nome_empresa,
       tipo: 'trial',
       titulo: `Solicitar extensão ${resumo.proximaExtensao.rotulo}`,
-      responsavel: implementacao?.consultor_responsavel ?? null,
+      responsavel: nomeConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
       data: resumo.vencimento,
       aguardando: null,
       status: `Vence em ${resumo.diasRestantes}d`,
@@ -232,6 +238,7 @@ const DIAS_RESTANTES_PARA_ALERTAR_PRAZO = 3;
 function itemDeProximidadePrazoGeral(
   cliente: Cliente,
   implementacao: ImplementacaoCrm,
+  consultores: Consultor[],
   diaAtual: number,
 ): ItemAgendaOperacional | null {
   const diasRestantes = 40 - diaAtual;
@@ -243,13 +250,35 @@ function itemDeProximidadePrazoGeral(
     clienteNome: cliente.nome_empresa,
     tipo: 'alerta',
     titulo: `Cliente está no dia ${diaAtual}/40`,
-    responsavel: implementacao.consultor_responsavel,
+    responsavel: nomeConsultor(implementacao.consultor_responsavel_id, consultores),
     data: null,
     aguardando: null,
     status: `${diasRestantes}d restantes no prazo geral`,
     acaoRecomendada: 'Revisar o que falta pra concluir dentro do prazo',
     atrasado: false,
     implementacaoId: implementacao.id,
+    atividadeId: null,
+  };
+}
+
+// Ocorrência aberta (ver src/pages/ClienteDetalhe.tsx) é uma pendência em
+// aberto sem data de vencimento — representa um incidente já acontecido que
+// ainda não foi resolvido, não um evento futuro agendado. Por isso cai
+// sempre no grupo "sem_data" (data: null), nunca em "Atrasados".
+function itemDeOcorrencia(ocorrencia: ClienteOcorrencia, cliente: Cliente): ItemAgendaOperacional {
+  return {
+    id: `ocorrencia:${ocorrencia.id}`,
+    clienteId: cliente.id,
+    clienteNome: cliente.nome_empresa,
+    tipo: 'alerta',
+    titulo: `Ocorrência: ${CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria]}`,
+    responsavel: null,
+    data: null,
+    aguardando: null,
+    status: 'Aberta',
+    acaoRecomendada: 'Resolver a ocorrência',
+    atrasado: false,
+    implementacaoId: null,
     atividadeId: null,
   };
 }
@@ -261,11 +290,28 @@ export function construirAgendaOperacional(params: {
   atividades: AtividadeCronograma[];
   atividadesStatus: AtividadeStatusRow[];
   historico: ImplementacaoStatusHistorico[];
+  consultores: Consultor[];
+  ocorrenciasAbertas?: ClienteOcorrencia[];
   hoje: Date;
 }): ItemAgendaOperacional[] {
-  const { clientes, mapeamentosVendas, implementacoes, atividades, atividadesStatus, historico, hoje } = params;
+  const {
+    clientes,
+    mapeamentosVendas,
+    implementacoes,
+    atividades,
+    atividadesStatus,
+    historico,
+    consultores,
+    ocorrenciasAbertas = [],
+    hoje,
+  } = params;
 
   const itens: ItemAgendaOperacional[] = [];
+
+  for (const ocorrencia of ocorrenciasAbertas) {
+    const cliente = clientes.find((c) => c.id === ocorrencia.cliente_id);
+    if (cliente) itens.push(itemDeOcorrencia(ocorrencia, cliente));
+  }
 
   for (const cliente of clientes) {
     const vendas = mapeamentosVendas.find((m) => m.cliente_id === cliente.id) ?? null;
@@ -294,7 +340,7 @@ export function construirAgendaOperacional(params: {
         cliente,
         hoje,
       });
-      const item = itemDeAtividade(resolvida, cliente, implementacao);
+      const item = itemDeAtividade(resolvida, cliente, implementacao, consultores);
       if (item) itens.push(item);
     }
 
@@ -310,7 +356,7 @@ export function construirAgendaOperacional(params: {
       dependenciaLabel: null,
       hoje,
     });
-    const itemKickoff = itemDeAtividade(kickoff, cliente, implementacao);
+    const itemKickoff = itemDeAtividade(kickoff, cliente, implementacao, consultores);
     if (itemKickoff) itens.push(itemKickoff);
 
     const treinamento = resolverMarcoAgendavel({
@@ -323,14 +369,14 @@ export function construirAgendaOperacional(params: {
       diaLimiteCiclo: 10,
       hoje,
     });
-    const itemTreinamento = itemDeAtividade(treinamento, cliente, implementacao);
+    const itemTreinamento = itemDeAtividade(treinamento, cliente, implementacao, consultores);
     if (itemTreinamento) itens.push(itemTreinamento);
 
-    itens.push(...itensDeTrial(cliente, implementacao, hoje));
+    itens.push(...itensDeTrial(cliente, implementacao, consultores, hoje));
 
     if (cliente.kickoff_realizado_em) {
       const diaAtual = diferencaEmDias(hoje, new Date(cliente.kickoff_realizado_em)) + 1;
-      const alerta = itemDeProximidadePrazoGeral(cliente, implementacao, diaAtual);
+      const alerta = itemDeProximidadePrazoGeral(cliente, implementacao, consultores, diaAtual);
       if (alerta) itens.push(alerta);
     }
   }
@@ -339,7 +385,7 @@ export function construirAgendaOperacional(params: {
   // pode ter sido criada antes — caso raro, mas não deve desaparecer).
   for (const cliente of clientes) {
     if (implementacoes.some((i) => i.cliente_id === cliente.id)) continue;
-    itens.push(...itensDeTrial(cliente, null, hoje));
+    itens.push(...itensDeTrial(cliente, null, consultores, hoje));
   }
 
   return itens;

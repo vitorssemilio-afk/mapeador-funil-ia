@@ -6,16 +6,29 @@
 // essas integrações existirem — nunca com valor fictício.
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { prazoFaseAtual, prazoGeral, type PrazoFase, type PrazoGeral } from './cronograma';
+import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
 import { funilValidado, MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
 import { resolverResumoTrialKommo } from './trialKommo';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
   Cliente,
+  ClienteOcorrencia,
+  Consultor,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
 } from '../types/database';
+
+export function nomeConsultor(consultorId: string | null, consultores: Consultor[]): string | null {
+  if (!consultorId) return null;
+  return consultores.find((c) => c.id === consultorId)?.nome ?? null;
+}
+
+function emailConsultor(consultorId: string | null, consultores: Consultor[]): string | null {
+  if (!consultorId) return null;
+  return consultores.find((c) => c.id === consultorId)?.email ?? null;
+}
 
 export type SaudeCliente = 'normal' | 'atencao' | 'critico' | 'aguardando_cliente' | 'concluido';
 
@@ -40,6 +53,8 @@ export type ClienteResumo = {
   prazoFase: PrazoFase | null;
   prazoProcesso: PrazoGeral | null;
   consultor: string | null;
+  consultorEmail: string | null;
+  consultorApoio: string | null;
   // Sempre null por enquanto — não existe campo de Trial Kommo no produto
   // ainda. Mantido aqui pra já existir o lugar certo quando o dado chegar
   // (ver DIAS_TRIAL_KOMMO / integração futura).
@@ -155,9 +170,10 @@ export function construirResumoClientes(params: {
   historico: ImplementacaoStatusHistorico[];
   atividades: AtividadeCronograma[];
   statusRows: AtividadeStatusRow[];
+  consultores: Consultor[];
   hoje: Date;
 }): ClienteResumo[] {
-  const { clientes, mapeamentos, implementacoes, historico, atividades, statusRows, hoje } = params;
+  const { clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, hoje } = params;
 
   return clientes.map((cliente) => {
     const doCliente = mapeamentos.filter((m) => m.cliente_id === cliente.id);
@@ -184,7 +200,9 @@ export function construirResumoClientes(params: {
       proximaAcao: proximaAcaoLabel({ vendas, posVenda, implementacao, precisaPosVenda, prazoFase }),
       prazoFase,
       prazoProcesso,
-      consultor: implementacao?.consultor_responsavel ?? null,
+      consultor: nomeConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
+      consultorEmail: emailConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
+      consultorApoio: nomeConsultor(implementacao?.consultor_apoio_id ?? null, consultores),
       trialDiasRestantes: null,
     };
   });
@@ -210,7 +228,11 @@ const DIAS_SEM_RESPOSTA_PARA_ALERTAR = 3;
 // agendado, treinamento etc. entram aqui quando essas integrações existirem
 // — o formato do alerta (motivo/prazo/próxima ação/consultor) já está
 // pronto pra receber esses casos novos sem precisar mudar o componente.
-export function construirAlertas(resumos: ClienteResumo[], hoje: Date): AlertaOperacao[] {
+export function construirAlertas(
+  resumos: ClienteResumo[],
+  hoje: Date,
+  ocorrenciasAbertas: ClienteOcorrencia[] = [],
+): AlertaOperacao[] {
   const alertas: AlertaOperacao[] = [];
 
   for (const r of resumos) {
@@ -221,6 +243,16 @@ export function construirAlertas(resumos: ClienteResumo[], hoje: Date): AlertaOp
       prazoLabel: prazoLabelDe(r),
       proximaAcao: r.proximaAcao,
     };
+
+    const ocorrenciaDoCliente = ocorrenciasAbertas.find((o) => o.cliente_id === r.cliente.id);
+    if (ocorrenciaDoCliente) {
+      alertas.push({
+        ...base,
+        motivo: `Ocorrência aberta: ${CATEGORIA_OCORRENCIA_LABELS[ocorrenciaDoCliente.categoria]}`,
+        severidade: ocorrenciaDoCliente.impacta_cronograma ? 'critico' : 'atencao',
+      });
+      continue;
+    }
 
     if (r.prazoFase?.atrasada) {
       alertas.push({

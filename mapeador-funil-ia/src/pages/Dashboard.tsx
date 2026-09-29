@@ -15,6 +15,8 @@ import type {
   AtividadeCronograma,
   AtividadeStatusRow,
   Cliente,
+  ClienteOcorrencia,
+  Consultor,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
@@ -32,6 +34,8 @@ export function Dashboard() {
   const [historico, setHistorico] = useState<ImplementacaoStatusHistorico[]>([]);
   const [atividades, setAtividades] = useState<AtividadeCronograma[]>([]);
   const [statusRows, setStatusRows] = useState<AtividadeStatusRow[]>([]);
+  const [consultores, setConsultores] = useState<Consultor[]>([]);
+  const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
 
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('');
@@ -59,6 +63,8 @@ export function Dashboard() {
         { data: historicoData },
         { data: atividadesData },
         { data: statusRowsData },
+        { data: consultoresData },
+        { data: ocorrenciasData },
       ] = await Promise.all([
         supabase.from('clientes').select('*'),
         supabase.from('mapeamentos').select('*'),
@@ -66,6 +72,8 @@ export function Dashboard() {
         supabase.from('implementacao_status_historico').select('*'),
         supabase.from('atividades_cronograma').select('*'),
         supabase.from('atividades_status').select('*'),
+        supabase.from('consultores').select('*').order('nome', { ascending: true }),
+        supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
       ]);
 
       if (cancelled) return;
@@ -82,6 +90,8 @@ export function Dashboard() {
       setHistorico(historicoData ?? []);
       setAtividades(atividadesData ?? []);
       setStatusRows(statusRowsData ?? []);
+      setConsultores(consultoresData ?? []);
+      setOcorrenciasAbertas(ocorrenciasData ?? []);
       setLoading(false);
     }
 
@@ -100,12 +110,16 @@ export function Dashboard() {
         historico,
         atividades,
         statusRows,
+        consultores,
         hoje,
       }),
-    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, hoje],
+    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, hoje],
   );
 
-  const alertas = useMemo(() => construirAlertas(resumos, hoje), [resumos, hoje]);
+  const alertas = useMemo(
+    () => construirAlertas(resumos, hoje, ocorrenciasAbertas),
+    [resumos, hoje, ocorrenciasAbertas],
+  );
 
   const itensHoje = useMemo(
     () =>
@@ -143,7 +157,7 @@ export function Dashboard() {
     [resumos, implementacoes, itensHoje],
   );
 
-  const minhaIniciais = (user?.email ?? '').split('@')[0]?.toLowerCase() ?? '';
+  const meuEmail = (user?.email ?? '').toLowerCase();
 
   const resumosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -157,7 +171,7 @@ export function Dashboard() {
       if (filtroConsultor && r.consultor !== filtroConsultor) return false;
       if (filtroSaude && r.saude !== filtroSaude) return false;
       if (soAtrasados && !(r.prazoFase?.atrasada || r.prazoProcesso?.atrasada)) return false;
-      if (soMeusClientes && !(r.consultor ?? '').toLowerCase().includes(minhaIniciais)) return false;
+      if (soMeusClientes && (r.consultorEmail ?? '').toLowerCase() !== meuEmail) return false;
       return true;
     });
 
@@ -167,7 +181,7 @@ export function Dashboard() {
       if (ordemA !== ordemB) return ordemA - ordemB;
       return a.cliente.nome_empresa.localeCompare(b.cliente.nome_empresa, 'pt-BR');
     });
-  }, [resumos, busca, filtroFase, filtroConsultor, filtroSaude, soAtrasados, soMeusClientes, minhaIniciais]);
+  }, [resumos, busca, filtroFase, filtroConsultor, filtroSaude, soAtrasados, soMeusClientes, meuEmail]);
 
   function limparFiltros() {
     setBusca('');

@@ -56,6 +56,57 @@ export type Cliente = MarcosCliente & {
   telefone: string | null;
   email: string | null;
   segmento: string | null;
+  // "Informações do cliente" — nome_fantasia começa igual a nome_empresa
+  // (backfill na migration 0040), editável à parte a partir daí.
+  nome_fantasia: string | null;
+  razao_social: string | null;
+  cnpj: string | null;
+  site: string | null;
+  cidade: string | null;
+  uf: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ClienteContato = {
+  id: string;
+  cliente_id: string;
+  nome: string;
+  cargo: string | null;
+  email: string | null;
+  telefone: string | null;
+  whatsapp: string | null;
+  papel_projeto: string | null;
+  principal: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CategoriaOcorrencia =
+  | 'cliente_cancelou_reuniao'
+  | 'cliente_nao_compareceu'
+  | 'consultor_cancelou'
+  | 'reuniao_remarcada'
+  | 'acesso_pendente'
+  | 'pendencia_cliente'
+  | 'problema_tecnico'
+  | 'mudanca_escopo'
+  | 'outro';
+
+export type StatusOcorrencia = 'aberta' | 'resolvida';
+
+export type ClienteOcorrencia = {
+  id: string;
+  cliente_id: string;
+  categoria: CategoriaOcorrencia;
+  descricao: string;
+  responsavel_impacto: ImpactoResponsavel;
+  data_ocorrencia: string;
+  impacta_cronograma: boolean;
+  dias_impacto: number | null;
+  status: StatusOcorrencia;
+  resolvida_em: string | null;
+  autor_email: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -257,13 +308,38 @@ export type ImplementacaoStatus =
   | 'concluida'
   | 'cancelada';
 
+export type Consultor = {
+  id: string;
+  nome: string;
+  email: string;
+  telefone: string | null;
+  cargo: string | null;
+  avatar_url: string | null;
+  ativo: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ImplementacaoConsultorHistorico = {
+  id: string;
+  implementacao_id: string;
+  consultor_anterior_id: string | null;
+  consultor_novo_id: string;
+  alterado_em: string;
+  alterado_por_email: string | null;
+};
+
 export type ImplementacaoCrm = {
   id: string;
   mapeamento_id: string;
   cliente_id: string | null;
   user_id: string;
   nome_cliente: string;
-  consultor_responsavel: string | null;
+  // Texto livre anterior à criação de `consultores` — mantido só de
+  // referência (ver migration 0040), não usado por código novo.
+  consultor_responsavel_texto_legado: string | null;
+  consultor_responsavel_id: string | null;
+  consultor_apoio_id: string | null;
   stakeholder_decisor: string | null;
   status: ImplementacaoStatus;
   conta_criada_via_v4: boolean;
@@ -494,6 +570,32 @@ export type Database = {
         Row: ClienteObservacao;
         Insert: Partial<ClienteObservacao> & Pick<ClienteObservacao, 'cliente_id' | 'texto'>;
         Update: Partial<ClienteObservacao>;
+        Relationships: [];
+      };
+      cliente_contatos: {
+        Row: ClienteContato;
+        Insert: Partial<ClienteContato> & Pick<ClienteContato, 'cliente_id' | 'nome'>;
+        Update: Partial<ClienteContato>;
+        Relationships: [];
+      };
+      cliente_ocorrencias: {
+        Row: ClienteOcorrencia;
+        Insert: Partial<ClienteOcorrencia> &
+          Pick<ClienteOcorrencia, 'cliente_id' | 'categoria' | 'descricao' | 'responsavel_impacto'>;
+        Update: Partial<ClienteOcorrencia>;
+        Relationships: [];
+      };
+      consultores: {
+        Row: Consultor;
+        Insert: Partial<Consultor> & Pick<Consultor, 'nome' | 'email'>;
+        Update: Partial<Consultor>;
+        Relationships: [];
+      };
+      implementacao_consultor_historico: {
+        Row: ImplementacaoConsultorHistorico;
+        Insert: Partial<ImplementacaoConsultorHistorico> &
+          Pick<ImplementacaoConsultorHistorico, 'implementacao_id' | 'consultor_novo_id'>;
+        Update: Partial<ImplementacaoConsultorHistorico>;
         Relationships: [];
       };
       cliente_arquivos: {
