@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import {
   bucketDeItem,
@@ -8,6 +8,7 @@ import {
   type BucketAgenda,
   type ItemAgendaOperacional,
 } from '../lib/agendaOperacional';
+import { TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { supabase } from '../lib/supabaseClient';
 import type {
   AtividadeCronograma,
@@ -15,11 +16,23 @@ import type {
   Cliente,
   ClienteOcorrencia,
   Consultor,
+  GoogleCalendarEventoPendente,
   ImplementacaoCrm,
   ImplementacaoStatusHistorico,
   Mapeamento,
   Reuniao,
+  TipoReuniao,
 } from '../types/database';
+
+const TIPOS_REUNIAO_VINCULAVEIS: TipoReuniao[] = [
+  'kickoff',
+  'treinamento',
+  'checkin_1',
+  'checkin_2',
+  'tira_duvidas',
+  'reuniao_final',
+  'extraordinaria',
+];
 
 const BUCKETS_ORDENADOS: BucketAgenda[] = ['atrasados', 'hoje', 'amanha', 'proximos7', 'sem_data'];
 
@@ -51,9 +64,13 @@ export function Agenda() {
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [eventosPendentes, setEventosPendentes] = useState<GoogleCalendarEventoPendente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [marcando, setMarcando] = useState<string | null>(null);
+  const [vinculandoEventoId, setVinculandoEventoId] = useState<string | null>(null);
+  const [formVinculo, setFormVinculo] = useState({ cliente_id: '', implementacao_id: '', tipo: 'extraordinaria' as TipoReuniao });
+  const [salvandoVinculo, setSalvandoVinculo] = useState(false);
 
   async function carregar() {
     setLoading(true);
@@ -69,6 +86,7 @@ export function Agenda() {
       { data: consultoresData },
       { data: ocorrenciasData },
       { data: reunioesData },
+      { data: eventosPendentesData },
     ] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('mapeamentos').select('*').eq('tipo', 'vendas').order('created_at', { ascending: false }),
@@ -79,6 +97,12 @@ export function Agenda() {
       supabase.from('consultores').select('*'),
       supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
       supabase.from('reunioes').select('*'),
+      supabase
+        .from('google_calendar_eventos_pendentes')
+        .select('*')
+        .is('reuniao_id', null)
+        .eq('status_google', 'confirmed')
+        .order('data_inicio', { ascending: true }),
     ]);
 
     const primeiroErro =
@@ -98,6 +122,7 @@ export function Agenda() {
     setConsultores(consultoresData ?? []);
     setOcorrenciasAbertas(ocorrenciasData ?? []);
     setReunioes(reunioesData ?? []);
+    setEventosPendentes(eventosPendentesData ?? []);
     setLoading(false);
   }
 
@@ -147,6 +172,92 @@ export function Agenda() {
     }
     return mapa;
   }, [itens, hoje]);
+
+  function implementacoesDoCliente(clienteId: string): ImplementacaoCrm[] {
+    return implementacoes.filter((i) => i.cliente_id === clienteId);
+  }
+
+  function abrirVinculo(evento: GoogleCalendarEventoPendente) {
+    const clienteId = evento.sugestao_cliente_id ?? '';
+    const implementacoesSugeridas = clienteId ? implementacoesDoCliente(clienteId) : [];
+    setVinculandoEventoId(evento.id);
+    setFormVinculo({
+      cliente_id: clienteId,
+      implementacao_id: implementacoesSugeridas.length === 1 ? implementacoesSugeridas[0].id : '',
+      tipo: evento.sugestao_tipo ?? 'extraordinaria',
+    });
+  }
+
+  function fecharVinculo() {
+    setVinculandoEventoId(null);
+  }
+
+  // Vincular nunca cria uma reunião do nada quando já existe um placeholder
+  // manual esperando esse mesmo tipo/implementação — reaproveita, só troca a
+  // origem pra "google_calendar" e passa a ser a fonte da data.
+  async function handleConfirmarVinculo(e: FormEvent, evento: GoogleCalendarEventoPendente) {
+    e.preventDefault();
+    if (!formVinculo.cliente_id || !formVinculo.implementacao_id) return;
+
+    setSalvandoVinculo(true);
+    setError(null);
+
+    const reuniaoExistente = reunioes.find(
+      (r) =>
+        r.cliente_id === formVinculo.cliente_id &&
+        r.implementacao_id === formVinculo.implementacao_id &&
+        r.tipo === formVinculo.tipo &&
+        !r.google_event_id &&
+        (r.status === 'nao_agendada' || r.status === 'agendada'),
+    );
+
+    const payload = {
+      cliente_id: formVinculo.cliente_id,
+      implementacao_id: formVinculo.implementacao_id,
+      tipo: formVinculo.tipo,
+      titulo: evento.titulo || TIPO_REUNIAO_LABELS[formVinculo.tipo],
+      data_hora: evento.data_inicio,
+      status: 'agendada' as const,
+      origem: 'google_calendar' as const,
+      google_event_id: evento.google_event_id,
+      google_calendar_id: evento.google_calendar_id,
+      google_meet_link: evento.meet_link,
+      google_status: 'confirmed' as const,
+      consultor_responsavel_id: evento.consultor_id,
+    };
+
+    const { data, error: saveError } = reuniaoExistente
+      ? await supabase.from('reunioes').update(payload).eq('id', reuniaoExistente.id).select().single()
+      : await supabase.from('reunioes').insert(payload).select().single();
+
+    if (saveError) {
+      setSalvandoVinculo(false);
+      setError(saveError.message);
+      return;
+    }
+
+    const { error: updateEventoError } = await supabase
+      .from('google_calendar_eventos_pendentes')
+      .update({ reuniao_id: data.id })
+      .eq('id', evento.id);
+
+    if (updateEventoError) {
+      setSalvandoVinculo(false);
+      setError(updateEventoError.message);
+      return;
+    }
+
+    setReunioes((prev) => {
+      const idx = prev.findIndex((r) => r.id === data.id);
+      if (idx === -1) return [...prev, data];
+      const copia = [...prev];
+      copia[idx] = data;
+      return copia;
+    });
+    setEventosPendentes((prev) => prev.filter((ev) => ev.id !== evento.id));
+    setSalvandoVinculo(false);
+    setVinculandoEventoId(null);
+  }
 
   async function handleMarcarConcluida(item: ItemAgendaOperacional) {
     if (!item.atividadeId || !item.implementacaoId) return;
@@ -210,6 +321,134 @@ export function Agenda() {
 
       {error && <p className="form-error">{error}</p>}
       {loading && <p className="page-loading">Carregando…</p>}
+
+      {!loading && eventosPendentes.length > 0 && (
+        <section className="card form-card">
+          <h2>
+            Eventos do Google Calendar aguardando vínculo
+            <span className="field-hint"> ({eventosPendentes.length})</span>
+          </h2>
+          <p className="field-hint">
+            Sincronizados dos calendários dos consultores. O Google não decide sozinho de quem é a
+            reunião nem qual o cliente — confirme (ou ajuste) a sugestão abaixo antes de vincular.
+          </p>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Evento</th>
+                  <th>Google Meet</th>
+                  <th>Sugestão de cliente</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {eventosPendentes.map((evento) => (
+                  <Fragment key={evento.id}>
+                    <tr>
+                      <td>
+                        {evento.data_inicio
+                          ? new Date(evento.data_inicio).toLocaleString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : '—'}
+                      </td>
+                      <td>{evento.titulo || '(sem título)'}</td>
+                      <td>
+                        {evento.meet_link ? (
+                          <a href={evento.meet_link} target="_blank" rel="noreferrer">
+                            Abrir
+                          </a>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td>
+                        {evento.sugestao_cliente_id
+                          ? (clientes.find((c) => c.id === evento.sugestao_cliente_id)?.nome_empresa ?? '—')
+                          : 'Nenhuma — selecione manualmente'}
+                      </td>
+                      <td>
+                        <button type="button" className="btn btn-secondary" onClick={() => abrirVinculo(evento)}>
+                          Vincular
+                        </button>
+                      </td>
+                    </tr>
+                    {vinculandoEventoId === evento.id && (
+                      <tr>
+                        <td colSpan={5}>
+                          <form onSubmit={(e) => handleConfirmarVinculo(e, evento)} className="form-grid">
+                            <label className="field">
+                              <span>Cliente</span>
+                              <select
+                                required
+                                value={formVinculo.cliente_id}
+                                onChange={(e) =>
+                                  setFormVinculo({ ...formVinculo, cliente_id: e.target.value, implementacao_id: '' })
+                                }
+                              >
+                                <option value="">Selecione…</option>
+                                {clientes.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.nome_empresa}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Implementação</span>
+                              <select
+                                required
+                                value={formVinculo.implementacao_id}
+                                disabled={!formVinculo.cliente_id}
+                                onChange={(e) => setFormVinculo({ ...formVinculo, implementacao_id: e.target.value })}
+                              >
+                                <option value="">Selecione…</option>
+                                {implementacoesDoCliente(formVinculo.cliente_id).map((i) => (
+                                  <option key={i.id} value={i.id}>
+                                    {i.nome_cliente}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="field">
+                              <span>Tipo de reunião</span>
+                              <select
+                                value={formVinculo.tipo}
+                                onChange={(e) =>
+                                  setFormVinculo({ ...formVinculo, tipo: e.target.value as TipoReuniao })
+                                }
+                              >
+                                {TIPOS_REUNIAO_VINCULAVEIS.map((tipo) => (
+                                  <option key={tipo} value={tipo}>
+                                    {TIPO_REUNIAO_LABELS[tipo]}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <div className="wizard-actions">
+                              <button type="button" className="btn btn-secondary" onClick={fecharVinculo}>
+                                Cancelar
+                              </button>
+                              <button type="submit" className="btn btn-primary" disabled={salvandoVinculo}>
+                                {salvandoVinculo ? 'Vinculando…' : 'Confirmar vínculo'}
+                              </button>
+                            </div>
+                          </form>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {!loading && totalItens === 0 && (
         <div className="empty-state">

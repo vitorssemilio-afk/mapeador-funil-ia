@@ -19,6 +19,7 @@ import { gerarItensDerivados } from '../lib/checklistDerivado';
 import { nomeConsultor } from '../lib/operacaoResumo';
 import {
   alertaReuniaoObrigatoria,
+  ORIGEM_REUNIAO_LABELS,
   STATUS_REUNIAO_LABELS,
   STATUS_REUNIAO_TONE,
   TIPO_REUNIAO_LABELS,
@@ -2629,6 +2630,14 @@ export function ImplementacaoDetalhe() {
                           <span className={`status-badge status-tone-${STATUS_REUNIAO_TONE[reuniao.status]}`}>
                             {STATUS_REUNIAO_LABELS[reuniao.status]}
                           </span>
+                          {reuniao.origem === 'google_calendar' && (
+                            <>
+                              {' '}
+                              <span className="status-badge status-tone-info" title={ORIGEM_REUNIAO_LABELS[reuniao.origem]}>
+                                Google Calendar
+                              </span>
+                            </>
+                          )}
                         </>
                       )}
                     </h2>
@@ -2667,6 +2676,16 @@ export function ImplementacaoDetalhe() {
                           {reuniao.link ? (
                             <a href={reuniao.link} target="_blank" rel="noopener noreferrer">
                               {reuniao.link}
+                            </a>
+                          ) : (
+                            '—'
+                          )}
+                        </p>
+                        <p>
+                          <strong>Google Meet:</strong>{' '}
+                          {reuniao.google_meet_link ? (
+                            <a href={reuniao.google_meet_link} target="_blank" rel="noopener noreferrer">
+                              {reuniao.google_meet_link}
                             </a>
                           ) : (
                             '—'
@@ -2762,11 +2781,26 @@ export function ImplementacaoDetalhe() {
                                 <span className={`status-badge status-tone-${STATUS_REUNIAO_TONE[r.status]}`}>
                                   {STATUS_REUNIAO_LABELS[r.status]}
                                 </span>{' '}
+                                {r.origem === 'google_calendar' && (
+                                  <>
+                                    <span className="status-badge status-tone-info" title={ORIGEM_REUNIAO_LABELS[r.origem]}>
+                                      Google Calendar
+                                    </span>{' '}
+                                  </>
+                                )}
                                 <strong style={{ color: 'var(--color-text)' }}>
                                   {r.titulo ?? TIPO_REUNIAO_LABELS[tipo]}
                                 </strong>
                                 {' · '}
                                 {r.data_hora ? formatarDataHoraLocal(r.data_hora) : 'Não agendada'}
+                                {r.google_meet_link && (
+                                  <>
+                                    {' · '}
+                                    <a href={r.google_meet_link} target="_blank" rel="noopener noreferrer">
+                                      Google Meet
+                                    </a>
+                                  </>
+                                )}
                               </span>
                               <button
                                 type="button"

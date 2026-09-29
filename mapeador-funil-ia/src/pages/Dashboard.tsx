@@ -38,6 +38,7 @@ export function Dashboard() {
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [eventosGoogleAguardando, setEventosGoogleAguardando] = useState(0);
 
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('');
@@ -68,6 +69,7 @@ export function Dashboard() {
         { data: consultoresData },
         { data: ocorrenciasData },
         { data: reunioesData },
+        { count: eventosGoogleCount },
       ] = await Promise.all([
         supabase.from('clientes').select('*'),
         supabase.from('mapeamentos').select('*'),
@@ -78,6 +80,11 @@ export function Dashboard() {
         supabase.from('consultores').select('*').order('nome', { ascending: true }),
         supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
         supabase.from('reunioes').select('*'),
+        supabase
+          .from('google_calendar_eventos_pendentes')
+          .select('id', { count: 'exact', head: true })
+          .is('reuniao_id', null)
+          .eq('status_google', 'confirmed'),
       ]);
 
       if (cancelled) return;
@@ -97,6 +104,7 @@ export function Dashboard() {
       setConsultores(consultoresData ?? []);
       setOcorrenciasAbertas(ocorrenciasData ?? []);
       setReunioes(reunioesData ?? []);
+      setEventosGoogleAguardando(eventosGoogleCount ?? 0);
       setLoading(false);
     }
 
@@ -247,6 +255,18 @@ export function Dashboard() {
               <span className="ops-kpi-label">Ações para hoje</span>
             </div>
           </div>
+
+          {eventosGoogleAguardando > 0 && (
+            <div className="card form-card">
+              <p>
+                <strong>{eventosGoogleAguardando}</strong>{' '}
+                {eventosGoogleAguardando === 1
+                  ? 'evento do Google Calendar aguardando vínculo'
+                  : 'eventos do Google Calendar aguardando vínculo'}
+                . <Link to="/agenda">Vincular na Agenda →</Link>
+              </p>
+            </div>
+          )}
 
           <div className="ops-grid-2">
             <section className="ops-section">
