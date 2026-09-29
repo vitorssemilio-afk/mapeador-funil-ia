@@ -34,6 +34,7 @@ export type MarcosCliente = {
   formulario_respondido_em: string | null;
   funil_gerado_em: string | null;
   funil_revisado_em: string | null;
+  funil_validado_em: string | null;
   kickoff_agendado_para: string | null;
   kickoff_realizado_em: string | null;
   conta_kommo_solicitada_em: string | null;

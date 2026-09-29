@@ -14,6 +14,7 @@ export const MARCOS_ORDENADOS: { campo: CampoMarco; label: string; apenasData: b
   { campo: 'formulario_respondido_em', label: 'Formulário respondido', apenasData: false },
   { campo: 'funil_gerado_em', label: 'Funil gerado', apenasData: false },
   { campo: 'funil_revisado_em', label: 'Funil revisado internamente', apenasData: false },
+  { campo: 'funil_validado_em', label: 'Funil validado', apenasData: false },
   { campo: 'kickoff_agendado_para', label: 'Kickoff agendado para', apenasData: true },
   { campo: 'kickoff_realizado_em', label: 'Kickoff realizado', apenasData: false },
   { campo: 'conta_kommo_solicitada_em', label: 'Conta Kommo solicitada', apenasData: false },

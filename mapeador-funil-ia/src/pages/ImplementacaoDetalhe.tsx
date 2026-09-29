@@ -5,8 +5,10 @@ import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBa
 import { useAuth } from '../contexts/AuthContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import {
+  calcularDiaCiclo,
   resolverAtividade,
   resolverMarcoAgendavel,
+  resolverMarcoSimples,
   resolverTrialKommo,
   STATUS_ATIVIDADE_LABELS,
   STATUS_ATIVIDADE_TONE,
@@ -101,18 +103,6 @@ const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
   'adocao',
   'concluida',
 ]);
-
-// Pra qual próximo status a conclusão do ciclo correspondente sugere avançar
-// — usado no hint de "avançar status" mostrado junto do ciclo atual, na aba
-// Checklist.
-const PROXIMO_STATUS: Partial<Record<ImplementacaoStatus, ImplementacaoStatus>> = {
-  preparacao_crm: 'crm_em_configuracao',
-  crm_em_configuracao: 'treinamento_agendado',
-  treinamento_agendado: 'automacoes',
-  automacoes: 'entrega',
-  entrega: 'adocao',
-  adocao: 'concluida',
-};
 
 function preRequisitoCompleto(form: FormGeral): boolean {
   return (
@@ -209,6 +199,10 @@ export function ImplementacaoDetalhe() {
     [implementacao, kickoffRealizadoEm, hoje],
   );
 
+  // "Dia X/40" + "Ciclo X — Dias X–Y", sempre visível — contado só do
+  // Kickoff realizado, independente de status manual ou de remarcações.
+  const diaCiclo = useMemo(() => calcularDiaCiclo(kickoffRealizadoEm, hoje), [kickoffRealizadoEm, hoje]);
+
   const tempoReuniao = useMemo(
     () =>
       implementacao ? tempoAteReuniao(implementacao, historicoStatus, kickoffRealizadoEm, hoje) : null,
@@ -236,10 +230,12 @@ export function ImplementacaoDetalhe() {
     );
     if (cliente) {
       resolvidas.push(resolverTrialKommo(cliente, hoje));
+
+      const CICLO_1 = 'Ciclo 1 — Setup e Treinamento';
       resolvidas.push(
         resolverMarcoAgendavel({
           nome: 'Kickoff',
-          ciclo: 'Marcos',
+          ciclo: CICLO_1,
           agendadoPara: cliente.kickoff_agendado_para,
           realizadoEm: cliente.kickoff_realizado_em,
           remarcacoes: remarcacoes.filter((r) => r.campo_marco === 'kickoff_agendado_para'),
@@ -250,9 +246,39 @@ export function ImplementacaoDetalhe() {
         }),
       );
       resolvidas.push(
+        resolverMarcoSimples({
+          nome: 'Funil validado',
+          ciclo: CICLO_1,
+          valorIso: cliente.funil_validado_em,
+          dependenciaLabel: 'Kickoff realizado',
+          kickoffRealizadoEm: cliente.kickoff_realizado_em,
+          diaLimiteCiclo: 10,
+        }),
+      );
+      resolvidas.push(
+        resolverMarcoSimples({
+          nome: 'Conta Kommo solicitada',
+          ciclo: CICLO_1,
+          valorIso: cliente.conta_kommo_solicitada_em,
+          dependenciaLabel: 'Kickoff realizado',
+          kickoffRealizadoEm: cliente.kickoff_realizado_em,
+          diaLimiteCiclo: 10,
+        }),
+      );
+      resolvidas.push(
+        resolverMarcoSimples({
+          nome: 'Conta Kommo criada',
+          ciclo: CICLO_1,
+          valorIso: cliente.conta_kommo_criada_em,
+          dependenciaLabel: 'Conta Kommo solicitada',
+          kickoffRealizadoEm: cliente.kickoff_realizado_em,
+          diaLimiteCiclo: 10,
+        }),
+      );
+      resolvidas.push(
         resolverMarcoAgendavel({
           nome: 'Treinamento',
-          ciclo: 'Marcos',
+          ciclo: CICLO_1,
           agendadoPara: cliente.treinamento_agendado_para,
           realizadoEm: cliente.treinamento_realizado_em,
           remarcacoes: remarcacoes.filter((r) => r.campo_marco === 'treinamento_agendado_para'),
@@ -451,23 +477,23 @@ export function ImplementacaoDetalhe() {
       await supabase.from('atividades_cronograma').delete().eq('implementacao_id', implementacao.id);
     }
 
-    const ordemBaseSemana1 = proximaOrdemCiclo('CRM em configuração');
-    const ordemBaseSemana2 = proximaOrdemCiclo('Treinamento agendado');
+    const ordemBaseSemana1 = proximaOrdemCiclo('Ciclo 1 — Setup e Treinamento');
+    const ordemBaseSemana2 = proximaOrdemCiclo('Ciclo 2 — Automações I e Check-in 1');
 
     const rows = [
       ...semana1.map((texto, i) => ({
         nome: texto,
-        ciclo: 'CRM em configuração',
+        ciclo: 'Ciclo 1 — Setup e Treinamento',
         ordem: ordemBaseSemana1 + i,
         implementacao_id: implementacao.id,
-        depende_de: 'ciclo:preparacao_crm',
+        depende_de: 'marco:kickoff_realizado_em',
       })),
       ...semana2.map((texto, i) => ({
         nome: texto,
-        ciclo: 'Treinamento agendado',
+        ciclo: 'Ciclo 2 — Automações I e Check-in 1',
         ordem: ordemBaseSemana2 + i,
         implementacao_id: implementacao.id,
-        depende_de: 'ciclo:crm_em_configuracao',
+        depende_de: 'marco:treinamento_realizado_em',
       })),
     ];
 
@@ -609,29 +635,6 @@ export function ImplementacaoDetalhe() {
     setImplementacao(data);
     setSalvoRecentemente(true);
     setTimeout(() => setSalvoRecentemente(false), 2000);
-  }
-
-  async function handleAvancarStatus(proximo: ImplementacaoStatus) {
-    if (!implementacao || !formGeral) return;
-    setError(null);
-    setSalvandoGeral(true);
-
-    const { data, error: updateError } = await supabase
-      .from('implementacoes_crm')
-      .update({ status: proximo })
-      .eq('id', implementacao.id)
-      .select()
-      .single();
-
-    setSalvandoGeral(false);
-
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-
-    setImplementacao(data);
-    setFormGeral({ ...formGeral, status: proximo });
   }
 
   async function handleGerarPosVenda() {
@@ -921,6 +924,21 @@ export function ImplementacaoDetalhe() {
       </div>
 
       {error && <p className="form-error">{error}</p>}
+
+      {diaCiclo && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span className="stat-value">Dia {diaCiclo.dia}/40</span>
+            <span className="stat-label">
+              {diaCiclo.ciclo
+                ? `${diaCiclo.ciclo.nome} (dias ${diaCiclo.ciclo.diaInicio}–${diaCiclo.ciclo.diaFim})`
+                : diaCiclo.dia < 1
+                  ? 'Antes do Kickoff'
+                  : 'Além dos 40 dias previstos'}
+            </span>
+          </div>
+        </div>
+      )}
 
       {(prazoSemanaAtual || prazoProcesso || tempoReuniao) && (
         <div className="stats-grid">
@@ -1358,37 +1376,9 @@ export function ImplementacaoDetalhe() {
 
       {aba === 'checklist' &&
         Array.from(atividadesPorCiclo.entries()).map(([ciclo, atividadesDoCiclo]) => {
-          const reais = atividadesDoCiclo.filter((a) => a.id !== null);
-          const cicloCompleto = reais.length > 0 && reais.every((a) => a.status === 'concluido');
-          const ehCicloAtual = ciclo === IMPLEMENTACAO_STATUS_LABELS[implementacao.status];
-          const proximo = cicloCompleto && ehCicloAtual ? PROXIMO_STATUS[implementacao.status] : undefined;
-          const avancoBloqueado =
-            !!proximo && STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(proximo) && !preRequisitoCompleto(formGeral);
-
           return (
             <section key={ciclo} className="card form-card">
               <h2>{ciclo}</h2>
-
-              {proximo && (
-                <p className="form-info form-info-com-acao">
-                  <span>
-                    Ciclo completo! O status da implementação ainda está em "
-                    {IMPLEMENTACAO_STATUS_LABELS[implementacao.status]}".
-                  </span>
-                  {avancoBloqueado ? (
-                    'Confirme o pré-requisito (aba Visão Geral) antes de avançar.'
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => handleAvancarStatus(proximo)}
-                      disabled={salvandoGeral}
-                    >
-                      Avançar status para "{IMPLEMENTACAO_STATUS_LABELS[proximo]}"
-                    </button>
-                  )}
-                </p>
-              )}
 
               <div className="table-wrap">
                 <table className="data-table">
@@ -1460,7 +1450,10 @@ export function ImplementacaoDetalhe() {
                             <td>{atividade.atrasoDias > 0 ? `${atividade.atrasoDias}d` : '—'}</td>
                             <td>
                               <span className={`status-badge status-tone-${STATUS_ATIVIDADE_TONE[atividade.status]}`}>
-                                {STATUS_ATIVIDADE_LABELS[atividade.status]}
+                                {atividade.status === 'aguardando_etapa_anterior' &&
+                                atividade.dependenciaLabel === 'Treinamento realizado'
+                                  ? 'Bloqueado até realização do treinamento'
+                                  : STATUS_ATIVIDADE_LABELS[atividade.status]}
                               </span>
                             </td>
                             <td>
