@@ -207,6 +207,26 @@ export type FunilGerado = {
   created_at: string;
 };
 
+// Versionamento simples: uma linha por (mapeamento, versão), independente
+// do funil ser de vendas ou pós-venda. 'aprovada' nunca é sobrescrita — uma
+// aprovação posterior de outra versão ganha sua própria linha (ver
+// src/lib/funilVersoes.ts e a migration 0045).
+export type OrigemFunilVersao = 'ia' | 'manual';
+export type StatusFunilVersao = 'rascunho' | 'aprovada';
+
+export type FunilVersao = {
+  id: string;
+  mapeamento_id: string;
+  versao: number;
+  origem: OrigemFunilVersao;
+  gerado_por_email: string | null;
+  status: StatusFunilVersao;
+  aprovada_em: string | null;
+  aprovada_por_email: string | null;
+  kickoff_reuniao_id: string | null;
+  created_at: string;
+};
+
 export type TransicaoEntreFunis = {
   de_funil: string;
   para_funil: string;
@@ -692,6 +712,12 @@ export type Database = {
         Insert: Partial<FunilGerado> &
           Pick<FunilGerado, 'mapeamento_id' | 'user_id' | 'nome_funil' | 'tipo_funil'>;
         Update: Partial<FunilGerado>;
+        Relationships: [];
+      };
+      funil_versoes: {
+        Row: FunilVersao;
+        Insert: Partial<FunilVersao> & Pick<FunilVersao, 'mapeamento_id' | 'versao'>;
+        Update: Partial<FunilVersao>;
         Relationships: [];
       };
       geracoes_meta: {

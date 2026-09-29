@@ -325,6 +325,21 @@ Deno.serve(async (req: Request) => {
     indicadores_dashboard: resultado.indicadores_dashboard,
   });
 
+  // Versionamento (ver migration 0045) — uma linha por versão, com quem
+  // gerou (o usuário logado que chamou esta function, não necessariamente
+  // o dono do mapeamento). Nunca bloqueia a geração do funil em si: se essa
+  // gravação falhar, só loga.
+  const { data: userData } = await supabase.auth.getUser();
+  const { error: versaoError } = await supabase.from('funil_versoes').insert({
+    mapeamento_id: mapeamentoId,
+    versao: proximaVersao,
+    origem: 'ia',
+    gerado_por_email: userData?.user?.email ?? null,
+  });
+  if (versaoError) {
+    console.error('Erro ao registrar funil_versoes', versaoError);
+  }
+
   if (metaError) {
     console.error('Erro ao salvar geracoes_meta', metaError);
   }

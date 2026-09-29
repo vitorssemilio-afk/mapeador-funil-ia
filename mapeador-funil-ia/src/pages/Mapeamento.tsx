@@ -9,6 +9,7 @@ import type { BlocoFormulario } from '../data/formSchema';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { carregarFormSchema } from '../lib/formSchemaService';
+import { aprovarVersaoAtual, rotuloVersao } from '../lib/funilVersoes';
 import { supabase } from '../lib/supabaseClient';
 import {
   funilJaGerado,
@@ -19,6 +20,7 @@ import {
 import type {
   EtapaFunil,
   FunilGerado,
+  FunilVersao,
   GeracaoMeta,
   ImplementacaoCrm,
   Mapeamento as MapeamentoType,
@@ -40,6 +42,7 @@ export function Mapeamento() {
   const [geracaoMeta, setGeracaoMeta] = useState<GeracaoMeta | null>(null);
   const [versoesDisponiveis, setVersoesDisponiveis] = useState<number[]>([]);
   const [versaoSelecionada, setVersaoSelecionada] = useState<number | null>(null);
+  const [funilVersoes, setFunilVersoes] = useState<FunilVersao[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retomando, setRetomando] = useState(false);
@@ -101,6 +104,14 @@ export function Mapeamento() {
       .maybeSingle();
 
     setGeracaoMeta(metaData ?? null);
+
+    const { data: funilVersoesData } = await supabase
+      .from('funil_versoes')
+      .select('*')
+      .eq('mapeamento_id', mapeamentoId)
+      .order('versao', { ascending: false });
+
+    setFunilVersoes(funilVersoesData ?? []);
   }
 
   useEffect(() => {
@@ -205,6 +216,14 @@ export function Mapeamento() {
     }
 
     setMapeamento(data);
+
+    if (novoStatus === 'funil_validado') {
+      const { error: aprovacaoError } = await aprovarVersaoAtual(supabase, mapeamento.id, {
+        aprovadoPorEmail: user?.email ?? null,
+      });
+      if (aprovacaoError) setError(aprovacaoError);
+      else await carregarFunis(mapeamento.id, versaoSelecionada ?? undefined);
+    }
   }
 
   function handleVerVersao(versao: number) {
@@ -397,6 +416,12 @@ export function Mapeamento() {
 
   const podeRetomar = mapeamento.status === 'em_preenchimento' || mapeamento.status === 'erro';
   const versaoMaisRecente = versoesDisponiveis[0];
+  const versaoAtualInfo = funilVersoes.find((v) => v.versao === versaoSelecionada) ?? null;
+  // A mais recente entre as aprovadas — é a que de fato está "em
+  // implementação" no momento, mesmo que versões mais novas (em rascunho)
+  // já existam por cima dela.
+  const versaoEmImplementacao =
+    [...funilVersoes].filter((v) => v.status === 'aprovada').sort((a, b) => b.versao - a.versao)[0] ?? null;
   const temRespostas = Object.values(mapeamento.respostas ?? {}).some((valor) => {
     if (Array.isArray(valor)) return valor.length > 0;
     if (typeof valor === 'string') return valor.trim().length > 0;
@@ -629,19 +654,56 @@ export function Mapeamento() {
 
       {funis.length > 0 && (
         <>
+          {versaoAtualInfo && (
+            <section className="card">
+              <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                <h2 style={{ marginBottom: 0 }}>
+                  Versão {versaoAtualInfo.versao}
+                  {versaoAtualInfo.versao !== versaoMaisRecente && ' (somente leitura)'}
+                </h2>
+                <span
+                  className={`status-badge status-tone-${versaoAtualInfo.status === 'aprovada' ? 'success' : 'warning'}`}
+                >
+                  {versaoAtualInfo.status === 'aprovada' ? 'Aprovada para implementação' : 'Rascunho'}
+                </span>
+              </div>
+              <p className="field-hint">
+                Gerada em {new Date(versaoAtualInfo.created_at).toLocaleString('pt-BR')}
+                {versaoAtualInfo.gerado_por_email ? ` por ${versaoAtualInfo.gerado_por_email}` : ''} — origem:{' '}
+                {versaoAtualInfo.origem === 'ia' ? 'IA' : 'Manual'}.
+              </p>
+              {versaoAtualInfo.status === 'aprovada' && (
+                <p className="field-hint">
+                  Aprovada em{' '}
+                  {versaoAtualInfo.aprovada_em ? new Date(versaoAtualInfo.aprovada_em).toLocaleString('pt-BR') : '—'}
+                  {versaoAtualInfo.aprovada_por_email ? ` por ${versaoAtualInfo.aprovada_por_email}` : ''}
+                  {versaoAtualInfo.kickoff_reuniao_id ? ' — validada no Kickoff' : ''}.
+                </p>
+              )}
+              {versaoEmImplementacao && versaoEmImplementacao.versao !== versaoAtualInfo.versao && (
+                <p className="field-hint">
+                  A versão atualmente em implementação é a <strong>Versão {versaoEmImplementacao.versao}</strong>.
+                </p>
+              )}
+            </section>
+          )}
+
           {versoesDisponiveis.length > 1 && (
             <div className="page-header-actions">
               <span className="field-hint">Versão:</span>
-              {versoesDisponiveis.map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  className={v === versaoSelecionada ? 'btn btn-primary' : 'btn btn-secondary'}
-                  onClick={() => handleVerVersao(v)}
-                >
-                  {v === versaoMaisRecente ? `Versão ${v} (atual)` : `Versão ${v}`}
-                </button>
-              ))}
+              {versoesDisponiveis.map((v) => {
+                const info = funilVersoes.find((fv) => fv.versao === v);
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    className={v === versaoSelecionada ? 'btn btn-primary' : 'btn btn-secondary'}
+                    onClick={() => handleVerVersao(v)}
+                  >
+                    {info ? rotuloVersao(info, versaoMaisRecente) : `Versão ${v}`}
+                  </button>
+                );
+              })}
             </div>
           )}
 
