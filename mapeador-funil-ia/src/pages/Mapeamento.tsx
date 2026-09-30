@@ -9,7 +9,7 @@ import type { BlocoFormulario } from '../data/formSchema';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { carregarFormSchema } from '../lib/formSchemaService';
-import { aprovarVersaoAtual, rotuloVersao } from '../lib/funilVersoes';
+import { aprovarVersaoAtual, criarVersaoFunilParaEdicao, rotuloVersao } from '../lib/funilVersoes';
 import { supabase } from '../lib/supabaseClient';
 import {
   funilJaGerado,
@@ -65,6 +65,7 @@ export function Mapeamento() {
   const [alterandoStatus, setAlterandoStatus] = useState(false);
   const [modo, setModo] = useState<'tecnica' | 'apresentacao'>('tecnica');
   const [marcandoRevisado, setMarcandoRevisado] = useState(false);
+  const [criandoNovaVersao, setCriandoNovaVersao] = useState(false);
   const [clienteResumo, setClienteResumo] = useState<Pick<
     Cliente,
     'nome_empresa' | 'kickoff_agendado_para' | 'kickoff_realizado_em'
@@ -241,6 +242,31 @@ export function Mapeamento() {
       if (aprovacaoError) setError(aprovacaoError);
       else await carregarFunis(mapeamento.id, versaoSelecionada ?? undefined);
     }
+  }
+
+  // Única forma de "editar" uma versão aprovada: duplica o conteúdo dela
+  // numa versão nova em rascunho (o banco recusa update direto numa versão
+  // aprovada — ver trigger em migration 0060). A versão aprovada original
+  // continua intacta e acessível pelo seletor de versões.
+  async function handleCriarNovaVersaoParaEdicao(versaoOrigem: number) {
+    if (!mapeamento) return;
+    setCriandoNovaVersao(true);
+    setError(null);
+
+    const { novaVersao, error: criarError } = await criarVersaoFunilParaEdicao(
+      supabase,
+      mapeamento.id,
+      versaoOrigem,
+    );
+
+    setCriandoNovaVersao(false);
+
+    if (criarError || novaVersao === null) {
+      setError(criarError ?? 'Não foi possível criar uma nova versão para edição.');
+      return;
+    }
+
+    await carregarFunis(mapeamento.id, novaVersao);
   }
 
   async function handleMarcarRevisado() {
@@ -909,7 +935,12 @@ export function Mapeamento() {
               key={funil.id}
               funil={funil}
               onChange={handleEtapasChange}
-              somenteLeitura={versaoSelecionada !== versaoMaisRecente}
+              somenteLeitura={versaoSelecionada !== versaoMaisRecente || versaoAtualInfo?.status === 'aprovada'}
+              versaoAprovada={versaoAtualInfo?.status === 'aprovada'}
+              criandoNovaVersao={criandoNovaVersao}
+              onSolicitarNovaVersaoParaEdicao={
+                versaoAtualInfo ? () => handleCriarNovaVersaoParaEdicao(versaoAtualInfo.versao) : undefined
+              }
               modo={modo}
             />
           ))}

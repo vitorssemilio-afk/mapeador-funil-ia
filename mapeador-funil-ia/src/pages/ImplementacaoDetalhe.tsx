@@ -986,11 +986,32 @@ export function ImplementacaoDetalhe() {
     const consultorMudou =
       formGeral.consultor_responsavel_id !== (implementacao.consultor_responsavel_id ?? '');
 
+    // Transferência de responsável é atômica e feita à parte (RPC
+    // transferir_consultor_responsavel_implementacao, migration 0062): numa
+    // única transação ela troca o responsável na implementação, sincroniza
+    // clientes.consultor_responsavel_id (de onde a RLS da ficha do cliente
+    // lê o vínculo) e grava o histórico — nunca fica pela metade. Ver P0-C4
+    // da auditoria funcional.
+    if (consultorMudou) {
+      const { error: transferenciaError } = await supabase.rpc(
+        'transferir_consultor_responsavel_implementacao',
+        {
+          p_implementacao_id: implementacao.id,
+          p_novo_consultor_id: formGeral.consultor_responsavel_id,
+        },
+      );
+
+      if (transferenciaError) {
+        setSalvandoGeral(false);
+        setError(transferenciaError.message);
+        return;
+      }
+    }
+
     const { data, error: updateError } = await supabase
       .from('implementacoes_crm')
       .update({
         nome_cliente: formGeral.nome_cliente.trim(),
-        consultor_responsavel_id: formGeral.consultor_responsavel_id,
         consultor_apoio_id: formGeral.consultor_apoio_id || null,
         stakeholder_decisor: formGeral.stakeholder_decisor.trim() || null,
         status: formGeral.status,
@@ -1007,18 +1028,6 @@ export function ImplementacaoDetalhe() {
       .eq('id', implementacao.id)
       .select()
       .single();
-
-    // Troca de responsável fica registrada — quem era, quem passou a ser,
-    // quando e quem fez a mudança — mesmo que o resto do salvamento seja um
-    // só clique (não é uma ação separada, mas o histórico precisa existir).
-    if (!updateError && consultorMudou) {
-      await supabase.from('implementacao_consultor_historico').insert({
-        implementacao_id: implementacao.id,
-        consultor_anterior_id: implementacao.consultor_responsavel_id,
-        consultor_novo_id: formGeral.consultor_responsavel_id,
-        alterado_por_email: user?.email ?? null,
-      });
-    }
 
     setSalvandoGeral(false);
 

@@ -30,6 +30,14 @@ type Props = {
   funil: FunilGerado;
   onChange: (funilId: string, etapas: EtapaFunil[]) => void;
   somenteLeitura?: boolean;
+  // true quando a versão exibida está aprovada — nesse caso somenteLeitura
+  // também vem true (o banco recusa a edição de qualquer forma, ver
+  // migration 0060), mas aqui precisamos saber o MOTIVO pra mostrar a
+  // mensagem certa e o CTA de criar nova versão, em vez do rótulo genérico
+  // de "versão anterior".
+  versaoAprovada?: boolean;
+  onSolicitarNovaVersaoParaEdicao?: () => void;
+  criandoNovaVersao?: boolean;
   modo?: 'tecnica' | 'apresentacao';
 };
 
@@ -46,7 +54,15 @@ function saveStatusLabel(status: SaveStatus): string {
   }
 }
 
-export function FunilDetalhado({ funil, onChange, somenteLeitura = false, modo = 'tecnica' }: Props) {
+export function FunilDetalhado({
+  funil,
+  onChange,
+  somenteLeitura = false,
+  versaoAprovada = false,
+  onSolicitarNovaVersaoParaEdicao,
+  criandoNovaVersao = false,
+  modo = 'tecnica',
+}: Props) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [expandidos, setExpandidos] = useState<Set<number>>(new Set([0]));
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -157,12 +173,30 @@ export function FunilDetalhado({ funil, onChange, somenteLeitura = false, modo =
           <h2>{funil.nome_funil}</h2>
           <span className="tipo-funil-badge">{funil.tipo_funil}</span>
         </div>
-        {modo === 'tecnica' && (
+        {modo === 'tecnica' && !versaoAprovada && (
           <span className="save-status">
             {somenteLeitura ? 'Versão anterior — somente leitura' : saveStatusLabel(saveStatus)}
           </span>
         )}
       </div>
+
+      {modo === 'tecnica' && versaoAprovada && (
+        <div className="funil-versao-aprovada-aviso">
+          <p className="field-hint">
+            Esta versão está aprovada e não pode ser editada diretamente.
+          </p>
+          {onSolicitarNovaVersaoParaEdicao && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-auto"
+              onClick={onSolicitarNovaVersaoParaEdicao}
+              disabled={criandoNovaVersao}
+            >
+              {criandoNovaVersao ? 'Criando nova versão…' : 'Criar nova versão para edição'}
+            </button>
+          )}
+        </div>
+      )}
 
       {funil.justificativa && modo === 'tecnica' && <p className="field-hint">{funil.justificativa}</p>}
 

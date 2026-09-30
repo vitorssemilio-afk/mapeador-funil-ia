@@ -51,6 +51,30 @@ function ehCampoRemarcavel(campo: CampoMarco): campo is CampoRemarcavel {
   return (CAMPOS_REMARCAVEIS as readonly string[]).includes(campo);
 }
 
+// Os 4 marcos protegidos contra edição direta pelo formulário genérico de
+// "Editar marcos" quando já têm valor: os 2 agendáveis (remarcação formal
+// vive no módulo de Reuniões) e os 2 "_realizado_em" correspondentes (nunca
+// devem ser alterados retroativamente — são a evidência/âncora dos 40 dias).
+// Ver P0-C3 da auditoria funcional e a migration 0061.
+const CAMPOS_PROTEGIDOS_CONTRA_EDICAO_DIRETA = [
+  'kickoff_agendado_para',
+  'kickoff_realizado_em',
+  'treinamento_agendado_para',
+  'treinamento_realizado_em',
+] as const;
+type CampoRemarcavelOuRealizado = (typeof CAMPOS_PROTEGIDOS_CONTRA_EDICAO_DIRETA)[number];
+
+function ehCampoProtegido(campo: CampoMarco): campo is CampoRemarcavelOuRealizado {
+  return (CAMPOS_PROTEGIDOS_CONTRA_EDICAO_DIRETA as readonly string[]).includes(campo);
+}
+
+const LABEL_CAMPO_PROTEGIDO: Record<CampoRemarcavelOuRealizado, string> = {
+  kickoff_agendado_para: 'Kickoff agendado para',
+  kickoff_realizado_em: 'Kickoff realizado',
+  treinamento_agendado_para: 'Treinamento agendado para',
+  treinamento_realizado_em: 'Treinamento realizado',
+};
+
 const BUCKET_ANEXOS = 'cliente-anexos';
 
 function isoParaInput(iso: string | null, apenasData: boolean): string {
@@ -288,6 +312,16 @@ export function ClienteDetalhe() {
   const [versaoPosVenda, setVersaoPosVenda] = useState<FunilVersao | null>(null);
   const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
 
+  const [souAdministrador, setSouAdministrador] = useState(false);
+  // Correção administrativa de um marco já registrado (kickoff/treinamento
+  // agendado ou realizado) — distinto de remarcação comum: exige admin +
+  // justificativa, e fica registrado em auditoria (ver migration 0061).
+  const [corrigindoMarco, setCorrigindoMarco] = useState<CampoRemarcavelOuRealizado | null>(null);
+  const [novoValorCorrecao, setNovoValorCorrecao] = useState('');
+  const [justificativaCorrecao, setJustificativaCorrecao] = useState('');
+  const [salvandoCorrecaoMarco, setSalvandoCorrecaoMarco] = useState(false);
+  const [erroCorrecaoMarco, setErroCorrecaoMarco] = useState<string | null>(null);
+
   async function carregar(clienteId: string) {
     setLoading(true);
     setError(null);
@@ -441,6 +475,9 @@ export function ClienteDetalhe() {
 
   useEffect(() => {
     if (id) carregar(id);
+    // Só decide o que mostrar (o botão de correção administrativa) — quem
+    // de fato barra é a RPC corrigir_marco_cliente, que confere de novo.
+    supabase.rpc('sou_administrador').then(({ data }) => setSouAdministrador(data === true));
   }, [id]);
 
   async function handleSalvarCliente(e: FormEvent) {
@@ -476,8 +513,13 @@ export function ClienteDetalhe() {
     if (!cliente || !formMarcos) return;
 
     setSalvandoMarcos(true);
+    // Campos protegidos já preenchidos nem aparecem como input editável (ver
+    // render acima) — excluídos aqui também, pra nunca reenviar esse valor
+    // por engano numa alteração de payload futura.
     const atualizacao: Partial<Pick<Cliente, CampoMarco>> = Object.fromEntries(
-      MARCOS_ORDENADOS.map(({ campo, apenasData }) => [campo, inputParaIso(formMarcos[campo], apenasData)]),
+      MARCOS_ORDENADOS.filter(({ campo }) => !(ehCampoProtegido(campo) && cliente[campo])).map(
+        ({ campo, apenasData }) => [campo, inputParaIso(formMarcos[campo], apenasData)],
+      ),
     );
 
     const { data, error: updateError } = await supabase
@@ -496,6 +538,45 @@ export function ClienteDetalhe() {
     setCliente(data);
     setFormMarcos(paraFormMarcos(data));
     setEditandoMarcos(false);
+  }
+
+  // Correção administrativa de um marco já registrado — não é uma
+  // remarcação (não pede responsável de impacto nem recalcula cronograma),
+  // é pra consertar um erro de cadastro. Exige justificativa e fica
+  // registrada em auditoria (RPC corrigir_marco_cliente, migration 0061).
+  async function handleCorrigirMarco(e: FormEvent) {
+    e.preventDefault();
+    if (!cliente || !corrigindoMarco) return;
+
+    if (!justificativaCorrecao.trim()) {
+      setErroCorrecaoMarco('Justificativa é obrigatória.');
+      return;
+    }
+
+    setSalvandoCorrecaoMarco(true);
+    setErroCorrecaoMarco(null);
+
+    const novoValorIso = inputParaIso(novoValorCorrecao, false);
+    const { error: rpcError } = await supabase.rpc('corrigir_marco_cliente', {
+      p_cliente_id: cliente.id,
+      p_campo: corrigindoMarco,
+      p_novo_valor: novoValorIso,
+      p_justificativa: justificativaCorrecao.trim(),
+    });
+
+    setSalvandoCorrecaoMarco(false);
+
+    if (rpcError) {
+      setErroCorrecaoMarco(rpcError.message);
+      return;
+    }
+
+    const { data } = await supabase.from('clientes').select('*').eq('id', cliente.id).single();
+    if (data) {
+      setCliente(data);
+      setFormMarcos(paraFormMarcos(data));
+    }
+    setCorrigindoMarco(null);
   }
 
   async function handleCriarMapeamentoVendas() {
@@ -1878,16 +1959,64 @@ export function ClienteDetalhe() {
         {editandoMarcos && formMarcos ? (
           <form onSubmit={handleSalvarMarcos}>
             <div className="form-grid">
-              {MARCOS_ORDENADOS.map(({ campo, label, apenasData }) => (
-                <label key={campo} className="field">
-                  <span>{label}</span>
-                  <input
-                    type={apenasData ? 'date' : 'datetime-local'}
-                    value={formMarcos[campo]}
-                    onChange={(e) => setFormMarcos({ ...formMarcos, [campo]: e.target.value })}
-                  />
-                </label>
-              ))}
+              {MARCOS_ORDENADOS.map(({ campo, label, apenasData }) => {
+                // Kickoff/Treinamento (agendado e realizado) já têm valor:
+                // não dá pra editar aqui direto — isso contornaria o fluxo
+                // de remarcação (com motivo/responsável/histórico) ou, pior,
+                // alteraria retroativamente o marco que ancora os 40 dias.
+                // Ver P0-C3 da auditoria funcional.
+                if (ehCampoProtegido(campo) && cliente[campo]) {
+                  return (
+                    <div key={campo} className="field">
+                      <span>{label}</span>
+                      <p className="field-hint">
+                        {formatarDataHora(cliente[campo]!)}
+                        {ehCampoRemarcavel(campo) ? (
+                          <>
+                            {' '}
+                            ·{' '}
+                            {implementacao ? (
+                              <Link to={`/implementacoes/${implementacao.id}`}>Remarcar em Reuniões →</Link>
+                            ) : (
+                              'Gerencie pelo módulo de Reuniões, dentro da implementação'
+                            )}
+                          </>
+                        ) : (
+                          ' · não pode ser alterado retroativamente'
+                        )}
+                        {souAdministrador && (
+                          <>
+                            {' · '}
+                            <button
+                              type="button"
+                              className="btn-link"
+                              onClick={() => {
+                                setCorrigindoMarco(campo);
+                                setNovoValorCorrecao(isoParaInput(cliente[campo], false));
+                                setJustificativaCorrecao('');
+                                setErroCorrecaoMarco(null);
+                              }}
+                            >
+                              Corrigir data registrada
+                            </button>
+                          </>
+                        )}
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <label key={campo} className="field">
+                    <span>{label}</span>
+                    <input
+                      type={apenasData ? 'date' : 'datetime-local'}
+                      value={formMarcos[campo]}
+                      onChange={(e) => setFormMarcos({ ...formMarcos, [campo]: e.target.value })}
+                    />
+                  </label>
+                );
+              })}
             </div>
             <div className="wizard-actions">
               <button
@@ -1990,6 +2119,47 @@ export function ClienteDetalhe() {
           </>
         )}
       </section>
+
+      {corrigindoMarco && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <form className="card modal-card" onSubmit={handleCorrigirMarco}>
+            <h2>Corrigir data registrada</h2>
+            <p className="field-hint">
+              Use isso só para consertar um erro de cadastro em "{LABEL_CAMPO_PROTEGIDO[corrigindoMarco]}" — não
+              para uma remarcação de verdade (nesse caso, use o fluxo de Reuniões). Esta correção fica registrada
+              em auditoria.
+            </p>
+            <label className="field">
+              <span>Nova data/hora</span>
+              <input
+                type="datetime-local"
+                required
+                value={novoValorCorrecao}
+                onChange={(e) => setNovoValorCorrecao(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Justificativa</span>
+              <textarea
+                rows={3}
+                required
+                value={justificativaCorrecao}
+                onChange={(e) => setJustificativaCorrecao(e.target.value)}
+                placeholder="Explique o erro de cadastro que está sendo corrigido"
+              />
+            </label>
+            {erroCorrecaoMarco && <p className="form-error">{erroCorrecaoMarco}</p>}
+            <div className="wizard-actions">
+              <button type="button" className="btn btn-secondary" onClick={() => setCorrigindoMarco(null)}>
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={salvandoCorrecaoMarco}>
+                {salvandoCorrecaoMarco ? 'Salvando…' : 'Confirmar correção'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       </>)}
 
       {aba === 'reunioes' && (
