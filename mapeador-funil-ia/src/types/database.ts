@@ -334,6 +334,8 @@ export type ImplementacaoStatus =
   | 'concluida'
   | 'cancelada';
 
+export type PapelConsultor = 'administrador' | 'consultor' | 'consultor_apoio';
+
 export type Consultor = {
   id: string;
   nome: string;
@@ -342,6 +344,8 @@ export type Consultor = {
   cargo: string | null;
   avatar_url: string | null;
   ativo: boolean;
+  user_id: string | null;
+  role: PapelConsultor;
   created_at: string;
   updated_at: string;
 };
@@ -991,6 +995,10 @@ export type Database = {
           p_intencao_manutencao: string;
         };
         Returns: undefined;
+      };
+      sou_administrador: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
       };
     };
     Enums: {
