@@ -522,6 +522,12 @@ export type AtividadeCronograma = {
   depende_de: string | null;
   prazo_dias: number | null;
   requer_evidencia: boolean;
+  // Quando esta atividade REPRESENTA uma reunião do módulo de Reuniões
+  // (Check-in 1/2, Reunião final) — a reunião passa a ser a fonte única da
+  // data (agendada/realizada), nunca um campo duplicado em
+  // atividades_status. null = atividade comum, sem reunião associada. Ver
+  // resolverAtividade em atividadesCronograma.ts e migration 0064 (P1-C2).
+  reuniao_tipo: TipoReuniao | null;
   // null = item do template global (compartilhado); preenchido = item
   // derivado automaticamente do funil dessa implementação específica.
   implementacao_id: string | null;

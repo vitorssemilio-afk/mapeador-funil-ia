@@ -8,7 +8,13 @@ import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marc
 import { funilValidado } from '../lib/statusFluxo';
 import { CICLOS_OPERACIONAIS, calcularDiaCiclo, IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
-import { construirResumoClientes, nomeConsultor, SAUDE_LABELS, type SaudeCliente } from '../lib/operacaoResumo';
+import {
+  construirResumoClientes,
+  nomeConsultor,
+  prazoLabelDe,
+  SAUDE_LABELS,
+  type SaudeCliente,
+} from '../lib/operacaoResumo';
 import { STATUS_REUNIAO_LABELS, STATUS_REUNIAO_TONE, TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import {
@@ -1047,10 +1053,20 @@ export function ClienteDetalhe() {
       atividades: atividadesAutomacao,
       statusRows: statusAutomacao,
       consultores,
+      reunioes,
       hoje: new Date(),
     });
     return resumos[0] ?? null;
-  }, [cliente, mapeamentoVendas, mapeamentoPosVenda, implementacao, atividadesAutomacao, statusAutomacao, consultores]);
+  }, [
+    cliente,
+    mapeamentoVendas,
+    mapeamentoPosVenda,
+    implementacao,
+    atividadesAutomacao,
+    statusAutomacao,
+    consultores,
+    reunioes,
+  ]);
 
   const diaCiclo = useMemo(() => {
     if (!cliente) return null;
@@ -1202,14 +1218,8 @@ export function ClienteDetalhe() {
               <p>{resumo.proximaAcao}</p>
             </div>
             <div>
-              <span className="etapa-card-label">Prazo da próxima ação</span>
-              <p>
-                {(() => {
-                  const prazo = resumo.prazoFase ?? resumo.prazoProcesso;
-                  if (!prazo) return '—';
-                  return prazo.atrasada ? `${prazo.diasAtraso}d atrasado` : `${prazo.diasRestantes}d restantes`;
-                })()}
-              </p>
+              <span className="etapa-card-label">Prazo geral da implementação</span>
+              <p>{prazoLabelDe(resumo) ?? '—'}</p>
             </div>
             <div>
               <span className="etapa-card-label">Próxima reunião</span>
@@ -1303,13 +1313,7 @@ export function ClienteDetalhe() {
           <section className="card">
             <span className="etapa-card-label">Próxima ação</span>
             <p>{resumo.proximaAcao}</p>
-            <p className="field-hint">
-              {(() => {
-                const prazo = resumo.prazoFase ?? resumo.prazoProcesso;
-                if (!prazo) return 'Sem prazo calculado';
-                return prazo.atrasada ? `${prazo.diasAtraso}d atrasado` : `${prazo.diasRestantes}d restantes`;
-              })()}
-            </p>
+            <p className="field-hint">{prazoLabelDe(resumo) ?? 'Sem prazo calculado'}</p>
           </section>
 
           <section className="card">

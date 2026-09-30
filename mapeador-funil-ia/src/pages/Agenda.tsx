@@ -229,7 +229,7 @@ export function Agenda() {
                 <span className="field-hint"> ({lista.length})</span>
               </h2>
               <div className="table-wrap">
-                <table className="data-table">
+                <table className="data-table data-table-cards-mobile">
                   <thead>
                     <tr>
                       <th>Cliente</th>
@@ -245,11 +245,11 @@ export function Agenda() {
                   <tbody>
                     {lista.map((item) => (
                       <tr key={item.id}>
-                        <td>
+                        <td data-label="Cliente">
                           <Link to={`/clientes/${item.clienteId}`}>{item.clienteNome}</Link>
                         </td>
-                        <td>{TIPO_ITEM_AGENDA_LABELS[item.tipo]}</td>
-                        <td>
+                        <td data-label="Tipo">{TIPO_ITEM_AGENDA_LABELS[item.tipo]}</td>
+                        <td data-label="Item">
                           {item.titulo}
                           {item.implementacaoId && (
                             <>
@@ -260,21 +260,24 @@ export function Agenda() {
                             </>
                           )}
                         </td>
-                        <td>{item.responsavel ?? '—'}</td>
-                        <td>{formatarData(item)}</td>
-                        <td className={item.atrasado ? 'ops-prazo-atrasado' : undefined}>
+                        <td data-label="Responsável">{item.responsavel ?? '—'}</td>
+                        <td data-label="Data">{formatarData(item)}</td>
+                        <td data-label="Status" className={item.atrasado ? 'ops-prazo-atrasado' : undefined}>
                           {item.aguardando ? `Aguardando ${item.aguardando}` : item.status}
                         </td>
-                        <td>{item.acaoRecomendada}</td>
-                        <td>
+                        <td data-label="Ação recomendada">{item.acaoRecomendada}</td>
+                        <td data-label="">
                           {item.atividadeId && (
-                            <input
-                              type="checkbox"
-                              checked={false}
-                              disabled={marcando === item.atividadeId}
-                              onChange={() => handleMarcarConcluida(item)}
-                              title="Marcar como concluída"
-                            />
+                            <label className="agenda-card-concluir">
+                              <input
+                                type="checkbox"
+                                checked={false}
+                                disabled={marcando === item.atividadeId}
+                                onChange={() => handleMarcarConcluida(item)}
+                                title="Marcar como concluída"
+                              />
+                              <span className="agenda-card-concluir-label">Marcar como concluída</span>
+                            </label>
                           )}
                         </td>
                       </tr>

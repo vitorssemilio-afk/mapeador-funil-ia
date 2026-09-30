@@ -9,7 +9,14 @@ import type { BlocoFormulario } from '../data/formSchema';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
 import { carregarFormSchema } from '../lib/formSchemaService';
-import { aprovarVersaoAtual, criarVersaoFunilParaEdicao, rotuloVersao } from '../lib/funilVersoes';
+import {
+  aprovarVersao,
+  criarVersaoFunilParaEdicao,
+  rotuloVersao,
+  statusMapeamentoPorValidacao,
+  VALIDACAO_FUNIL_KICKOFF_LABELS,
+  type ValidacaoFunilKickoff,
+} from '../lib/funilVersoes';
 import { supabase } from '../lib/supabaseClient';
 import {
   funilJaGerado,
@@ -66,6 +73,20 @@ export function Mapeamento() {
   const [modo, setModo] = useState<'tecnica' | 'apresentacao'>('tecnica');
   const [marcandoRevisado, setMarcandoRevisado] = useState(false);
   const [criandoNovaVersao, setCriandoNovaVersao] = useState(false);
+
+  // P1-A1/A2: validar o funil (avançar pra funil_validado/ajustes_solicitados
+  // a partir de kickoff_agendado ou de ajustes_solicitados) deixou de ser um
+  // botão genérico de status — exige escolher explicitamente a versão e,
+  // quando o Kickoff ainda não foi formalmente registrado, também a data
+  // real da reunião. Ver handleValidarFunil.
+  const [validandoFunilAberto, setValidandoFunilAberto] = useState(false);
+  const [versaoParaValidar, setVersaoParaValidar] = useState('');
+  const [dataHoraKickoffReal, setDataHoraKickoffReal] = useState('');
+  const [respostaValidacaoCliente, setRespostaValidacaoCliente] = useState<ValidacaoFunilKickoff | ''>('');
+  const [salvandoValidacaoFunil, setSalvandoValidacaoFunil] = useState(false);
+  // Erro próprio desse formulário — não usa o `error` da página, que tem um
+  // early return que troca a página inteira por essa mensagem (ver render).
+  const [erroValidacaoFunil, setErroValidacaoFunil] = useState<string | null>(null);
   const [clienteResumo, setClienteResumo] = useState<Pick<
     Cliente,
     'nome_empresa' | 'kickoff_agendado_para' | 'kickoff_realizado_em'
@@ -214,8 +235,12 @@ export function Mapeamento() {
     }
   }
 
+  // Transições genéricas de status que NÃO envolvem validar o funil (essa
+  // tem fluxo próprio — ver handleValidarFunil, P1-A1/A2 da auditoria
+  // funcional: aprovar um funil e/ou marcar o Kickoff como realizado nunca
+  // pode ser um efeito colateral silencioso de um botão de status genérico).
   async function handleAvancarStatusMapeamento(novoStatus: MapeamentoStatus) {
-    if (!mapeamento) return;
+    if (!mapeamento || novoStatus === 'funil_validado') return;
     setAlterandoStatus(true);
     setError(null);
 
@@ -234,14 +259,129 @@ export function Mapeamento() {
     }
 
     setMapeamento(data);
+  }
+
+  function abrirValidarFunil() {
+    setValidandoFunilAberto(true);
+    setRespostaValidacaoCliente('');
+    setVersaoParaValidar(versaoMaisRecente ? String(versaoMaisRecente) : '');
+    setDataHoraKickoffReal('');
+    setErroValidacaoFunil(null);
+  }
+
+  function fecharValidarFunil() {
+    setValidandoFunilAberto(false);
+    setRespostaValidacaoCliente('');
+    setVersaoParaValidar('');
+    setDataHoraKickoffReal('');
+  }
+
+  // Fluxo único de validação do funil no Kickoff (ou revalidação após
+  // ajustes) — substitui o botão genérico "Funil validado":
+  // - a versão aprovada é sempre uma escolha explícita e confirmada, nunca
+  //   "a mais recente" por padrão (P1-A1);
+  // - se o Kickoff desta implementação ainda não foi formalmente registrado
+  //   (nenhuma reunião de Kickoff realizada pra este cliente), essa ação
+  //   também cria essa reunião com a data real informada — o banco recusa
+  //   marcar kickoff_realizado_em sem ela existir (trigger da migration
+  //   0063), então os 40 dias nunca começam a contar sem uma reunião formal
+  //   (P1-A2).
+  async function handleValidarFunil() {
+    if (!mapeamento) return;
+
+    if (!respostaValidacaoCliente) {
+      setErroValidacaoFunil('Selecione se o cliente validou o funil.');
+      return;
+    }
+
+    const precisaRevisar = respostaValidacaoCliente === 'precisa_revisar';
+    const kickoffJaRegistrado = Boolean(clienteResumo?.kickoff_realizado_em);
+
+    if (!precisaRevisar && !versaoParaValidar) {
+      setErroValidacaoFunil('Selecione qual versão do funil está sendo validada.');
+      return;
+    }
+    if (!kickoffJaRegistrado && !dataHoraKickoffReal) {
+      setErroValidacaoFunil('Informe a data/hora em que o Kickoff foi realizado.');
+      return;
+    }
+    if (
+      !precisaRevisar &&
+      !window.confirm(`Você está aprovando a Versão ${versaoParaValidar} para implementação. Confirmar?`)
+    ) {
+      return;
+    }
+
+    setSalvandoValidacaoFunil(true);
+    setErroValidacaoFunil(null);
+
+    let reuniaoKickoffId: string | null = null;
+
+    if (!kickoffJaRegistrado && mapeamento.cliente_id) {
+      const dataHoraIso = new Date(dataHoraKickoffReal).toISOString();
+
+      const { data: reuniaoData, error: reuniaoError } = await supabase
+        .from('reunioes')
+        .insert({
+          cliente_id: mapeamento.cliente_id,
+          tipo: 'kickoff',
+          status: 'realizada',
+          data_hora: dataHoraIso,
+          titulo: 'Kickoff',
+        })
+        .select()
+        .single();
+
+      if (reuniaoError) {
+        setSalvandoValidacaoFunil(false);
+        setErroValidacaoFunil(reuniaoError.message);
+        return;
+      }
+      reuniaoKickoffId = reuniaoData.id;
+
+      const { error: clienteError } = await supabase
+        .from('clientes')
+        .update({ kickoff_realizado_em: dataHoraIso, kickoff_agendado_para: dataHoraIso })
+        .eq('id', mapeamento.cliente_id)
+        .is('kickoff_realizado_em', null);
+
+      if (clienteError) {
+        setSalvandoValidacaoFunil(false);
+        setErroValidacaoFunil(clienteError.message);
+        return;
+      }
+
+      setClienteResumo((prev) => (prev ? { ...prev, kickoff_realizado_em: dataHoraIso } : prev));
+    }
+
+    const novoStatus = statusMapeamentoPorValidacao(respostaValidacaoCliente);
+
+    const { data: mapeamentoAtualizado, error: statusError } = await supabase
+      .from('mapeamentos')
+      .update({ status: novoStatus })
+      .eq('id', mapeamento.id)
+      .select()
+      .single();
+
+    if (statusError) {
+      setSalvandoValidacaoFunil(false);
+      setErroValidacaoFunil(statusError.message);
+      return;
+    }
+
+    setMapeamento(mapeamentoAtualizado);
 
     if (novoStatus === 'funil_validado') {
-      const { error: aprovacaoError } = await aprovarVersaoAtual(supabase, mapeamento.id, {
+      const { error: aprovacaoError } = await aprovarVersao(supabase, mapeamento.id, Number(versaoParaValidar), {
         aprovadoPorEmail: user?.email ?? null,
+        kickoffReuniaoId: reuniaoKickoffId,
       });
-      if (aprovacaoError) setError(aprovacaoError);
-      else await carregarFunis(mapeamento.id, versaoSelecionada ?? undefined);
+      if (aprovacaoError) setErroValidacaoFunil(aprovacaoError);
     }
+
+    await carregarFunis(mapeamento.id, versaoSelecionada ?? undefined);
+    setSalvandoValidacaoFunil(false);
+    fecharValidarFunil();
   }
 
   // Única forma de "editar" uma versão aprovada: duplica o conteúdo dela
@@ -794,18 +934,105 @@ export function Mapeamento() {
               Status atual: <strong>{MAPEAMENTO_STATUS_LABELS[mapeamento.status]}</strong>
             </p>
             <div className="page-header-actions">
-              {PROXIMOS_STATUS_MAPEAMENTO[mapeamento.status]?.map((proximo) => (
-                <button
-                  key={proximo}
-                  type="button"
-                  className="btn btn-secondary btn-auto"
-                  onClick={() => handleAvancarStatusMapeamento(proximo)}
-                  disabled={alterandoStatus}
-                >
-                  {MAPEAMENTO_STATUS_LABELS[proximo]}
-                </button>
-              ))}
+              {PROXIMOS_STATUS_MAPEAMENTO[mapeamento.status]?.map((proximo) =>
+                proximo === 'funil_validado' ? (
+                  <button
+                    key={proximo}
+                    type="button"
+                    className="btn btn-secondary btn-auto"
+                    onClick={abrirValidarFunil}
+                    disabled={alterandoStatus || validandoFunilAberto}
+                  >
+                    Validar funil
+                  </button>
+                ) : (
+                  <button
+                    key={proximo}
+                    type="button"
+                    className="btn btn-secondary btn-auto"
+                    onClick={() => handleAvancarStatusMapeamento(proximo)}
+                    disabled={alterandoStatus}
+                  >
+                    {MAPEAMENTO_STATUS_LABELS[proximo]}
+                  </button>
+                ),
+              )}
             </div>
+
+            {validandoFunilAberto && (
+              <div className="card form-card" style={{ marginTop: 14 }}>
+                <h3>Validar funil{mapeamento.status === 'kickoff_agendado' ? ' no Kickoff' : ''}</h3>
+                {!clienteResumo?.kickoff_realizado_em && mapeamento.status === 'kickoff_agendado' && (
+                  <>
+                    <p className="field-hint">
+                      Não existe uma reunião de Kickoff registrada para este cliente ainda — esta ação também vai
+                      registrá-la.
+                    </p>
+                    <label className="field">
+                      <span>Data/hora em que o Kickoff foi realizado</span>
+                      <input
+                        type="datetime-local"
+                        value={dataHoraKickoffReal}
+                        onChange={(e) => setDataHoraKickoffReal(e.target.value)}
+                      />
+                    </label>
+                  </>
+                )}
+
+                <fieldset className="field">
+                  <legend>O cliente validou o funil?</legend>
+                  {(Object.entries(VALIDACAO_FUNIL_KICKOFF_LABELS) as [ValidacaoFunilKickoff, string][]).map(
+                    ([valor, rotulo]) => (
+                      <label key={valor} className="option-checkbox">
+                        <input
+                          type="radio"
+                          name="validacao-funil-mapeamento"
+                          checked={respostaValidacaoCliente === valor}
+                          onChange={() => setRespostaValidacaoCliente(valor)}
+                        />
+                        <span>{rotulo}</span>
+                      </label>
+                    ),
+                  )}
+                </fieldset>
+
+                {respostaValidacaoCliente && respostaValidacaoCliente !== 'precisa_revisar' && (
+                  <label className="field">
+                    <span>Qual versão do funil está sendo validada?</span>
+                    <select value={versaoParaValidar} onChange={(e) => setVersaoParaValidar(e.target.value)}>
+                      <option value="">Selecione…</option>
+                      {funilVersoes.map((v) => (
+                        <option key={v.versao} value={v.versao}>
+                          Versão {v.versao}
+                          {v.status === 'aprovada' ? ' — já aprovada' : ' — rascunho'}
+                          {' · '}
+                          {new Date(v.created_at).toLocaleDateString('pt-BR')}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="field-hint">
+                      Só essa versão será marcada como aprovada — outras versões em rascunho continuam como estão.
+                    </span>
+                  </label>
+                )}
+
+                {erroValidacaoFunil && <p className="form-error">{erroValidacaoFunil}</p>}
+
+                <div className="wizard-actions">
+                  <button type="button" className="btn btn-secondary" onClick={fecharValidarFunil}>
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleValidarFunil}
+                    disabled={salvandoValidacaoFunil || !respostaValidacaoCliente}
+                  >
+                    {salvandoValidacaoFunil ? 'Salvando…' : 'Confirmar'}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         )}
 

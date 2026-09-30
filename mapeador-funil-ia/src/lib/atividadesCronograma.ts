@@ -10,6 +10,7 @@ import type {
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
   MarcoRemarcacao,
+  Reuniao,
 } from '../types/database';
 
 export const IMPACTO_RESPONSAVEL_LABELS: Record<ImpactoResponsavel, string> = {
@@ -217,9 +218,13 @@ export function resolverAtividade(params: {
   statusRow: AtividadeStatusRow | null;
   historico: ImplementacaoStatusHistorico[];
   cliente: Cliente | null;
+  // Reuniões do cliente — só usadas quando atividade.reuniao_tipo aponta pra
+  // uma (Check-in 1/2, Reunião final). Default [] pra não quebrar chamadas
+  // que ainda não passam esse dado.
+  reunioes?: Reuniao[];
   hoje: Date;
 }): AtividadeResolvida {
-  const { atividade, statusRow, historico, cliente, hoje } = params;
+  const { atividade, statusRow, historico, cliente, reunioes = [], hoje } = params;
 
   let liberada = true;
   let dataLiberacao: Date | null = null;
@@ -248,8 +253,30 @@ export function resolverAtividade(params: {
   }
 
   const bloqueadoPeloCliente = statusRow?.bloqueado_pelo_cliente ?? false;
-  const dataReal = statusRow?.data_real ? new Date(statusRow.data_real) : null;
-  const agendadoPara = statusRow?.agendado_para ? new Date(`${statusRow.agendado_para}T12:00:00`) : null;
+
+  // P1-C2: quando a atividade representa uma reunião formal (Check-in 1/2,
+  // Reunião final), a reunião é a fonte ÚNICA da data — nunca o campo
+  // duplicado em atividades_status, que ficava desatualizado a cada
+  // remarcação feita pelo módulo de Reuniões.
+  const reuniaoVinculada = atividade.reuniao_tipo
+    ? (reunioes.find((r) => r.tipo === atividade.reuniao_tipo) ?? null)
+    : null;
+
+  const dataReal = reuniaoVinculada
+    ? reuniaoVinculada.status === 'realizada' && reuniaoVinculada.data_hora
+      ? new Date(reuniaoVinculada.data_hora)
+      : null
+    : statusRow?.data_real
+      ? new Date(statusRow.data_real)
+      : null;
+
+  const agendadoPara = reuniaoVinculada
+    ? reuniaoVinculada.status === 'agendada' && reuniaoVinculada.data_hora
+      ? new Date(reuniaoVinculada.data_hora)
+      : null
+    : statusRow?.agendado_para
+      ? new Date(`${statusRow.agendado_para}T12:00:00`)
+      : null;
 
   const dataPlanejada =
     liberada && dataLiberacao && atividade.prazo_dias != null
@@ -267,6 +294,11 @@ export function resolverAtividade(params: {
     status = 'aguardando_etapa_anterior';
   } else if (agendadoPara && agendadoPara.getTime() > hoje.getTime()) {
     status = 'agendado';
+  } else if (reuniaoVinculada && agendadoPara) {
+    // Reunião vinculada já passou da data e ainda não foi marcada como
+    // realizada — atrasada mesmo sem prazo_dias/dataPlanejada própria.
+    status = 'atrasado';
+    atrasoDias = diferencaEmDias(hoje, agendadoPara);
   } else if (dataPlanejada && hoje.getTime() > dataPlanejada.getTime()) {
     status = 'atrasado';
     atrasoDias = diferencaEmDias(hoje, dataPlanejada);

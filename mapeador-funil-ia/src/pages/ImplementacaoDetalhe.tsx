@@ -28,7 +28,12 @@ import {
   STATUS_DIAGNOSTICO_LABELS,
   STATUS_DIAGNOSTICO_TONE,
 } from '../lib/diagnosticoAdocao';
-import { aprovarVersaoAtual } from '../lib/funilVersoes';
+import {
+  aprovarVersao,
+  statusMapeamentoPorValidacao,
+  VALIDACAO_FUNIL_KICKOFF_LABELS,
+  type ValidacaoFunilKickoff,
+} from '../lib/funilVersoes';
 import { nomeConsultor } from '../lib/operacaoResumo';
 import {
   alertaReuniaoObrigatoria,
@@ -44,15 +49,7 @@ import {
 } from '../lib/trialKommo';
 import { emOuAposProntoKickoff, emOuAposRevisaoInterna, funilJaGerado } from '../lib/statusFluxo';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
-import {
-  PX_POR_DIA,
-  calcularEscala,
-  diaParaPx,
-  fasesImplementacao,
-  prazoFaseAtual,
-  prazoGeral,
-  tempoAteReuniao,
-} from '../lib/cronograma';
+import { PX_POR_DIA, calcularEscala, diaParaPx, fasesImplementacao, tempoAteReuniao } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
 import type {
   AtividadeCronograma,
@@ -71,6 +68,7 @@ import type {
   FrequenciaUsoCheckpoint,
   FunilGerado,
   FunilKommoCriacao,
+  FunilVersao,
   ImplementacaoCrm,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
@@ -137,18 +135,6 @@ type FormReuniao = {
   pendencias_cliente: string;
   pendencias_internas: string;
   proximos_passos: string;
-};
-
-// Só perguntado ao marcar o Kickoff como "Realizado" pela primeira vez —
-// decide se o funil da implementação já pode ser considerado validado ou
-// se ainda precisa de uma rodada de ajustes (ver PROXIMOS_STATUS_MAPEAMENTO
-// em statusFluxo.ts, que já modela exatamente essas duas saídas).
-type ValidacaoFunilKickoff = 'sem_ajustes' | 'pequenos_ajustes' | 'precisa_revisar';
-
-const VALIDACAO_FUNIL_KICKOFF_LABELS: Record<ValidacaoFunilKickoff, string> = {
-  sem_ajustes: 'Sim, sem ajustes',
-  pequenos_ajustes: 'Sim, com pequenos ajustes',
-  precisa_revisar: 'Não, precisa revisar',
 };
 
 function isoParaInputDatetime(iso: string | null): string {
@@ -351,6 +337,10 @@ export function ImplementacaoDetalhe() {
     Mapeamento,
     'id' | 'nome_negocio' | 'enviado_em' | 'created_at' | 'status'
   > | null>(null);
+  const [versoesMapeamentoOrigem, setVersoesMapeamentoOrigem] = useState<FunilVersao[]>([]);
+  // P1-A1: qual versão está sendo validada no Kickoff — nunca inferida
+  // automaticamente como "a mais recente".
+  const [versaoParaValidarKickoff, setVersaoParaValidarKickoff] = useState('');
   const [posVendaMapeamento, setPosVendaMapeamento] = useState<{
     id: string;
     codigo_curto: string;
@@ -422,16 +412,6 @@ export function ImplementacaoDetalhe() {
     [implementacao, historicoStatus],
   );
 
-  const prazoSemanaAtual = useMemo(
-    () => (implementacao ? prazoFaseAtual(implementacao, historicoStatus, hoje) : null),
-    [implementacao, historicoStatus, hoje],
-  );
-
-  const prazoProcesso = useMemo(
-    () => (implementacao ? prazoGeral(implementacao, kickoffRealizadoEm, hoje) : null),
-    [implementacao, kickoffRealizadoEm, hoje],
-  );
-
   // "Dia X/40" + "Ciclo X — Dias X–Y", sempre visível — contado só do
   // Kickoff realizado, independente de status manual ou de remarcações.
   const diaCiclo = useMemo(() => calcularDiaCiclo(kickoffRealizadoEm, hoje), [kickoffRealizadoEm, hoje]);
@@ -474,6 +454,7 @@ export function ImplementacaoDetalhe() {
         statusRow: atividadesStatus.find((s) => s.atividade_id === atividade.id) ?? null,
         historico: historicoStatus,
         cliente,
+        reunioes,
         hoje,
       }),
     );
@@ -538,7 +519,7 @@ export function ImplementacaoDetalhe() {
       );
     }
     return resolvidas;
-  }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, remarcacoes, hoje]);
+  }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, remarcacoes, reunioes, hoje]);
 
   // Agrupadas por ciclo. Dentro de cada grupo, a ordem preserva a ordem de
   // carregamento (já vem ordenado por `ordem` da query) — mas a ORDEM DOS
@@ -661,6 +642,15 @@ export function ImplementacaoDetalhe() {
     setCliente(clienteData ?? null);
     setKickoffRealizadoEm(clienteData?.kickoff_realizado_em ?? null);
     setPosVendaMapeamento(posVendaData?.[0] ?? null);
+
+    if (mapeamentoOrigemData) {
+      const { data: versoesData } = await supabase
+        .from('funil_versoes')
+        .select('*')
+        .eq('mapeamento_id', mapeamentoOrigemData.id)
+        .order('versao', { ascending: false });
+      setVersoesMapeamentoOrigem(versoesData ?? []);
+    }
 
     if (clienteData) {
       const { data: remarcacoesData } = await supabase
@@ -1117,6 +1107,9 @@ export function ImplementacaoDetalhe() {
     setFormReuniao(reuniao ? paraFormReuniao(reuniao) : formReuniaoVazio(tipo));
     setStatusOriginalReuniaoEmEdicao(reuniao?.status ?? null);
     setValidacaoFunilKickoff('');
+    // Pré-seleciona a versão mais recente só como ponto de partida — a
+    // aprovação exige confirmação explícita (ver handleSalvarReuniao).
+    setVersaoParaValidarKickoff(versoesMapeamentoOrigem[0] ? String(versoesMapeamentoOrigem[0].versao) : '');
   }
 
   function fecharFormReuniao() {
@@ -1125,6 +1118,7 @@ export function ImplementacaoDetalhe() {
     setFormReuniao(null);
     setStatusOriginalReuniaoEmEdicao(null);
     setValidacaoFunilKickoff('');
+    setVersaoParaValidarKickoff('');
   }
 
   // Kickoff/Treinamento continuam também escrevendo em
@@ -1187,6 +1181,19 @@ export function ImplementacaoDetalhe() {
       setError('Selecione se o cliente validou o funil antes de confirmar o Kickoff como realizado.');
       return;
     }
+    // P1-A1: a versão aprovada precisa ser uma escolha explícita e
+    // confirmada — nunca inferida automaticamente como "a mais recente".
+    if (confirmandoRealizacaoKickoff && validacaoFunilKickoff !== 'precisa_revisar') {
+      if (!versaoParaValidarKickoff) {
+        setError('Selecione qual versão do funil está sendo validada.');
+        return;
+      }
+      if (
+        !window.confirm(`Você está aprovando a Versão ${versaoParaValidarKickoff} para implementação. Confirmar?`)
+      ) {
+        return;
+      }
+    }
 
     setSalvandoReuniao(true);
     setError(null);
@@ -1236,7 +1243,7 @@ export function ImplementacaoDetalhe() {
     if (cliente) await sincronizarMarcoCliente(data, cliente);
 
     if (confirmandoRealizacaoKickoff && mapeamentoOrigem) {
-      const novoStatusMapeamento = validacaoFunilKickoff === 'precisa_revisar' ? 'ajustes_solicitados' : 'funil_validado';
+      const novoStatusMapeamento = statusMapeamentoPorValidacao(validacaoFunilKickoff as ValidacaoFunilKickoff);
       const { data: mapeamentoAtualizado, error: statusError } = await supabase
         .from('mapeamentos')
         .update({ status: novoStatusMapeamento })
@@ -1251,10 +1258,12 @@ export function ImplementacaoDetalhe() {
       }
 
       if (novoStatusMapeamento === 'funil_validado') {
-        const { error: aprovacaoError } = await aprovarVersaoAtual(supabase, mapeamentoOrigem.id, {
-          aprovadoPorEmail: user?.email ?? null,
-          kickoffReuniaoId: data.id,
-        });
+        const { error: aprovacaoError } = await aprovarVersao(
+          supabase,
+          mapeamentoOrigem.id,
+          Number(versaoParaValidarKickoff),
+          { aprovadoPorEmail: user?.email ?? null, kickoffReuniaoId: data.id },
+        );
         if (aprovacaoError) setError(aprovacaoError);
       }
     }
@@ -1421,6 +1430,30 @@ export function ImplementacaoDetalhe() {
                   : 'Isso também atualiza o status do funil desta implementação.'}
             </span>
           </fieldset>
+        )}
+
+        {confirmandoRealizacaoKickoff && validacaoFunilKickoff && validacaoFunilKickoff !== 'precisa_revisar' && (
+          <label className="field">
+            <span>Qual versão do funil está sendo validada?</span>
+            <select
+              required
+              value={versaoParaValidarKickoff}
+              onChange={(e) => setVersaoParaValidarKickoff(e.target.value)}
+            >
+              <option value="">Selecione…</option>
+              {versoesMapeamentoOrigem.map((v) => (
+                <option key={v.versao} value={v.versao}>
+                  Versão {v.versao}
+                  {v.status === 'aprovada' ? ' — já aprovada' : ' — rascunho'}
+                  {' · '}
+                  {new Date(v.created_at).toLocaleDateString('pt-BR')}
+                </option>
+              ))}
+            </select>
+            <span className="field-hint">
+              Só essa versão será marcada como aprovada — outras versões em rascunho continuam como estão.
+            </span>
+          </label>
         )}
 
         <label className="field">
@@ -2050,30 +2083,16 @@ export function ImplementacaoDetalhe() {
         </section>
       )}
 
-      {(prazoSemanaAtual || prazoProcesso || tempoReuniao) && (
+      {(diaCiclo || tempoReuniao) && (
         <div className="stats-grid">
-          {prazoSemanaAtual && (
-            <div className={`stat-card${prazoSemanaAtual.atrasada ? ' stat-card-danger' : ' stat-card-warning'}`}>
+          {diaCiclo && (
+            <div className={`stat-card${diaCiclo.dia > 40 ? ' stat-card-danger' : ''}`}>
               <span className="stat-value">
-                {prazoSemanaAtual.atrasada
-                  ? `${prazoSemanaAtual.diasAtraso}d atrasada`
-                  : `${prazoSemanaAtual.diasRestantes}d restantes`}
+                {diaCiclo.dia > 40 ? `${diaCiclo.dia - 40}d atrasado` : `${40 - diaCiclo.dia}d restantes`}
               </span>
               <span className="stat-label">
-                Prazo desta semana — até {prazoSemanaAtual.prazo.toLocaleDateString('pt-BR')}
-              </span>
-            </div>
-          )}
-
-          {prazoProcesso && (
-            <div className={`stat-card${prazoProcesso.atrasada ? ' stat-card-danger' : ''}`}>
-              <span className="stat-value">
-                {prazoProcesso.atrasada
-                  ? `${prazoProcesso.diasAtraso}d atrasada`
-                  : `${prazoProcesso.diasRestantes}d restantes`}
-              </span>
-              <span className="stat-label">
-                Conclusão prevista da implementação — {prazoProcesso.prazoConclusao.toLocaleDateString('pt-BR')}
+                Prazo geral da implementação — Dia {diaCiclo.dia}/40
+                {diaCiclo.ciclo ? ` (${diaCiclo.ciclo.nome})` : ''}
               </span>
             </div>
           )}

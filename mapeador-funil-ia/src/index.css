@@ -1220,7 +1220,11 @@ img.auth-logo {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   box-shadow: var(--shadow-card);
-  overflow: hidden;
+  /* P1-A7: era `overflow: hidden`, que corta colunas em telas estreitas sem
+     nenhuma forma de ver o resto — troca pra rolagem horizontal controlada.
+     Em desktop o comportamento não muda (as tabelas cabem no container). */
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .data-table {
@@ -1260,6 +1264,63 @@ img.auth-logo {
 
 .table-actions {
   text-align: right;
+}
+
+/* P1-A7 — tabelas operacionais importantes (hoje só a Agenda) viram cards
+   empilhados em telas de celular, em vez de rolar horizontalmente uma
+   tabela de 8 colunas. Cada <td> precisa de data-label pro rótulo aparecer
+   no card (ver Agenda.tsx). */
+.agenda-card-concluir {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .data-table-cards-mobile thead {
+    display: none;
+  }
+
+  .data-table-cards-mobile,
+  .data-table-cards-mobile tbody,
+  .data-table-cards-mobile tr,
+  .data-table-cards-mobile td {
+    display: block;
+    width: 100%;
+  }
+
+  .data-table-cards-mobile tr {
+    border-bottom: 1px solid var(--color-border);
+    padding: 14px 16px;
+  }
+
+  .data-table-cards-mobile tr:last-child {
+    border-bottom: none;
+  }
+
+  .data-table-cards-mobile td {
+    padding: 4px 0;
+    border-bottom: none;
+  }
+
+  .data-table-cards-mobile td[data-label]:not([data-label=""])::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    margin-bottom: 2px;
+  }
+
+  .agenda-card-concluir {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .agenda-card-concluir-label {
+    font-size: 13px;
+  }
 }
 
 /* ── Status badge ── */
