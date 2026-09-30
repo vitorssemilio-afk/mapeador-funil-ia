@@ -64,6 +64,9 @@ export type Cliente = MarcosCliente & {
   site: string | null;
   cidade: string | null;
   uf: string | null;
+  // Preenchido automaticamente por trigger com quem cria o cliente (ver
+  // migration 0051) — controla o acesso por vínculo (fase 2 de segurança).
+  consultor_responsavel_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -108,6 +111,44 @@ export type ClienteOcorrencia = {
   resolvida_em: string | null;
   autor_email: string | null;
   created_at: string;
+  updated_at: string;
+};
+
+export type CategoriaNotificacao =
+  | 'implementacao'
+  | 'trial'
+  | 'formulario'
+  | 'funil'
+  | 'reuniao'
+  | 'pendencia'
+  | 'sistema';
+
+export type PrioridadeNotificacao = 'informativa' | 'atencao' | 'alta' | 'critica';
+
+export type Notificacao = {
+  id: string;
+  categoria: CategoriaNotificacao;
+  tipo: string;
+  titulo: string;
+  descricao: string | null;
+  cliente_id: string | null;
+  implementacao_id: string | null;
+  prioridade: PrioridadeNotificacao;
+  rota: string | null;
+  entidade_tipo: string | null;
+  entidade_id: string | null;
+  chave_idempotencia: string;
+  created_at: string;
+};
+
+export type NotificacaoStatus = {
+  id: string;
+  notificacao_id: string;
+  user_id: string;
+  lida: boolean;
+  lida_em: string | null;
+  arquivada: boolean;
+  arquivada_em: string | null;
   updated_at: string;
 };
 
@@ -742,6 +783,18 @@ export type Database = {
         Update: Partial<ClienteOcorrencia>;
         Relationships: [];
       };
+      notificacoes: {
+        Row: Notificacao;
+        Insert: Partial<Notificacao> & Pick<Notificacao, 'categoria' | 'tipo' | 'titulo' | 'prioridade' | 'chave_idempotencia'>;
+        Update: Partial<Notificacao>;
+        Relationships: [];
+      };
+      notificacoes_status: {
+        Row: NotificacaoStatus;
+        Insert: Partial<NotificacaoStatus> & Pick<NotificacaoStatus, 'notificacao_id' | 'user_id'>;
+        Update: Partial<NotificacaoStatus>;
+        Relationships: [];
+      };
       consultores: {
         Row: Consultor;
         Insert: Partial<Consultor> & Pick<Consultor, 'nome' | 'email'>;
@@ -999,6 +1052,10 @@ export type Database = {
       sou_administrador: {
         Args: Record<PropertyKey, never>;
         Returns: boolean;
+      };
+      marcar_todas_notificacoes_como_lidas: {
+        Args: Record<PropertyKey, never>;
+        Returns: undefined;
       };
     };
     Enums: {

@@ -4,6 +4,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { Agenda } from './pages/Agenda';
+import { CentralNotificacoes } from './pages/CentralNotificacoes';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { CheckpointAdocao } from './pages/CheckpointAdocao';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
@@ -58,6 +59,7 @@ function App() {
             >
               <Route path="/" element={<Dashboard />} />
               <Route path="/agenda" element={<Agenda />} />
+              <Route path="/notificacoes" element={<CentralNotificacoes />} />
               <Route path="/cronograma" element={<Cronograma />} />
               <Route path="/clientes/novo" element={<NovoCliente />} />
               <Route path="/clientes/:id" element={<ClienteDetalhe />} />
