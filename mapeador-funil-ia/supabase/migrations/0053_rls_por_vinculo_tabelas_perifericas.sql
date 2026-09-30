@@ -46,6 +46,7 @@ grant execute on function public.tenho_acesso_ao_mapeamento(uuid) to authenticat
 -- já tem cliente_id direto.
 -- ============================================================
 drop policy if exists "mapeamentos_all_authenticated" on public.mapeamentos;
+drop policy if exists "mapeamentos_por_vinculo" on public.mapeamentos;
 create policy "mapeamentos_por_vinculo"
   on public.mapeamentos for all
   to authenticated
@@ -53,6 +54,7 @@ create policy "mapeamentos_por_vinculo"
   with check (public.sou_administrador() or (cliente_id is not null and public.tenho_acesso_ao_cliente(cliente_id)));
 
 drop policy if exists "funis_gerados_all_authenticated" on public.funis_gerados;
+drop policy if exists "funis_gerados_por_vinculo" on public.funis_gerados;
 create policy "funis_gerados_por_vinculo"
   on public.funis_gerados for all
   to authenticated
@@ -60,6 +62,7 @@ create policy "funis_gerados_por_vinculo"
   with check (public.tenho_acesso_ao_mapeamento(mapeamento_id));
 
 drop policy if exists "geracoes_meta_all_authenticated" on public.geracoes_meta;
+drop policy if exists "geracoes_meta_por_vinculo" on public.geracoes_meta;
 create policy "geracoes_meta_por_vinculo"
   on public.geracoes_meta for all
   to authenticated
@@ -67,6 +70,7 @@ create policy "geracoes_meta_por_vinculo"
   with check (public.tenho_acesso_ao_mapeamento(mapeamento_id));
 
 drop policy if exists "funil_versoes_all_authenticated" on public.funil_versoes;
+drop policy if exists "funil_versoes_por_vinculo" on public.funil_versoes;
 create policy "funil_versoes_por_vinculo"
   on public.funil_versoes for all
   to authenticated
@@ -77,6 +81,7 @@ create policy "funil_versoes_por_vinculo"
 -- Tabelas presas direto em cliente_id.
 -- ============================================================
 drop policy if exists "cliente_observacoes_all_authenticated" on public.cliente_observacoes;
+drop policy if exists "cliente_observacoes_por_vinculo" on public.cliente_observacoes;
 create policy "cliente_observacoes_por_vinculo"
   on public.cliente_observacoes for all
   to authenticated
@@ -84,6 +89,7 @@ create policy "cliente_observacoes_por_vinculo"
   with check (public.tenho_acesso_ao_cliente(cliente_id));
 
 drop policy if exists "cliente_arquivos_all_authenticated" on public.cliente_arquivos;
+drop policy if exists "cliente_arquivos_por_vinculo" on public.cliente_arquivos;
 create policy "cliente_arquivos_por_vinculo"
   on public.cliente_arquivos for all
   to authenticated
@@ -91,6 +97,7 @@ create policy "cliente_arquivos_por_vinculo"
   with check (public.tenho_acesso_ao_cliente(cliente_id));
 
 drop policy if exists "cliente_contatos_all_authenticated" on public.cliente_contatos;
+drop policy if exists "cliente_contatos_por_vinculo" on public.cliente_contatos;
 create policy "cliente_contatos_por_vinculo"
   on public.cliente_contatos for all
   to authenticated
@@ -98,6 +105,7 @@ create policy "cliente_contatos_por_vinculo"
   with check (public.tenho_acesso_ao_cliente(cliente_id));
 
 drop policy if exists "cliente_ocorrencias_all_authenticated" on public.cliente_ocorrencias;
+drop policy if exists "cliente_ocorrencias_por_vinculo" on public.cliente_ocorrencias;
 create policy "cliente_ocorrencias_por_vinculo"
   on public.cliente_ocorrencias for all
   to authenticated
@@ -105,6 +113,7 @@ create policy "cliente_ocorrencias_por_vinculo"
   with check (public.tenho_acesso_ao_cliente(cliente_id));
 
 drop policy if exists "marco_remarcacoes_all_authenticated" on public.marco_remarcacoes;
+drop policy if exists "marco_remarcacoes_por_vinculo" on public.marco_remarcacoes;
 create policy "marco_remarcacoes_por_vinculo"
   on public.marco_remarcacoes for all
   to authenticated
@@ -112,6 +121,7 @@ create policy "marco_remarcacoes_por_vinculo"
   with check (public.tenho_acesso_ao_cliente(cliente_id));
 
 drop policy if exists "reunioes_all_authenticated" on public.reunioes;
+drop policy if exists "reunioes_por_vinculo" on public.reunioes;
 create policy "reunioes_por_vinculo"
   on public.reunioes for all
   to authenticated
@@ -119,6 +129,7 @@ create policy "reunioes_por_vinculo"
   with check (public.tenho_acesso_ao_cliente(cliente_id));
 
 drop policy if exists "reuniao_remarcacoes_all_authenticated" on public.reuniao_remarcacoes;
+drop policy if exists "reuniao_remarcacoes_por_vinculo" on public.reuniao_remarcacoes;
 create policy "reuniao_remarcacoes_por_vinculo"
   on public.reuniao_remarcacoes for all
   to authenticated
@@ -137,6 +148,7 @@ create policy "reuniao_remarcacoes_por_vinculo"
 -- Tabelas presas direto em implementacao_id.
 -- ============================================================
 drop policy if exists "funis_kommo_criacoes_all_authenticated" on public.funis_kommo_criacoes;
+drop policy if exists "funis_kommo_criacoes_por_vinculo" on public.funis_kommo_criacoes;
 create policy "funis_kommo_criacoes_por_vinculo"
   on public.funis_kommo_criacoes for all
   to authenticated
@@ -144,6 +156,7 @@ create policy "funis_kommo_criacoes_por_vinculo"
   with check (public.tenho_acesso_a_implementacao(implementacao_id));
 
 drop policy if exists "checkpoints_adocao_all_authenticated" on public.checkpoints_adocao;
+drop policy if exists "checkpoints_adocao_por_vinculo" on public.checkpoints_adocao;
 create policy "checkpoints_adocao_por_vinculo"
   on public.checkpoints_adocao for all
   to authenticated
@@ -151,6 +164,7 @@ create policy "checkpoints_adocao_por_vinculo"
   with check (public.tenho_acesso_a_implementacao(implementacao_id));
 
 drop policy if exists "checkpoint_acompanhamentos_all_authenticated" on public.checkpoint_acompanhamentos;
+drop policy if exists "checkpoint_acompanhamentos_por_vinculo" on public.checkpoint_acompanhamentos;
 create policy "checkpoint_acompanhamentos_por_vinculo"
   on public.checkpoint_acompanhamentos for all
   to authenticated
@@ -158,6 +172,7 @@ create policy "checkpoint_acompanhamentos_por_vinculo"
   with check (public.tenho_acesso_a_implementacao(implementacao_id));
 
 drop policy if exists "criterios_entrega_status_all_authenticated" on public.criterios_entrega_status;
+drop policy if exists "criterios_entrega_status_por_vinculo" on public.criterios_entrega_status;
 create policy "criterios_entrega_status_por_vinculo"
   on public.criterios_entrega_status for all
   to authenticated
@@ -165,6 +180,7 @@ create policy "criterios_entrega_status_por_vinculo"
   with check (public.tenho_acesso_a_implementacao(implementacao_id));
 
 drop policy if exists "atividades_status_all_authenticated" on public.atividades_status;
+drop policy if exists "atividades_status_por_vinculo" on public.atividades_status;
 create policy "atividades_status_por_vinculo"
   on public.atividades_status for all
   to authenticated
@@ -172,6 +188,7 @@ create policy "atividades_status_por_vinculo"
   with check (public.tenho_acesso_a_implementacao(implementacao_id));
 
 drop policy if exists "implementacao_consultor_historico_all_authenticated" on public.implementacao_consultor_historico;
+drop policy if exists "implementacao_consultor_historico_por_vinculo" on public.implementacao_consultor_historico;
 create policy "implementacao_consultor_historico_por_vinculo"
   on public.implementacao_consultor_historico for all
   to authenticated
@@ -183,6 +200,7 @@ create policy "implementacao_consultor_historico_por_vinculo"
 -- tela /implementacoes/checklist) — só as linhas DERIVADAS de uma
 -- implementação específica passam a exigir vínculo.
 drop policy if exists "atividades_cronograma_all_authenticated" on public.atividades_cronograma;
+drop policy if exists "atividades_cronograma_por_vinculo" on public.atividades_cronograma;
 create policy "atividades_cronograma_por_vinculo"
   on public.atividades_cronograma for all
   to authenticated
@@ -194,12 +212,14 @@ create policy "atividades_cronograma_por_vinculo"
 -- migrations 0006/0012/0050) — essa policy de delete também passa a exigir
 -- vínculo.
 drop policy if exists "credenciais_crm_delete_authenticated" on public.credenciais_crm;
+drop policy if exists "credenciais_crm_delete_por_vinculo" on public.credenciais_crm;
 create policy "credenciais_crm_delete_por_vinculo"
   on public.credenciais_crm for delete
   to authenticated
   using (public.tenho_acesso_a_implementacao(implementacao_id));
 
 drop policy if exists "credenciais_api_kommo_delete_authenticated" on public.credenciais_api_kommo;
+drop policy if exists "credenciais_api_kommo_delete_por_vinculo" on public.credenciais_api_kommo;
 create policy "credenciais_api_kommo_delete_por_vinculo"
   on public.credenciais_api_kommo for delete
   to authenticated
@@ -212,6 +232,7 @@ create policy "credenciais_api_kommo_delete_por_vinculo"
 -- checar o vínculo direto pelo primeiro segmento do caminho.
 -- ============================================================
 drop policy if exists "cliente_anexos_select_authenticated" on storage.objects;
+drop policy if exists "cliente_anexos_select_por_vinculo" on storage.objects;
 create policy "cliente_anexos_select_por_vinculo"
   on storage.objects for select
   to authenticated
@@ -221,6 +242,7 @@ create policy "cliente_anexos_select_por_vinculo"
   );
 
 drop policy if exists "cliente_anexos_insert_authenticated" on storage.objects;
+drop policy if exists "cliente_anexos_insert_por_vinculo" on storage.objects;
 create policy "cliente_anexos_insert_por_vinculo"
   on storage.objects for insert
   to authenticated
@@ -230,6 +252,7 @@ create policy "cliente_anexos_insert_por_vinculo"
   );
 
 drop policy if exists "cliente_anexos_delete_authenticated" on storage.objects;
+drop policy if exists "cliente_anexos_delete_por_vinculo" on storage.objects;
 create policy "cliente_anexos_delete_por_vinculo"
   on storage.objects for delete
   to authenticated
