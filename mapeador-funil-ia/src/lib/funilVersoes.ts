@@ -45,6 +45,25 @@ export async function aprovarVersaoAtual(
   return { error: updateError?.message ?? null };
 }
 
+// Cria uma nova versão em rascunho a partir de uma existente (tipicamente a
+// versão aprovada que o usuário está vendo) — único caminho pra editar o
+// conteúdo de uma versão aprovada, já que ela é imutável a nível de banco
+// (trigger em funis_gerados, ver migration 0060). Retorna o número da nova
+// versão criada.
+export async function criarVersaoFunilParaEdicao(
+  supabase: SupabaseClient<Database>,
+  mapeamentoId: string,
+  versaoOrigem: number,
+): Promise<{ novaVersao: number | null; error: string | null }> {
+  const { data, error } = await supabase.rpc('criar_versao_funil_a_partir_de', {
+    p_mapeamento_id: mapeamentoId,
+    p_versao_origem: versaoOrigem,
+  });
+
+  if (error) return { novaVersao: null, error: error.message };
+  return { novaVersao: data, error: null };
+}
+
 export function rotuloVersao(versao: FunilVersao, versaoMaisRecente: number): string {
   const base = versao.versao === versaoMaisRecente ? `Versão ${versao.versao} (atual)` : `Versão ${versao.versao}`;
   return versao.status === 'aprovada' ? `${base} — Aprovada` : base;

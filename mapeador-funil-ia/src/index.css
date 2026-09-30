@@ -338,6 +338,16 @@ img.brand-mark {
   color: var(--color-text);
 }
 
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+}
+
 .btn-auto {
   align-self: flex-start;
 }
@@ -370,6 +380,27 @@ img.brand-mark {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.modal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .form-grid {
@@ -1496,6 +1527,21 @@ img.auth-logo {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.funil-versao-aprovada-aviso {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--color-warning-soft);
+}
+
+.funil-versao-aprovada-aviso .field-hint {
+  margin: 0;
 }
 
 /* ── Revisão do funil: cards por etapa (substituem a tabela horizontal) ── */

@@ -289,7 +289,10 @@ export type FunilGerado = {
 // Versionamento simples: uma linha por (mapeamento, versão), independente
 // do funil ser de vendas ou pós-venda. 'aprovada' nunca é sobrescrita — uma
 // aprovação posterior de outra versão ganha sua própria linha (ver
-// src/lib/funilVersoes.ts e a migration 0045).
+// src/lib/funilVersoes.ts e a migration 0045). A imutabilidade do CONTEÚDO
+// de uma versão aprovada (funis_gerados.etapas) é garantida a nível de
+// banco por um trigger (migration 0060) — editar uma versão aprovada exige
+// criar uma nova versão via RPC criar_versao_funil_a_partir_de.
 export type OrigemFunilVersao = 'ia' | 'manual';
 export type StatusFunilVersao = 'rascunho' | 'aprovada';
 
@@ -303,6 +306,9 @@ export type FunilVersao = {
   aprovada_em: string | null;
   aprovada_por_email: string | null;
   kickoff_reuniao_id: string | null;
+  // Versão a partir da qual esta foi criada via "Criar nova versão para
+  // edição" (null quando nasceu de uma geração/regeneração normal pela IA).
+  versao_origem: number | null;
   created_at: string;
 };
 
@@ -1116,6 +1122,29 @@ export type Database = {
           p_erro_codigo?: string | null;
           p_erro_mensagem_tecnica?: string | null;
           p_erro_mensagem_amigavel?: string | null;
+        };
+        Returns: undefined;
+      };
+      criar_versao_funil_a_partir_de: {
+        Args: {
+          p_mapeamento_id: string;
+          p_versao_origem: number;
+        };
+        Returns: number;
+      };
+      corrigir_marco_cliente: {
+        Args: {
+          p_cliente_id: string;
+          p_campo: string;
+          p_novo_valor: string | null;
+          p_justificativa: string;
+        };
+        Returns: undefined;
+      };
+      transferir_consultor_responsavel_implementacao: {
+        Args: {
+          p_implementacao_id: string;
+          p_novo_consultor_id: string;
         };
         Returns: undefined;
       };
