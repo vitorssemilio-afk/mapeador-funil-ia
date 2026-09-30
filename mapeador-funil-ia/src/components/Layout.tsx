@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { NotificationBell } from './NotificationBell';
 
 function navLinkClass({ isActive }: { isActive: boolean }): string {
   return `topbar-nav-link${isActive ? ' active' : ''}`;
@@ -73,6 +74,7 @@ export function Layout() {
           </nav>
         </div>
         <div className="topbar-user">
+          <NotificationBell />
           <span className="topbar-email">{user?.email}</span>
           <ThemeToggle />
           <button type="button" className="btn btn-ghost" onClick={signOut}>
