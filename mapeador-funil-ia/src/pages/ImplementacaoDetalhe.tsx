@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
@@ -91,6 +91,15 @@ import type {
 } from '../types/database';
 
 type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes';
+const ABAS_IMPLEMENTACAO: Aba[] = [
+  'geral',
+  'checklist',
+  'criterios',
+  'cronograma',
+  'credenciais',
+  'checkpoint',
+  'reunioes',
+];
 
 // Ordem fixa de exibição — os 5 tipos "estruturados" (um card cada, sempre
 // visível) vêm antes dos 2 ad-hoc (lista + "nova reunião", pode ter várias).
@@ -314,6 +323,7 @@ export function ImplementacaoDetalhe() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [implementacao, setImplementacao] = useState<ImplementacaoCrm | null>(null);
   const [atividadesTemplate, setAtividadesTemplate] = useState<AtividadeCronograma[]>([]);
@@ -331,7 +341,12 @@ export function ImplementacaoDetalhe() {
   const [novoAcompanhamento, setNovoAcompanhamento] = useState('');
   const [salvandoAcompanhamento, setSalvandoAcompanhamento] = useState(false);
   const [linkCheckpointCopiado, setLinkCheckpointCopiado] = useState(false);
-  const [aba, setAba] = useState<Aba>('geral');
+  // Aceita vir pré-selecionada por ?aba= na URL (usado pela Central de
+  // Notificações pra abrir direto no contexto certo) — só na carga inicial.
+  const abaInicial = searchParams.get('aba');
+  const [aba, setAba] = useState<Aba>(
+    ABAS_IMPLEMENTACAO.includes(abaInicial as Aba) ? (abaInicial as Aba) : 'geral',
+  );
   const [mapeamentoOrigem, setMapeamentoOrigem] = useState<Pick<
     Mapeamento,
     'id' | 'nome_negocio' | 'enviado_em' | 'created_at' | 'status'
