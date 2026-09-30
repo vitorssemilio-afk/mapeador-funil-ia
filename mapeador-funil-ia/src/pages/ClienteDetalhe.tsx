@@ -38,7 +38,7 @@ import type {
   ImpactoResponsavel,
   ImplementacaoCrm,
   Mapeamento,
-  MarcoRemarcacao,
+  ReuniaoRemarcacao,
   Reuniao,
   StatusOcorrencia,
 } from '../types/database';
@@ -51,6 +51,14 @@ type CampoRemarcavel = (typeof CAMPOS_REMARCAVEIS)[number];
 const CAMPO_REALIZADO_DO_AGENDADO: Record<CampoRemarcavel, CampoMarco> = {
   kickoff_agendado_para: 'kickoff_realizado_em',
   treinamento_agendado_para: 'treinamento_realizado_em',
+};
+
+// Remarcações de reunião vivem em reuniao_remarcacoes (por reuniao_id, não
+// por campo de cliente) desde a migration 0041 — este mapa é só pra achar
+// as reuniões certas pra cada marco remarcável. Ver P2-A3.
+const CAMPO_REMARCAVEL_TIPO_REUNIAO: Record<CampoRemarcavel, 'kickoff' | 'treinamento'> = {
+  kickoff_agendado_para: 'kickoff',
+  treinamento_agendado_para: 'treinamento',
 };
 
 function ehCampoRemarcavel(campo: CampoMarco): campo is CampoRemarcavel {
@@ -199,6 +207,10 @@ type FormOcorrencia = {
   data_ocorrencia: string;
   impacta_cronograma: boolean;
   dias_impacto: string;
+  // P2-A8: quem precisa resolver e até quando — sem isso não dava pra
+  // gerar alerta nenhum de "pendência vencendo" (migration 0065).
+  consultor_responsavel_id: string;
+  prazo: string;
 };
 
 function formOcorrenciaVazio(): FormOcorrencia {
@@ -209,6 +221,8 @@ function formOcorrenciaVazio(): FormOcorrencia {
     data_ocorrencia: isoParaInput(new Date().toISOString(), false),
     impacta_cronograma: false,
     dias_impacto: '',
+    consultor_responsavel_id: '',
+    prazo: '',
   };
 }
 
@@ -282,7 +296,7 @@ export function ClienteDetalhe() {
   const [checkpointRespondidoEm, setCheckpointRespondidoEm] = useState<string | null>(null);
   const [checkpointAdocao, setCheckpointAdocao] = useState<CheckpointAdocao | null>(null);
 
-  const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
+  const [reuniaoRemarcacoes, setReuniaoRemarcacoes] = useState<ReuniaoRemarcacao[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
 
@@ -339,7 +353,6 @@ export function ClienteDetalhe() {
       { data: implementacaoData },
       { data: observacoesData },
       { data: arquivosData },
-      { data: remarcacoesData },
       { data: contatosData },
       { data: ocorrenciasData },
       { data: reunioesData },
@@ -381,11 +394,6 @@ export function ClienteDetalhe() {
         .eq('cliente_id', clienteId)
         .order('created_at', { ascending: false }),
       supabase
-        .from('marco_remarcacoes')
-        .select('*')
-        .eq('cliente_id', clienteId)
-        .order('created_at', { ascending: false }),
-      supabase
         .from('cliente_contatos')
         .select('*')
         .eq('cliente_id', clienteId)
@@ -419,12 +427,28 @@ export function ClienteDetalhe() {
     setImplementacao(implementacaoData ?? null);
     setObservacoes(observacoesData ?? []);
     setArquivos(arquivosData ?? []);
-    setRemarcacoes(remarcacoesData ?? []);
     setContatos(contatosData ?? []);
     setOcorrencias(ocorrenciasData ?? []);
     setReunioes(reunioesData ?? []);
     setConsultores(consultoresData ?? []);
     setPipefyConfig(pipefyConfigData ?? null);
+
+    // P2-A3: remarcações de reunião (Kickoff/Treinamento/Check-in 1/Check-in
+    // 2/Reunião final) vivem em reuniao_remarcacoes desde a migration 0041 —
+    // marco_remarcacoes parou de receber gravação nessa época e ficou morta.
+    // Busca em 2 etapas (não dá pra filtrar por cliente_id direto, só por
+    // reuniao_id) porque já temos os ids das reuniões deste cliente acima.
+    const idsReunioes = (reunioesData ?? []).map((r) => r.id);
+    if (idsReunioes.length > 0) {
+      const { data: reuniaoRemarcacoesData } = await supabase
+        .from('reuniao_remarcacoes')
+        .select('*')
+        .in('reuniao_id', idsReunioes)
+        .order('created_at', { ascending: false });
+      setReuniaoRemarcacoes(reuniaoRemarcacoesData ?? []);
+    } else {
+      setReuniaoRemarcacoes([]);
+    }
 
     // Versões do funil (vendas/pós-venda) — buscadas depois, pois dependem
     // do id do mapeamento que acabou de ser carregado acima.
@@ -930,6 +954,8 @@ export function ClienteDetalhe() {
           : null,
         status: 'aberta',
         autor_email: user.email ?? null,
+        consultor_responsavel_id: formOcorrencia.consultor_responsavel_id || null,
+        prazo: formOcorrencia.prazo || null,
       })
       .select()
       .single();
@@ -997,15 +1023,61 @@ export function ClienteDetalhe() {
       });
     }
 
-    for (const remarcacao of remarcacoes) {
-      const tipo = remarcacao.campo_marco === 'kickoff_agendado_para' ? 'Kickoff remarcado' : 'Treinamento remarcado';
+    // P2-A3/A5: remarcações de QUALQUER reunião (Kickoff, Treinamento,
+    // Check-in 1/2, Reunião final) — reuniao_remarcacoes é a fonte real
+    // desde a migration 0041, não marco_remarcacoes (parou de ser gravada
+    // nessa época e ficou muda pra Check-in/Reunião final, que nunca
+    // tiveram equivalente ali).
+    for (const remarcacao of reuniaoRemarcacoes) {
+      const reuniao = reunioes.find((r) => r.id === remarcacao.reuniao_id);
+      if (!reuniao) continue;
       const dataAnteriorTexto = remarcacao.data_anterior ? formatarDataHora(remarcacao.data_anterior) : '—';
       itens.push({
         data: new Date(remarcacao.created_at),
-        tipo,
+        tipo: `${TIPO_REUNIAO_LABELS[reuniao.tipo]} remarcado(a)`,
         descricao: `de ${dataAnteriorTexto} para ${formatarDataHora(remarcacao.data_nova)} — motivo: ${remarcacao.motivo} (impacto: ${IMPACTO_RESPONSAVEL_LABELS[remarcacao.responsavel_impacto]})`,
+        usuario: remarcacao.alterado_por_email,
+      });
+    }
+
+    // P2-A5: cancelamento/não-comparecimento também entram na timeline —
+    // antes só reunião REALIZADA aparecia. Sem histórico de transição de
+    // status (só o estado atual da reunião), usa data_hora (ou updated_at
+    // se não tiver) como data do evento.
+    for (const reuniao of reunioes) {
+      if (
+        reuniao.status !== 'cancelada' &&
+        reuniao.status !== 'cliente_nao_compareceu' &&
+        reuniao.status !== 'consultor_nao_compareceu'
+      ) {
+        continue;
+      }
+      itens.push({
+        data: new Date(reuniao.data_hora ?? reuniao.updated_at),
+        tipo: `${TIPO_REUNIAO_LABELS[reuniao.tipo]} — ${STATUS_REUNIAO_LABELS[reuniao.status]}`,
+        descricao: reuniao.titulo || TIPO_REUNIAO_LABELS[reuniao.tipo],
         usuario: null,
       });
+    }
+
+    // P2-A5: pendências (ocorrências) do cliente — abertura e, quando já
+    // resolvida, a resolução também, sem duplicar a linha de "Ocorrências"
+    // (essa continua existindo à parte, com todos os detalhes de edição).
+    for (const ocorrencia of ocorrencias) {
+      itens.push({
+        data: new Date(ocorrencia.data_ocorrencia),
+        tipo: `Pendência aberta — ${CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria]}`,
+        descricao: ocorrencia.descricao,
+        usuario: null,
+      });
+      if (ocorrencia.status === 'resolvida' && ocorrencia.resolvida_em) {
+        itens.push({
+          data: new Date(ocorrencia.resolvida_em),
+          tipo: 'Pendência resolvida',
+          descricao: ocorrencia.descricao,
+          usuario: null,
+        });
+      }
     }
 
     if (implementacao) {
@@ -1038,7 +1110,7 @@ export function ClienteDetalhe() {
     }
 
     return itens.sort((a, b) => b.data.getTime() - a.data.getTime());
-  }, [cliente, remarcacoes, implementacao, atividadesAutomacao, statusAutomacao, reunioes]);
+  }, [cliente, reuniaoRemarcacoes, implementacao, atividadesAutomacao, statusAutomacao, reunioes, ocorrencias]);
 
   // Resumo consolidado do cliente (fase, saúde, progresso, prazos,
   // consultores) — reaproveita a mesma função usada no dashboard "Operação
@@ -1861,6 +1933,30 @@ export function ClienteDetalhe() {
                   onChange={(e) => setFormOcorrencia({ ...formOcorrencia, data_ocorrencia: e.target.value })}
                 />
               </label>
+              <label className="field">
+                <span>Responsável por resolver (opcional)</span>
+                <select
+                  value={formOcorrencia.consultor_responsavel_id}
+                  onChange={(e) =>
+                    setFormOcorrencia({ ...formOcorrencia, consultor_responsavel_id: e.target.value })
+                  }
+                >
+                  <option value="">Sem responsável definido</option>
+                  {consultores.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Prazo (opcional)</span>
+                <input
+                  type="date"
+                  value={formOcorrencia.prazo}
+                  onChange={(e) => setFormOcorrencia({ ...formOcorrencia, prazo: e.target.value })}
+                />
+              </label>
             </div>
             <label className="field">
               <span>Descrição</span>
@@ -1921,6 +2017,10 @@ export function ClienteDetalhe() {
                     {' · '}
                     {formatarDataHora(o.data_ocorrencia)} · impacto: {IMPACTO_RESPONSAVEL_LABELS[o.responsavel_impacto]}
                     {o.impacta_cronograma ? ` · impacta cronograma (${o.dias_impacto ?? 0}d)` : ''}
+                    {o.consultor_responsavel_id
+                      ? ` · responsável: ${nomeConsultor(o.consultor_responsavel_id, consultores)}`
+                      : ''}
+                    {o.prazo ? ` · prazo: ${new Date(`${o.prazo}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}
                     {o.autor_email ? ` · ${o.autor_email}` : ''}
                   </span>
                   {o.status === 'aberta' ? (
@@ -2048,9 +2148,10 @@ export function ClienteDetalhe() {
               {MARCOS_ORDENADOS.filter(({ campo }) => cliente[campo]).map(({ campo, label, apenasData }) => {
                 const remarcavel = ehCampoRemarcavel(campo);
                 const jaRealizado = remarcavel ? Boolean(cliente[CAMPO_REALIZADO_DO_AGENDADO[campo]]) : false;
-                const remarcacoesDoCampo = remarcavel
-                  ? remarcacoes.filter((r) => r.campo_marco === campo)
+                const reuniaoIdsDoCampo = remarcavel
+                  ? reunioes.filter((r) => r.tipo === CAMPO_REMARCAVEL_TIPO_REUNIAO[campo]).map((r) => r.id)
                   : [];
+                const remarcacoesDoCampo = reuniaoRemarcacoes.filter((r) => reuniaoIdsDoCampo.includes(r.reuniao_id));
                 const maisRecente = remarcacoesDoCampo[0] ?? null;
                 // A mais antiga (created_at menor) traz a data original de
                 // verdade, pra calcular o deslocamento total (não só o da

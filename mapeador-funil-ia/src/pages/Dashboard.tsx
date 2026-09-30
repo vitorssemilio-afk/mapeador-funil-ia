@@ -7,13 +7,16 @@ import {
   construirAlertas,
   construirResumoClientes,
   estaAtrasado,
+  nomeConsultor,
   prazoLabelDe,
   SAUDE_LABELS,
   type AlertaOperacao,
   type ClienteResumo,
   type SaudeCliente,
 } from '../lib/operacaoResumo';
+import { TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { supabase } from '../lib/supabaseClient';
+import { STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
@@ -156,6 +159,18 @@ export function Dashboard() {
     [agendaOperacional, hoje],
   );
 
+  // P2-M9: antes esta seção era um texto fixo dizendo que não havia
+  // integração de agenda, mesmo quando já existiam reuniões cadastradas
+  // manualmente (módulo de Reuniões) — agora lista as próximas de verdade.
+  const proximasReunioes = useMemo(
+    () =>
+      reunioes
+        .filter((r) => r.status === 'agendada' && r.data_hora && new Date(r.data_hora).getTime() >= hoje.getTime())
+        .sort((a, b) => new Date(a.data_hora!).getTime() - new Date(b.data_hora!).getTime())
+        .slice(0, 6),
+    [reunioes, hoje],
+  );
+
   const consultoresDisponiveis = useMemo(() => {
     const nomes = new Set(resumos.map((r) => r.consultor).filter((c): c is string => !!c?.trim()));
     return Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -283,13 +298,39 @@ export function Dashboard() {
               <div className="ops-section-head">
                 <h2>Próximos compromissos</h2>
               </div>
-              <div className="ops-meetings-empty">
-                <p>
-                  Nenhuma integração de agenda conectada ainda. Quando o Google Calendar estiver
-                  ligado, kickoffs, treinamentos, check-ins e reuniões finais aparecem aqui, com
-                  horário, cliente, tipo e consultor.
-                </p>
-              </div>
+              {proximasReunioes.length === 0 ? (
+                <div className="ops-meetings-empty">
+                  <p>
+                    Nenhuma reunião agendada no módulo de Reuniões. Sem integração com Google
+                    Calendar ainda — o que estiver cadastrado ali (kickoffs, treinamentos, check-ins
+                    e reuniões finais) aparece aqui.
+                  </p>
+                </div>
+              ) : (
+                <ul className="ops-meetings-list">
+                  {proximasReunioes.map((r) => {
+                    const cliente = clientes.find((c) => c.id === r.cliente_id);
+                    return (
+                      <li key={r.id}>
+                        <Link to={`/clientes/${r.cliente_id}`}>{cliente?.nome_empresa ?? 'Cliente'}</Link>
+                        <span className="field-hint">
+                          {' '}
+                          — {TIPO_REUNIAO_LABELS[r.tipo]} em{' '}
+                          {new Date(r.data_hora!).toLocaleString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                          {r.consultor_responsavel_id
+                            ? ` · ${nomeConsultor(r.consultor_responsavel_id, consultores)}`
+                            : ''}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </section>
           </div>
 
@@ -423,7 +464,7 @@ function LinhaCliente({
   resumo: ClienteResumo;
   navigate: ReturnType<typeof useNavigate>;
 }) {
-  const { cliente, faseAtual, saude, progresso, proximaAcao, consultor } = resumo;
+  const { cliente, faseAtual, saude, progresso, trial, proximaAcao, consultor } = resumo;
   const prazoLabel = prazoLabelDe(resumo);
   const prazoAtrasado = estaAtrasado(resumo);
 
@@ -456,9 +497,18 @@ function LinhaCliente({
         )}
       </td>
       <td>
-        <span className="dash" title="Trial Kommo ainda não integrado">
-          —
-        </span>
+        {trial ? (
+          <span
+            className={`status-badge status-tone-${STATUS_TRIAL_TONE[trial.status]}`}
+            title={STATUS_TRIAL_LABELS[trial.status]}
+          >
+            {trial.diasRestantes}d
+          </span>
+        ) : (
+          <span className="dash" title="Sem Trial Kommo iniciado">
+            —
+          </span>
+        )}
       </td>
       <td>{proximaAcao}</td>
       <td>

@@ -2214,6 +2214,25 @@ img.auth-logo {
   text-align: center;
 }
 
+.ops-meetings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.ops-meetings-list li {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  font-size: 13.5px;
+}
+
 .ops-meetings-empty p {
   margin: 0;
   color: var(--color-text-muted);
