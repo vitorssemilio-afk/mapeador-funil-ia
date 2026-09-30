@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { atividadesDaAgenda, inicioDoDia } from '../lib/agendaImplementacao';
+import { inicioDoDia } from '../lib/agendaImplementacao';
+import { bucketDeItem, construirAgendaOperacional } from '../lib/agendaOperacional';
 import {
   construirAlertas,
   construirResumoClientes,
+  estaAtrasado,
+  prazoLabelDe,
   SAUDE_LABELS,
   type AlertaOperacao,
   type ClienteResumo,
@@ -116,30 +119,41 @@ export function Dashboard() {
         atividades,
         statusRows,
         consultores,
+        reunioes,
         hoje,
       }),
-    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, hoje],
+    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, reunioes, hoje],
   );
 
   const alertas = useMemo(
-    () => construirAlertas(resumos, hoje, ocorrenciasAbertas, reunioes),
-    [resumos, hoje, ocorrenciasAbertas, reunioes],
+    () => construirAlertas(resumos, hoje, ocorrenciasAbertas),
+    [resumos, hoje, ocorrenciasAbertas],
+  );
+
+  // P1-A6: mesma fonte de agenda usada na página Agenda — nunca uma segunda
+  // regra paralela pra "o que precisa ser feito hoje" (a antiga
+  // atividadesDaAgenda, de agendaImplementacao.ts, ignorava pendências sem
+  // data e itens que não fossem atividade de cronograma).
+  const agendaOperacional = useMemo(
+    () =>
+      construirAgendaOperacional({
+        clientes,
+        mapeamentosVendas: mapeamentos.filter((m) => m.tipo === 'vendas'),
+        implementacoes,
+        atividades,
+        atividadesStatus: statusRows,
+        historico,
+        consultores,
+        ocorrenciasAbertas,
+        reunioes,
+        hoje,
+      }),
+    [clientes, mapeamentos, implementacoes, atividades, statusRows, historico, consultores, ocorrenciasAbertas, reunioes, hoje],
   );
 
   const itensHoje = useMemo(
-    () =>
-      atividadesDaAgenda({
-        entradas: implementacoes.map((implementacao) => ({
-          implementacao,
-          atividades,
-          statusRows: statusRows.filter((s) => s.implementacao_id === implementacao.id),
-          cliente: clientes.find((c) => c.id === implementacao.cliente_id) ?? null,
-          historico: historico.filter((h) => h.implementacao_id === implementacao.id),
-        })),
-        diaSelecionado: hoje,
-        hoje,
-      }),
-    [implementacoes, atividades, statusRows, clientes, historico, hoje],
+    () => agendaOperacional.filter((item) => bucketDeItem(item, hoje) === 'atrasados' || bucketDeItem(item, hoje) === 'hoje'),
+    [agendaOperacional, hoje],
   );
 
   const consultoresDisponiveis = useMemo(() => {
@@ -175,7 +189,7 @@ export function Dashboard() {
       if (filtroFase && r.faseAtual !== filtroFase) return false;
       if (filtroConsultor && r.consultor !== filtroConsultor) return false;
       if (filtroSaude && r.saude !== filtroSaude) return false;
-      if (soAtrasados && !(r.prazoFase?.atrasada || r.prazoProcesso?.atrasada)) return false;
+      if (soAtrasados && !estaAtrasado(r)) return false;
       if (soMeusClientes && (r.consultorEmail ?? '').toLowerCase() !== meuEmail) return false;
       return true;
     });
@@ -409,17 +423,9 @@ function LinhaCliente({
   resumo: ClienteResumo;
   navigate: ReturnType<typeof useNavigate>;
 }) {
-  const { cliente, faseAtual, saude, progresso, prazoFase, prazoProcesso, proximaAcao, consultor } = resumo;
-  const prazoLabel = prazoFase
-    ? prazoFase.atrasada
-      ? `${prazoFase.diasAtraso}d atrasada`
-      : `${prazoFase.diasRestantes}d restantes`
-    : prazoProcesso
-      ? prazoProcesso.atrasada
-        ? `${prazoProcesso.diasAtraso}d atrasado`
-        : `${prazoProcesso.diasRestantes}d restantes`
-      : null;
-  const prazoAtrasado = prazoFase?.atrasada || prazoProcesso?.atrasada;
+  const { cliente, faseAtual, saude, progresso, proximaAcao, consultor } = resumo;
+  const prazoLabel = prazoLabelDe(resumo);
+  const prazoAtrasado = estaAtrasado(resumo);
 
   return (
     <tr className="ops-table-row" onClick={() => navigate(`/clientes/${cliente.id}`)}>

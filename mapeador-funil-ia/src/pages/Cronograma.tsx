@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { GanttRuler } from '../components/GanttRuler';
 import { ImplementacaoStatusBadge, IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { inicioDoDia } from '../lib/agendaImplementacao';
+import { calcularDiaCiclo } from '../lib/atividadesCronograma';
 import {
   ALTURA_RAIA,
   PX_POR_DIA,
@@ -10,11 +11,10 @@ import {
   diaParaPx,
   empacotarFasesEmRaias,
   fasesImplementacao,
-  prazoFaseAtual,
   type FaseCronograma,
 } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
-import type { ImplementacaoCrm, ImplementacaoStatus, ImplementacaoStatusHistorico } from '../types/database';
+import type { Cliente, ImplementacaoCrm, ImplementacaoStatus, ImplementacaoStatusHistorico } from '../types/database';
 
 // Abaixo disso o título não cabe legível dentro da barra — sai como um
 // rótulo ao lado dela em vez de cortar o texto.
@@ -34,6 +34,7 @@ const CORES_FASE: Record<ImplementacaoStatus, string> = {
 export function Cronograma() {
   const [implementacoes, setImplementacoes] = useState<ImplementacaoCrm[]>([]);
   const [historico, setHistorico] = useState<ImplementacaoStatusHistorico[]>([]);
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,10 +64,13 @@ export function Cronograma() {
       }
 
       const ids = implementacoesData.map((i) => i.id);
-      const { data: historicoData, error: historicoError } = await supabase
-        .from('implementacao_status_historico')
-        .select('*')
-        .in('implementacao_id', ids);
+      const clienteIds = [...new Set(implementacoesData.map((i) => i.cliente_id).filter((id): id is string => !!id))];
+      const [{ data: historicoData, error: historicoError }, { data: clientesData }] = await Promise.all([
+        supabase.from('implementacao_status_historico').select('*').in('implementacao_id', ids),
+        clienteIds.length > 0
+          ? supabase.from('clientes').select('*').in('id', clienteIds)
+          : Promise.resolve({ data: [] as Cliente[] }),
+      ]);
 
       if (historicoError) {
         setError(historicoError.message);
@@ -75,6 +79,7 @@ export function Cronograma() {
       }
 
       setHistorico(historicoData ?? []);
+      setClientes(clientesData ?? []);
       setLoading(false);
     }
 
@@ -158,15 +163,17 @@ export function Cronograma() {
                 const fasesComRaia = empacotarFasesEmRaias(fases, escala, hoje);
                 const numRaias = Math.max(1, ...fasesComRaia.map((f) => f.raia + 1));
                 const alturaTrack = numRaias * ALTURA_RAIA + 16;
-                const prazoSemana = prazoFaseAtual(implementacao, historico, hoje);
+                const cliente = clientes.find((c) => c.id === implementacao.cliente_id) ?? null;
+                const diaCiclo = calcularDiaCiclo(cliente?.kickoff_realizado_em ?? null, hoje);
+                const diasAtrasoGeral = diaCiclo && diaCiclo.dia > 40 ? diaCiclo.dia - 40 : 0;
                 return (
                   <div key={implementacao.id} className="gantt-row">
                     <div className="gantt-row-label">
                       <Link to={`/implementacoes/${implementacao.id}`}>{implementacao.nome_cliente}</Link>
                       <ImplementacaoStatusBadge status={implementacao.status} />
-                      {prazoSemana?.atrasada && (
-                        <span className="badge-danger" title={`Prazo da semana era ${prazoSemana.prazo.toLocaleDateString('pt-BR')}`}>
-                          {prazoSemana.diasAtraso}d atrasada
+                      {diasAtrasoGeral > 0 && (
+                        <span className="badge-danger" title="Passou do Dia 40 dos 40 dias da implementação">
+                          {diasAtrasoGeral}d atrasada
                         </span>
                       )}
                     </div>

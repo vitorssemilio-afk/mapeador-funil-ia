@@ -1,15 +1,31 @@
 // Consolida os dados que já existem no banco (mapeamentos, implementações,
 // checklist, prazos) numa visão por cliente pra alimentar o dashboard
 // "Operação CRM". Não inventa dado nenhum: onde a informação ainda não
-// existe no produto (Trial Kommo, agenda do Google Calendar), os campos
-// ficam null/vazios de propósito, prontos pra serem preenchidos quando
-// essas integrações existirem — nunca com valor fictício.
+// existe no produto (agenda do Google Calendar), os campos ficam null/vazios
+// de propósito, prontos pra serem preenchidos quando essas integrações
+// existirem — nunca com valor fictício.
+//
+// P1-A4 da auditoria funcional: esta é a ÚNICA fonte de verdade pra saúde,
+// prazo e atraso da implementação — Home/Dashboard, ficha do cliente e
+// qualquer outra tela leem daqui. Antes disso existiam DOIS motores
+// paralelos: este (baseado em atividadesCronograma.ts, ciclos de 40 dias a
+// partir do Kickoff realizado) e um antigo em cronograma.ts
+// (prazoFaseAtual/prazoGeral, semanal, ancorado em quando alguém atualizou
+// manualmente o `status` da implementação) — os dois podiam discordar sobre
+// se um cliente estava atrasado. O motor semanal foi removido; cronograma.ts
+// mantém só os helpers de visualização do Gantt histórico (fasesImplementacao
+// etc.), que não calculam atraso/saúde.
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
-import { prazoFaseAtual, prazoGeral, type PrazoFase, type PrazoGeral } from './cronograma';
+import {
+  calcularDiaCiclo,
+  resolverAtividade,
+  type AtividadeResolvida,
+  type DiaCiclo,
+} from './atividadesCronograma';
 import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
 import { alertaReuniaoObrigatoria, TIPOS_REUNIAO_OBRIGATORIOS } from './reunioes';
 import { funilValidado, MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
-import { resolverResumoTrialKommo } from './trialKommo';
+import { resolverResumoTrialKommo, type ResumoTrialKommo } from './trialKommo';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
@@ -52,15 +68,18 @@ export type ClienteResumo = {
   // 0-100, null quando ainda não há implementação (nada pra progredir).
   progresso: number | null;
   proximaAcao: string;
-  prazoFase: PrazoFase | null;
-  prazoProcesso: PrazoGeral | null;
+  // Dia do projeto/ciclo atual (ver atividadesCronograma.ts) — null sem
+  // Kickoff realizado ainda. Única fonte de "atraso geral" da implementação.
+  diaCiclo: DiaCiclo | null;
+  // Atividades do cronograma com status 'atrasado' agora — mesmo cálculo
+  // usado na tela da implementação (resolverAtividade), nunca uma versão
+  // simplificada à parte.
+  atividadesAtrasadas: AtividadeResolvida[];
+  trial: ResumoTrialKommo | null;
+  reuniaoObrigatoriaPendente: boolean;
   consultor: string | null;
   consultorEmail: string | null;
   consultorApoio: string | null;
-  // Sempre null por enquanto — não existe campo de Trial Kommo no produto
-  // ainda. Mantido aqui pra já existir o lugar certo quando o dado chegar
-  // (ver DIAS_TRIAL_KOMMO / integração futura).
-  trialDiasRestantes: null;
 };
 
 export type AlertaOperacao = {
@@ -97,6 +116,37 @@ function progressoImplementacao(
   return Math.round((feitas / atividadesVisiveis.length) * 100);
 }
 
+// Todas as atividades do cronograma dessa implementação, já resolvidas
+// (status/atraso/dependência) pelo mesmo motor usado em ImplementacaoDetalhe
+// — nunca uma segunda fórmula de atraso aqui.
+function resolverAtividadesDaImplementacao(params: {
+  implementacaoId: string;
+  atividades: AtividadeCronograma[];
+  statusRows: AtividadeStatusRow[];
+  historico: ImplementacaoStatusHistorico[];
+  cliente: Cliente;
+  reunioes: Reuniao[];
+  hoje: Date;
+}): AtividadeResolvida[] {
+  const { implementacaoId, atividades, statusRows, historico, cliente, reunioes, hoje } = params;
+  const atividadesVisiveis = atividades.filter(
+    (a) => a.implementacao_id === null || a.implementacao_id === implementacaoId,
+  );
+  const historicoDaImplementacao = historico.filter((h) => h.implementacao_id === implementacaoId);
+
+  return atividadesVisiveis.map((atividade) =>
+    resolverAtividade({
+      atividade,
+      statusRow:
+        statusRows.find((s) => s.implementacao_id === implementacaoId && s.atividade_id === atividade.id) ?? null,
+      historico: historicoDaImplementacao,
+      cliente,
+      reunioes,
+      hoje,
+    }),
+  );
+}
+
 function faseAtualLabel(vendas: Mapeamento | null, implementacao: ImplementacaoCrm | null): string {
   if (implementacao) return IMPLEMENTACAO_STATUS_LABELS[implementacao.status];
   if (!vendas) return 'Sem mapeamento';
@@ -112,9 +162,9 @@ function proximaAcaoLabel(params: {
   posVenda: Mapeamento | null;
   implementacao: ImplementacaoCrm | null;
   precisaPosVenda: boolean;
-  prazoFase: PrazoFase | null;
+  temAtividadeAtrasada: boolean;
 }): string {
-  const { vendas, posVenda, implementacao, precisaPosVenda, prazoFase } = params;
+  const { vendas, posVenda, implementacao, precisaPosVenda, temAtividadeAtrasada } = params;
 
   if (!vendas) return 'Criar mapeamento de vendas';
   if (vendas.status === 'em_preenchimento') {
@@ -137,26 +187,33 @@ function proximaAcaoLabel(params: {
   if (posVenda && posVenda.status === 'em_preenchimento' && !posVenda.enviado_pelo_cliente) {
     return 'Aguardar/cobrar resposta do pós-venda';
   }
-  if (prazoFase?.atrasada) return 'Revisar cronograma com o cliente';
+  if (temAtividadeAtrasada) return 'Revisar cronograma com o cliente';
   return `Acompanhar checklist — ${IMPLEMENTACAO_STATUS_LABELS[implementacao.status]}`;
 }
 
+// Regra central de saúde (P1-A4) — SAUDÁVEL/ATENÇÃO/CRÍTICO nunca calculado
+// de novo em nenhuma tela: todas consomem `ClienteResumo.saude`.
 function calcularSaude(params: {
   vendas: Mapeamento | null;
   implementacao: ImplementacaoCrm | null;
-  prazoFase: PrazoFase | null;
-  prazoProcesso: PrazoGeral | null;
+  diaCiclo: DiaCiclo | null;
+  atividadesAtrasadas: AtividadeResolvida[];
+  reuniaoObrigatoriaPendente: boolean;
+  trial: ResumoTrialKommo | null;
 }): SaudeCliente {
-  const { vendas, implementacao, prazoFase, prazoProcesso } = params;
+  const { vendas, implementacao, diaCiclo, atividadesAtrasadas, reuniaoObrigatoriaPendente, trial } = params;
 
   if (implementacao?.status === 'concluida') return 'concluido';
   if (implementacao?.status === 'cancelada') return 'normal';
   if (vendas?.status === 'erro') return 'critico';
 
   if (implementacao) {
-    if (prazoFase?.atrasada) return prazoFase.diasAtraso > 2 ? 'critico' : 'atencao';
-    if (prazoProcesso?.atrasada) return prazoProcesso.diasAtraso > 3 ? 'critico' : 'atencao';
-    if (prazoProcesso && !prazoProcesso.atrasada && prazoProcesso.diasRestantes <= 3) return 'atencao';
+    const trialEmRiscoImediato = trial ? trial.status === 'encerrado' || trial.diasRestantes <= 1 : false;
+    const prazoVencido = diaCiclo != null && diaCiclo.dia > 40;
+    const pertoDoFimComPendencia = diaCiclo != null && diaCiclo.dia >= 35 && atividadesAtrasadas.length > 0;
+
+    if (prazoVencido || trialEmRiscoImediato || pertoDoFimComPendencia) return 'critico';
+    if (atividadesAtrasadas.length > 0 || reuniaoObrigatoriaPendente || trial?.precisaAlerta) return 'atencao';
     return 'normal';
   }
 
@@ -173,9 +230,20 @@ export function construirResumoClientes(params: {
   atividades: AtividadeCronograma[];
   statusRows: AtividadeStatusRow[];
   consultores: Consultor[];
+  reunioes?: Reuniao[];
   hoje: Date;
 }): ClienteResumo[] {
-  const { clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, hoje } = params;
+  const {
+    clientes,
+    mapeamentos,
+    implementacoes,
+    historico,
+    atividades,
+    statusRows,
+    consultores,
+    reunioes = [],
+    hoje,
+  } = params;
 
   return clientes.map((cliente) => {
     const doCliente = mapeamentos.filter((m) => m.cliente_id === cliente.id);
@@ -183,8 +251,32 @@ export function construirResumoClientes(params: {
     const posVenda = doCliente.find((m) => m.tipo === 'pos_venda') ?? null;
     const implementacao = implementacoes.find((i) => i.cliente_id === cliente.id) ?? null;
 
-    const prazoFase = implementacao ? prazoFaseAtual(implementacao, historico, hoje) : null;
-    const prazoProcesso = implementacao ? prazoGeral(implementacao, cliente.kickoff_realizado_em, hoje) : null;
+    const diaCiclo = calcularDiaCiclo(cliente.kickoff_realizado_em, hoje);
+    const atividadesResolvidas = implementacao
+      ? resolverAtividadesDaImplementacao({
+          implementacaoId: implementacao.id,
+          atividades,
+          statusRows,
+          historico,
+          cliente,
+          reunioes,
+          hoje,
+        })
+      : [];
+    const atividadesAtrasadas = atividadesResolvidas.filter((a) => a.status === 'atrasado');
+
+    const reunioesDoCliente = reunioes.filter((r) => r.cliente_id === cliente.id);
+    const reuniaoObrigatoriaPendente = TIPOS_REUNIAO_OBRIGATORIOS.some(
+      (tipo) =>
+        alertaReuniaoObrigatoria({
+          tipo,
+          reunioesDoTipo: reunioesDoCliente.filter((r) => r.tipo === tipo),
+          kickoffRealizadoEm: cliente.kickoff_realizado_em,
+          hoje,
+        }) != null,
+    );
+
+    const trial = resolverResumoTrialKommo(cliente, hoje);
 
     const precisaPosVenda =
       !!implementacao &&
@@ -197,44 +289,49 @@ export function construirResumoClientes(params: {
       posVenda,
       implementacao,
       faseAtual: faseAtualLabel(vendas, implementacao),
-      saude: calcularSaude({ vendas, implementacao, prazoFase, prazoProcesso }),
+      saude: calcularSaude({ vendas, implementacao, diaCiclo, atividadesAtrasadas, reuniaoObrigatoriaPendente, trial }),
       progresso: implementacao ? progressoImplementacao(implementacao.id, atividades, statusRows) : null,
-      proximaAcao: proximaAcaoLabel({ vendas, posVenda, implementacao, precisaPosVenda, prazoFase }),
-      prazoFase,
-      prazoProcesso,
+      proximaAcao: proximaAcaoLabel({
+        vendas,
+        posVenda,
+        implementacao,
+        precisaPosVenda,
+        temAtividadeAtrasada: atividadesAtrasadas.length > 0,
+      }),
+      diaCiclo,
+      atividadesAtrasadas,
+      trial,
+      reuniaoObrigatoriaPendente,
       consultor: nomeConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
       consultorEmail: emailConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
       consultorApoio: nomeConsultor(implementacao?.consultor_apoio_id ?? null, consultores),
-      trialDiasRestantes: null,
     };
   });
 }
 
-function prazoLabelDe(resumo: ClienteResumo): string | null {
-  if (resumo.prazoFase) {
-    return resumo.prazoFase.atrasada
-      ? `${resumo.prazoFase.diasAtraso}d atrasada`
-      : `${resumo.prazoFase.diasRestantes}d restantes`;
-  }
-  if (resumo.prazoProcesso) {
-    return resumo.prazoProcesso.atrasada
-      ? `${resumo.prazoProcesso.diasAtraso}d atrasado`
-      : `${resumo.prazoProcesso.diasRestantes}d restantes`;
-  }
-  return null;
+// Único texto de prazo mostrado em qualquer tela (Dashboard, ficha do
+// cliente) — nunca formatado de novo localmente.
+export function prazoLabelDe(resumo: ClienteResumo): string | null {
+  if (!resumo.diaCiclo) return null;
+  const restantes = 40 - resumo.diaCiclo.dia;
+  return restantes < 0 ? `${Math.abs(restantes)}d atrasado` : `${restantes}d restantes`;
+}
+
+// Único critério de "está atrasado" — prazo geral vencido (passou do Dia 40)
+// ou pelo menos uma atividade do cronograma atrasada agora.
+export function estaAtrasado(resumo: ClienteResumo): boolean {
+  return (resumo.diaCiclo != null && resumo.diaCiclo.dia > 40) || resumo.atividadesAtrasadas.length > 0;
 }
 
 const DIAS_SEM_RESPOSTA_PARA_ALERTAR = 3;
 
-// Só os alertas que dá pra calcular com dado real hoje. Trial Kommo, Kickoff
-// agendado, treinamento etc. entram aqui quando essas integrações existirem
-// — o formato do alerta (motivo/prazo/próxima ação/consultor) já está
-// pronto pra receber esses casos novos sem precisar mudar o componente.
+// Só os alertas que dá pra calcular com dado real hoje. As mesmas condições
+// usadas em calcularSaude alimentam esses alertas — nunca uma segunda
+// fórmula à parte pra "o que está errado com esse cliente".
 export function construirAlertas(
   resumos: ClienteResumo[],
   hoje: Date,
   ocorrenciasAbertas: ClienteOcorrencia[] = [],
-  reunioes: Reuniao[] = [],
 ): AlertaOperacao[] {
   const alertas: AlertaOperacao[] = [];
 
@@ -257,45 +354,39 @@ export function construirAlertas(
       continue;
     }
 
-    if (r.prazoFase?.atrasada) {
+    if (r.diaCiclo && r.diaCiclo.dia > 40) {
       alertas.push({
         ...base,
-        motivo: `${r.faseAtual} atrasada`,
-        severidade: r.prazoFase.diasAtraso > 2 ? 'critico' : 'atencao',
+        motivo: 'Prazo geral da implementação atrasado (passou do Dia 40)',
+        severidade: r.diaCiclo.dia - 40 > 3 ? 'critico' : 'atencao',
       });
       continue;
     }
 
-    if (r.prazoProcesso?.atrasada) {
+    if (r.atividadesAtrasadas.length > 0) {
+      const primeira = r.atividadesAtrasadas[0];
       alertas.push({
         ...base,
-        motivo: 'Prazo geral da implementação atrasado',
-        severidade: r.prazoProcesso.diasAtraso > 3 ? 'critico' : 'atencao',
+        motivo:
+          r.atividadesAtrasadas.length === 1
+            ? `Atividade atrasada: ${primeira.nome}`
+            : `${r.atividadesAtrasadas.length} atividades atrasadas (ex: ${primeira.nome})`,
+        severidade: primeira.atrasoDias > 2 ? 'critico' : 'atencao',
       });
       continue;
     }
 
-    const resumoTrial = resolverResumoTrialKommo(r.cliente, hoje);
-    if (resumoTrial?.precisaAlerta) {
+    if (r.trial?.precisaAlerta) {
       alertas.push({
         ...base,
-        motivo: `Trial Kommo vence em ${resumoTrial.diasRestantes}d — extensão de ${resumoTrial.proximaExtensao?.rotulo} ainda não solicitada`,
-        severidade: resumoTrial.diasRestantes <= 1 ? 'critico' : 'atencao',
+        motivo: `Trial Kommo vence em ${r.trial.diasRestantes}d — extensão de ${r.trial.proximaExtensao?.rotulo} ainda não solicitada`,
+        severidade: r.trial.diasRestantes <= 1 ? 'critico' : 'atencao',
       });
       continue;
     }
 
-    const reunioesDoCliente = reunioes.filter((reuniao) => reuniao.cliente_id === r.cliente.id);
-    const alertaReuniao = TIPOS_REUNIAO_OBRIGATORIOS.map((tipo) =>
-      alertaReuniaoObrigatoria({
-        tipo,
-        reunioesDoTipo: reunioesDoCliente.filter((reuniao) => reuniao.tipo === tipo),
-        kickoffRealizadoEm: r.cliente.kickoff_realizado_em,
-        hoje,
-      }),
-    ).find((alerta) => alerta != null);
-    if (alertaReuniao) {
-      alertas.push({ ...base, motivo: alertaReuniao.titulo, severidade: 'atencao' });
+    if (r.reuniaoObrigatoriaPendente) {
+      alertas.push({ ...base, motivo: 'Reunião obrigatória ainda não agendada', severidade: 'atencao' });
       continue;
     }
 

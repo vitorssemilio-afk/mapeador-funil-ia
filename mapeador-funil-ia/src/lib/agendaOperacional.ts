@@ -417,6 +417,7 @@ export function construirAgendaOperacional(params: {
         statusRow: atividadesStatus.find((s) => s.atividade_id === atividade.id) ?? null,
         historico: historicoDaImplementacao,
         cliente,
+        reunioes,
         hoje,
       });
       const item = itemDeAtividade(resolvida, cliente, implementacao, consultores);

@@ -1,4 +1,4 @@
-import { dataEntradaStatusAtual, diferencaEmDias, inicioDoDia } from './agendaImplementacao';
+import { diferencaEmDias, inicioDoDia } from './agendaImplementacao';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import type { ImplementacaoCrm, ImplementacaoStatus, ImplementacaoStatusHistorico } from '../types/database';
 
@@ -121,93 +121,9 @@ export function empacotarFasesEmRaias(fases: FaseCronograma[], escala: EscalaTem
 }
 
 // ============================================================
-// Prazos e alertas de atraso
+// Tempo até a 1ª reunião (informativo — não é sinal de atraso/saúde; esse
+// vem só de atividadesCronograma.ts/operacaoResumo.ts, ver P1-A4)
 // ============================================================
-
-// Duração planejada do POP inteiro (preparação + as 4 fases semanais), em
-// dias corridos a partir do Kickoff REALIZADO (clientes.kickoff_realizado_em)
-// — não da contratação, do envio/resposta do formulário, ou da criação da
-// conta Kommo. Ver marcosImplementacao.ts.
-export const DURACAO_TOTAL_DIAS = 40;
-
-// Prazo "leve" de cada semana do checklist — combina com o padrão de item
-// numerado de 1 a 7 (dia_semana) já usado na Agenda. A diferença entre a
-// soma das 4 semanas (28) e o total do POP (40) é a folga de segurança do
-// processo como um todo (pré-requisito + qualquer deslize).
-export const PRAZO_DIAS_POR_SEMANA = 7;
-
-const FASES_SEMANAIS: ImplementacaoStatus[] = [
-  'crm_em_configuracao',
-  'treinamento_agendado',
-  'automacoes',
-  'entrega',
-];
-
-export function dataPrevistaConclusao(inicioProcesso: Date): Date {
-  return adicionarDias(inicioProcesso, DURACAO_TOTAL_DIAS);
-}
-
-export type PrazoFase = {
-  prazo: Date;
-  diasRestantes: number;
-  atrasada: boolean;
-  diasAtraso: number;
-};
-
-// Prazo da fase atual (só existe pras 4 fases semanais — preparação e estados
-// finais não têm uma janela própria). Conta a partir de quando a
-// implementação de fato entrou nesse status, não do início do processo.
-export function prazoFaseAtual(
-  implementacao: ImplementacaoCrm,
-  historico: ImplementacaoStatusHistorico[],
-  hoje: Date,
-): PrazoFase | null {
-  if (!FASES_SEMANAIS.includes(implementacao.status)) return null;
-
-  const inicioFase = dataEntradaStatusAtual(implementacao, historico);
-  const prazo = adicionarDias(inicioFase, PRAZO_DIAS_POR_SEMANA);
-  const diasRestantes = diferencaEmDias(prazo, hoje);
-
-  return {
-    prazo,
-    diasRestantes,
-    atrasada: diasRestantes < 0,
-    diasAtraso: Math.max(0, -diasRestantes),
-  };
-}
-
-export type PrazoGeral = {
-  inicioProcesso: Date;
-  prazoConclusao: Date;
-  diasRestantes: number;
-  atrasada: boolean;
-  diasAtraso: number;
-};
-
-// Prazo do processo inteiro (os 40 dias corridos a partir do Kickoff
-// REALIZADO), só relevante enquanto a implementação ainda está em andamento
-// — concluída/cancelada não "atrasa" mais, e sem Kickoff realizado ainda
-// não existe prazo (o relógio nem começou).
-export function prazoGeral(
-  implementacao: ImplementacaoCrm,
-  kickoffRealizadoEm: string | null,
-  hoje: Date,
-): PrazoGeral | null {
-  if (implementacao.status === 'concluida' || implementacao.status === 'cancelada') return null;
-  if (!kickoffRealizadoEm) return null;
-
-  const inicioProcesso = new Date(kickoffRealizadoEm);
-  const prazoConclusao = dataPrevistaConclusao(inicioProcesso);
-  const diasRestantes = diferencaEmDias(prazoConclusao, hoje);
-
-  return {
-    inicioProcesso,
-    prazoConclusao,
-    diasRestantes,
-    atrasada: diasRestantes < 0,
-    diasAtraso: Math.max(0, -diasRestantes),
-  };
-}
 
 export type TempoAteReuniao = {
   dias: number;
