@@ -81,6 +81,11 @@ create trigger vincular_consultor_por_email_trigger
   after insert on auth.users
   for each row execute function public.vincular_consultor_por_email();
 
+-- `clientes.consultor_responsavel_id` precisa existir ANTES das funções da
+-- seção 2 abaixo (tenho_acesso_ao_cliente referencia essa coluna, e
+-- funções `language sql` são resolvidas na criação, não só na execução).
+alter table public.clientes add column if not exists consultor_responsavel_id uuid references public.consultores(id);
+
 -- ============================================================
 -- 2) Funções de autorização — ponto único de verdade, usadas depois nas
 -- políticas de RLS (próxima etapa) e já disponíveis pra qualquer RPC que
@@ -171,13 +176,11 @@ grant execute on function public.tenho_acesso_ao_cliente(uuid) to authenticated;
 grant execute on function public.tenho_acesso_a_implementacao(uuid) to authenticated;
 
 -- ============================================================
--- 3) `clientes.consultor_responsavel_id` — quem cria o cliente vira
--- automaticamente o responsável (a não ser que já venha preenchido). A
--- implementação de CRM herda o mesmo responsável do cliente quando criada,
--- se não vier um valor explícito.
+-- 3) `clientes.consultor_responsavel_id` (coluna já criada acima) — quem
+-- cria o cliente vira automaticamente o responsável (a não ser que já
+-- venha preenchido). A implementação de CRM herda o mesmo responsável do
+-- cliente quando criada, se não vier um valor explícito.
 -- ============================================================
-alter table public.clientes add column if not exists consultor_responsavel_id uuid references public.consultores(id);
-
 create or replace function public.atribuir_consultor_responsavel_cliente()
 returns trigger
 language plpgsql
