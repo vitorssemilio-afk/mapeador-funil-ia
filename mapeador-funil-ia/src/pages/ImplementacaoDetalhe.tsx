@@ -391,6 +391,15 @@ export function ImplementacaoDetalhe() {
   const [salvandoGeral, setSalvandoGeral] = useState(false);
   const [salvoRecentemente, setSalvoRecentemente] = useState(false);
 
+  // P2-M4: transferir o consultor responsável deixou de ser só mais um
+  // campo do form geral (fácil de mudar sem querer, sem confirmação) — vira
+  // uma ação própria, com o consultor atual visível, escolha explícita do
+  // novo e confirmação antes de salvar.
+  const [transferindoConsultor, setTransferindoConsultor] = useState(false);
+  const [novoConsultorTransferencia, setNovoConsultorTransferencia] = useState('');
+  const [salvandoTransferenciaConsultor, setSalvandoTransferenciaConsultor] = useState(false);
+  const [erroTransferenciaConsultor, setErroTransferenciaConsultor] = useState<string | null>(null);
+
   const [formCredencial, setFormCredencial] = useState<FormCredencial | null>(null);
   const [salvandoCredencial, setSalvandoCredencial] = useState(false);
   const [reveladas, setReveladas] = useState<Record<string, string>>({});
@@ -965,39 +974,12 @@ export function ImplementacaoDetalhe() {
       return;
     }
 
-    if (!formGeral.consultor_responsavel_id) {
-      setError('Toda implementação precisa de um consultor responsável.');
-      return;
-    }
-
     setSalvandoGeral(true);
     setSalvoRecentemente(false);
 
-    const consultorMudou =
-      formGeral.consultor_responsavel_id !== (implementacao.consultor_responsavel_id ?? '');
-
-    // Transferência de responsável é atômica e feita à parte (RPC
-    // transferir_consultor_responsavel_implementacao, migration 0062): numa
-    // única transação ela troca o responsável na implementação, sincroniza
-    // clientes.consultor_responsavel_id (de onde a RLS da ficha do cliente
-    // lê o vínculo) e grava o histórico — nunca fica pela metade. Ver P0-C4
-    // da auditoria funcional.
-    if (consultorMudou) {
-      const { error: transferenciaError } = await supabase.rpc(
-        'transferir_consultor_responsavel_implementacao',
-        {
-          p_implementacao_id: implementacao.id,
-          p_novo_consultor_id: formGeral.consultor_responsavel_id,
-        },
-      );
-
-      if (transferenciaError) {
-        setSalvandoGeral(false);
-        setError(transferenciaError.message);
-        return;
-      }
-    }
-
+    // Transferir o consultor RESPONSÁVEL não é mais um campo deste form —
+    // virou uma ação própria (handleTransferirConsultor, P2-M4), com o
+    // consultor atual visível e confirmação explícita antes de salvar.
     const { data, error: updateError } = await supabase
       .from('implementacoes_crm')
       .update({
@@ -1029,6 +1011,61 @@ export function ImplementacaoDetalhe() {
     setImplementacao(data);
     setSalvoRecentemente(true);
     setTimeout(() => setSalvoRecentemente(false), 2000);
+  }
+
+  function abrirTransferirConsultor() {
+    setTransferindoConsultor(true);
+    setNovoConsultorTransferencia('');
+    setErroTransferenciaConsultor(null);
+  }
+
+  function fecharTransferirConsultor() {
+    setTransferindoConsultor(false);
+    setNovoConsultorTransferencia('');
+    setErroTransferenciaConsultor(null);
+  }
+
+  // P2-M4: ação dedicada pra transferir o consultor responsável — antes era
+  // só mais um campo dentro do form geral de ~12 campos, fácil de mudar sem
+  // querer e sem nenhuma confirmação. A operação em si já era atômica desde
+  // o P0-C4 (RPC transferir_consultor_responsavel_implementacao); o que
+  // faltava era uma UI que não escondesse essa decisão.
+  async function handleTransferirConsultor() {
+    if (!implementacao || !novoConsultorTransferencia) return;
+
+    const nomeAtual = nomeConsultor(implementacao.consultor_responsavel_id, consultores) ?? 'sem responsável';
+    const nomeNovo = nomeConsultor(novoConsultorTransferencia, consultores) ?? '—';
+    if (!window.confirm(`Transferir a responsabilidade desta implementação de "${nomeAtual}" para "${nomeNovo}"?`)) {
+      return;
+    }
+
+    setSalvandoTransferenciaConsultor(true);
+    setErroTransferenciaConsultor(null);
+
+    const { error: transferenciaError } = await supabase.rpc('transferir_consultor_responsavel_implementacao', {
+      p_implementacao_id: implementacao.id,
+      p_novo_consultor_id: novoConsultorTransferencia,
+    });
+
+    setSalvandoTransferenciaConsultor(false);
+
+    if (transferenciaError) {
+      setErroTransferenciaConsultor(transferenciaError.message);
+      return;
+    }
+
+    const novaImplementacao = { ...implementacao, consultor_responsavel_id: novoConsultorTransferencia };
+    setImplementacao(novaImplementacao);
+    setFormGeral((prev) => (prev ? { ...prev, consultor_responsavel_id: novoConsultorTransferencia } : prev));
+
+    const { data: historicoAtualizado } = await supabase
+      .from('implementacao_consultor_historico')
+      .select('*')
+      .eq('implementacao_id', implementacao.id)
+      .order('alterado_em', { ascending: false });
+    setHistoricoConsultor(historicoAtualizado ?? []);
+
+    fecharTransferirConsultor();
   }
 
   // Registra a solicitação/aprovação da extensão de Trial atual — grava
@@ -2237,22 +2274,51 @@ export function ImplementacaoDetalhe() {
                 )}
               </label>
 
-              <label className="field">
-                <span>Consultor responsável *</span>
-                <select
-                  required
-                  value={formGeral.consultor_responsavel_id}
-                  onChange={(e) => setFormGeral({ ...formGeral, consultor_responsavel_id: e.target.value })}
-                >
-                  <option value="">Selecione…</option>
-                  {consultores.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.nome}
-                      {!c.ativo ? ' (inativo)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="field">
+                <span>Consultor responsável</span>
+                <div className="page-header-actions" style={{ justifyContent: 'space-between' }}>
+                  <p style={{ margin: 0 }}>
+                    {nomeConsultor(implementacao.consultor_responsavel_id, consultores) ?? 'Sem responsável definido'}
+                  </p>
+                  <button type="button" className="btn btn-secondary btn-auto" onClick={abrirTransferirConsultor}>
+                    Transferir
+                  </button>
+                </div>
+              </div>
+
+              {transferindoConsultor && (
+                <div className="field" style={{ gridColumn: '1 / -1' }}>
+                  <span>Transferir para</span>
+                  <select
+                    value={novoConsultorTransferencia}
+                    onChange={(e) => setNovoConsultorTransferencia(e.target.value)}
+                  >
+                    <option value="">Selecione…</option>
+                    {consultores
+                      .filter((c) => c.id !== implementacao.consultor_responsavel_id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                          {!c.ativo ? ' (inativo)' : ''}
+                        </option>
+                      ))}
+                  </select>
+                  {erroTransferenciaConsultor && <p className="form-error">{erroTransferenciaConsultor}</p>}
+                  <div className="wizard-actions">
+                    <button type="button" className="btn btn-secondary" onClick={fecharTransferirConsultor}>
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleTransferirConsultor}
+                      disabled={!novoConsultorTransferencia || salvandoTransferenciaConsultor}
+                    >
+                      {salvandoTransferenciaConsultor ? 'Transferindo…' : 'Confirmar transferência'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <label className="field">
                 <span>Consultor de apoio (opcional)</span>

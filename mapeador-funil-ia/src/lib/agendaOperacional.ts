@@ -12,6 +12,7 @@ import { resolverResumoTrialKommo } from './trialKommo';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
+  CategoriaOcorrencia,
   Cliente,
   ClienteOcorrencia,
   Consultor,
@@ -263,23 +264,54 @@ function itemDeProximidadePrazoGeral(
   };
 }
 
-// Ocorrência aberta (ver src/pages/ClienteDetalhe.tsx) é uma pendência em
-// aberto sem data de vencimento — representa um incidente já acontecido que
-// ainda não foi resolvido, não um evento futuro agendado. Por isso cai
-// sempre no grupo "sem_data" (data: null), nunca em "Atrasados".
-function itemDeOcorrencia(ocorrencia: ClienteOcorrencia, cliente: Cliente): ItemAgendaOperacional {
+// P2-M5: categorias que são pendência DO CLIENTE (esperando alguma ação
+// dele) — o resto (cancelamento, remarcação, problema técnico etc.) é
+// incidente/registro, não uma pendência de ninguém em especial, e continua
+// como 'alerta'. responsavel_impacto complementa pra pendências internas
+// (a categoria sozinha não distingue "interna" de "incidente").
+const CATEGORIAS_PENDENCIA_CLIENTE: CategoriaOcorrencia[] = ['pendencia_cliente', 'acesso_pendente'];
+
+function tipoItemDaOcorrencia(ocorrencia: ClienteOcorrencia): TipoItemAgenda {
+  if (CATEGORIAS_PENDENCIA_CLIENTE.includes(ocorrencia.categoria)) return 'pendencia_cliente';
+  if (ocorrencia.responsavel_impacto === 'consultor' || ocorrencia.responsavel_impacto === 'v4') {
+    return 'pendencia_interna';
+  }
+  return 'alerta';
+}
+
+// Ocorrência aberta (ver src/pages/ClienteDetalhe.tsx) é uma pendência sem
+// prazo por padrão — mas agora pode ter um (ver P2-A8, migration 0065), e
+// nesse caso participa dos buckets de data normalmente (atrasada/hoje/etc),
+// igual qualquer outro item com prazo. Sem prazo definido, continua caindo
+// em "sem_data".
+//
+// Antes esse item virava sempre tipo 'alerta', mesmo quando a ocorrência era
+// uma pendência de verdade (do cliente ou interna) — perdendo a
+// categorização que a mesma pendência tinha antes da implementação começar
+// (ver itensDePendenciaInternaVendas/itemDePendenciaClienteFormulario).
+function itemDeOcorrencia(
+  ocorrencia: ClienteOcorrencia,
+  cliente: Cliente,
+  consultores: Consultor[],
+  hoje: Date,
+): ItemAgendaOperacional {
+  const tipo = tipoItemDaOcorrencia(ocorrencia);
+  const prazo = ocorrencia.prazo ? new Date(`${ocorrencia.prazo}T12:00:00`) : null;
   return {
     id: `ocorrencia:${ocorrencia.id}`,
     clienteId: cliente.id,
     clienteNome: cliente.nome_empresa,
-    tipo: 'alerta',
-    titulo: `Ocorrência: ${CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria]}`,
-    responsavel: null,
-    data: null,
+    tipo,
+    titulo:
+      tipo === 'alerta'
+        ? `Ocorrência: ${CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria]}`
+        : CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria],
+    responsavel: nomeConsultor(ocorrencia.consultor_responsavel_id, consultores),
+    data: prazo,
     aguardando: null,
     status: 'Aberta',
     acaoRecomendada: 'Resolver a ocorrência',
-    atrasado: false,
+    atrasado: prazo ? prazo.getTime() < hoje.getTime() : false,
     implementacaoId: null,
     atividadeId: null,
   };
@@ -389,7 +421,7 @@ export function construirAgendaOperacional(params: {
 
   for (const ocorrencia of ocorrenciasAbertas) {
     const cliente = clientes.find((c) => c.id === ocorrencia.cliente_id);
-    if (cliente) itens.push(itemDeOcorrencia(ocorrencia, cliente));
+    if (cliente) itens.push(itemDeOcorrencia(ocorrencia, cliente, consultores, hoje));
   }
 
   for (const cliente of clientes) {

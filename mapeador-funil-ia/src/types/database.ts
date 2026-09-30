@@ -110,6 +110,11 @@ export type ClienteOcorrencia = {
   status: StatusOcorrencia;
   resolvida_em: string | null;
   autor_email: string | null;
+  // Quem precisa resolver a pendência e até quando (ambos opcionais) — sem
+  // isso não tinha como gerar alerta de "pendência vencendo". Ver P2-A8,
+  // migration 0065.
+  consultor_responsavel_id: string | null;
+  prazo: string | null;
   created_at: string;
   updated_at: string;
 };
