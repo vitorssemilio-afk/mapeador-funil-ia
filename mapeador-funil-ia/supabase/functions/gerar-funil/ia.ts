@@ -1,4 +1,5 @@
 import type { EtapaFunil, TransicaoEntreFunis } from '../../../src/types/database.ts';
+import { chamarAnthropic, extrairJson, type ChatMessage } from '../_shared/anthropic.ts';
 import { SYSTEM_PROMPT } from './prompt.ts';
 
 export type FunilIA = {
@@ -25,114 +26,14 @@ export type ResultadoIA =
     }
   | { tipo: 'perguntas'; perguntas: string[] };
 
-type ChatMessage = {
-  role: 'user' | 'assistant';
-  content: string;
-};
-
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
 const MAX_TENTATIVAS = 2;
+const MAX_TOKENS = 32000;
 
-async function chamarAnthropic(messages: ChatMessage[], systemPrompt: string): Promise<string> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY não configurada nas secrets da função.');
+export class ErroRespostaInvalidaIA extends Error {
+  constructor() {
+    super('A IA não retornou um JSON válido após nova tentativa.');
+    this.name = 'ErroRespostaInvalidaIA';
   }
-
-  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-5';
-
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 32000,
-      thinking: { type: 'disabled' },
-      system: systemPrompt,
-      messages,
-      stream: true,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Anthropic API respondeu ${response.status}: ${errorText}`);
-  }
-
-  const texto = await lerRespostaStream(response);
-
-  if (!texto) {
-    throw new Error('Resposta da IA não contém texto.');
-  }
-
-  return texto;
-}
-
-async function lerRespostaStream(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    throw new Error('Resposta da IA sem corpo para leitura em stream.');
-  }
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let texto = '';
-  let stopReason: string | null = null;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const linhas = buffer.split('\n');
-    buffer = linhas.pop() ?? '';
-
-    for (const linha of linhas) {
-      if (!linha.startsWith('data: ')) continue;
-      const dados = linha.slice('data: '.length).trim();
-      if (!dados) continue;
-
-      let evento: Record<string, unknown>;
-      try {
-        evento = JSON.parse(dados);
-      } catch {
-        continue;
-      }
-
-      if (
-        evento.type === 'content_block_delta' &&
-        typeof evento.delta === 'object' &&
-        evento.delta !== null &&
-        (evento.delta as Record<string, unknown>).type === 'text_delta'
-      ) {
-        texto += String((evento.delta as Record<string, unknown>).text ?? '');
-      }
-
-      if (evento.type === 'message_delta' && typeof evento.delta === 'object' && evento.delta !== null) {
-        const delta = evento.delta as Record<string, unknown>;
-        if (typeof delta.stop_reason === 'string') {
-          stopReason = delta.stop_reason;
-        }
-      }
-    }
-  }
-
-  if (stopReason === 'max_tokens') {
-    console.error('Resposta da IA foi cortada por atingir max_tokens.');
-  }
-
-  return texto;
-}
-
-function extrairJson(texto: string): string {
-  const semEspacos = texto.trim();
-  const fenceMatch = semEspacos.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return fenceMatch ? fenceMatch[1] : semEspacos;
 }
 
 function isCampoEtapaIA(item: unknown): boolean {
@@ -293,7 +194,7 @@ export async function gerarFunisComIA(
   const messages: ChatMessage[] = [{ role: 'user', content: conteudo }];
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
-    const textoResposta = await chamarAnthropic(messages, systemPrompt);
+    const textoResposta = await chamarAnthropic(messages, systemPrompt, MAX_TOKENS);
     const resultado = parseRespostaIA(textoResposta);
     if (resultado) return resultado;
 
@@ -306,5 +207,5 @@ export async function gerarFunisComIA(
     });
   }
 
-  throw new Error('A IA não retornou um JSON válido após nova tentativa.');
+  throw new ErroRespostaInvalidaIA();
 }

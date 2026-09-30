@@ -152,6 +152,38 @@ export type NotificacaoStatus = {
   updated_at: string;
 };
 
+export type IaOperacaoTipo = 'gerar_funil' | 'regenerar_etapa' | 'criar_funil_kommo';
+
+export type IaOperacaoStatus =
+  | 'aguardando'
+  | 'processando'
+  | 'concluido'
+  | 'falhou'
+  | 'resposta_invalida'
+  | 'cancelado'
+  | 'tentando_novamente';
+
+export type IaOperacao = {
+  id: string;
+  tipo_operacao: IaOperacaoTipo;
+  cliente_id: string | null;
+  mapeamento_id: string | null;
+  funil_id: string | null;
+  implementacao_id: string | null;
+  etapa_index: number | null;
+  user_id: string | null;
+  user_email: string | null;
+  status: IaOperacaoStatus;
+  tentativa: number;
+  modelo: string | null;
+  duracao_ms: number | null;
+  erro_codigo: string | null;
+  erro_mensagem_tecnica: string | null;
+  erro_mensagem_amigavel: string | null;
+  created_at: string;
+  finalizado_em: string | null;
+};
+
 export type ClienteObservacao = {
   id: string;
   cliente_id: string;
@@ -795,6 +827,12 @@ export type Database = {
         Update: Partial<NotificacaoStatus>;
         Relationships: [];
       };
+      ia_operacoes: {
+        Row: IaOperacao;
+        Insert: Partial<IaOperacao> & Pick<IaOperacao, 'tipo_operacao'>;
+        Update: Partial<IaOperacao>;
+        Relationships: [];
+      };
       consultores: {
         Row: Consultor;
         Insert: Partial<Consultor> & Pick<Consultor, 'nome' | 'email'>;
@@ -1055,6 +1093,30 @@ export type Database = {
       };
       marcar_todas_notificacoes_como_lidas: {
         Args: Record<PropertyKey, never>;
+        Returns: undefined;
+      };
+      registrar_inicio_ia_operacao: {
+        Args: {
+          p_tipo_operacao: IaOperacaoTipo;
+          p_cliente_id: string | null;
+          p_mapeamento_id: string | null;
+          p_funil_id: string | null;
+          p_implementacao_id: string | null;
+          p_etapa_index: number | null;
+          p_tentativa: number;
+          p_modelo: string | null;
+        };
+        Returns: string;
+      };
+      registrar_fim_ia_operacao: {
+        Args: {
+          p_id: string;
+          p_status: IaOperacaoStatus;
+          p_duracao_ms: number;
+          p_erro_codigo?: string | null;
+          p_erro_mensagem_tecnica?: string | null;
+          p_erro_mensagem_amigavel?: string | null;
+        };
         Returns: undefined;
       };
     };
