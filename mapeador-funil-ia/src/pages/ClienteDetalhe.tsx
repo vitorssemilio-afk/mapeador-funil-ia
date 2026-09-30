@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
@@ -194,10 +194,32 @@ type ItemHistorico = {
 
 const CICLOS_AUTOMACAO = ['Ciclo 2 — Automações I e Check-in 1', 'Ciclo 3 — Automações II e Check-in 2'];
 
+type AbaCliente =
+  | 'resumo'
+  | 'mapeamento'
+  | 'implementacao'
+  | 'reunioes'
+  | 'trial'
+  | 'informacoes'
+  | 'arquivos'
+  | 'historico';
+
+const ABAS_CLIENTE: AbaCliente[] = [
+  'resumo',
+  'mapeamento',
+  'implementacao',
+  'reunioes',
+  'trial',
+  'informacoes',
+  'arquivos',
+  'historico',
+];
+
 export function ClienteDetalhe() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [mapeamentoVendas, setMapeamentoVendas] = useState<Mapeamento | null>(null);
@@ -253,10 +275,14 @@ export function ClienteDetalhe() {
   const [resolvendoOcorrenciaId, setResolvendoOcorrenciaId] = useState<string | null>(null);
 
   // Aba ativa da central operacional — puramente de navegação/exibição,
-  // nenhuma lógica de dados depende dela.
-  const [aba, setAba] = useState<
-    'resumo' | 'mapeamento' | 'implementacao' | 'reunioes' | 'trial' | 'informacoes' | 'arquivos' | 'historico'
-  >('resumo');
+  // nenhuma lógica de dados depende dela. Aceita vir pré-selecionada por
+  // ?aba= na URL (usado pela Central de Notificações pra abrir direto no
+  // contexto certo), mas só na carga inicial — depois disso a navegação
+  // por clique manda, sem sincronizar de volta pra URL.
+  const abaInicial = searchParams.get('aba');
+  const [aba, setAba] = useState<AbaCliente>(
+    ABAS_CLIENTE.includes(abaInicial as AbaCliente) ? (abaInicial as AbaCliente) : 'resumo',
+  );
 
   const [versaoVendas, setVersaoVendas] = useState<FunilVersao | null>(null);
   const [versaoPosVenda, setVersaoPosVenda] = useState<FunilVersao | null>(null);
