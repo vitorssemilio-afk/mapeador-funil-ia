@@ -1,6 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import type { Consultor } from '../types/database';
+import type { Consultor, PapelConsultor } from '../types/database';
+
+const PAPEL_LABELS: Record<PapelConsultor, string> = {
+  administrador: 'Administrador',
+  consultor: 'Consultor',
+  consultor_apoio: 'Consultor de apoio',
+};
 
 type FormConsultor = {
   nome: string;
@@ -9,6 +15,7 @@ type FormConsultor = {
   cargo: string;
   avatar_url: string;
   ativo: boolean;
+  role: PapelConsultor;
 };
 
 const FORM_VAZIO: FormConsultor = {
@@ -18,6 +25,7 @@ const FORM_VAZIO: FormConsultor = {
   cargo: '',
   avatar_url: '',
   ativo: true,
+  role: 'consultor',
 };
 
 function paraForm(consultor: Consultor): FormConsultor {
@@ -28,6 +36,7 @@ function paraForm(consultor: Consultor): FormConsultor {
     cargo: consultor.cargo ?? '',
     avatar_url: consultor.avatar_url ?? '',
     ativo: consultor.ativo,
+    role: consultor.role,
   };
 }
 
@@ -38,6 +47,7 @@ function paraForm(consultor: Consultor): FormConsultor {
 // é desativar, não excluir.
 export function Consultores() {
   const [consultores, setConsultores] = useState<Consultor[]>([]);
+  const [souAdministrador, setSouAdministrador] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -62,6 +72,10 @@ export function Consultores() {
 
   useEffect(() => {
     carregar();
+    // Só o backend (RLS) de fato barra quem não é administrador — isso aqui
+    // só decide o que mostrar na tela, pra não confundir alguém com um erro
+    // de permissão ao tentar salvar.
+    supabase.rpc('sou_administrador').then(({ data }) => setSouAdministrador(data === true));
   }, []);
 
   function abrirNovo() {
@@ -96,6 +110,7 @@ export function Consultores() {
       cargo: form.cargo.trim() || null,
       avatar_url: form.avatar_url.trim() || null,
       ativo: form.ativo,
+      role: form.role,
     };
 
     const { error: saveError } = editandoId
@@ -149,9 +164,10 @@ export function Consultores() {
             Time que aparece nos seletores de consultor responsável/apoio das implementações. Um
             consultor já vinculado a alguma implementação não pode ser excluído (o banco recusa a
             exclusão) — use "Desativar" para tirá-lo de circulação sem perder o histórico.
+            {!souAdministrador && ' Gerenciar o time (criar, editar, desativar, excluir e definir papel) é restrito a administradores.'}
           </p>
         </div>
-        {!mostrarForm && (
+        {!mostrarForm && souAdministrador && (
           <button type="button" className="btn btn-primary" onClick={abrirNovo}>
             + Novo consultor
           </button>
@@ -209,6 +225,19 @@ export function Consultores() {
                 placeholder="https://..."
               />
             </label>
+            <label className="field">
+              <span>Papel</span>
+              <select
+                value={form.role}
+                onChange={(e) => setForm({ ...form, role: e.target.value as PapelConsultor })}
+              >
+                {Object.entries(PAPEL_LABELS).map(([valor, label]) => (
+                  <option key={valor} value={valor}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <label className="option-checkbox">
             <input
@@ -234,9 +263,11 @@ export function Consultores() {
       {!loading && consultores.length === 0 && !mostrarForm && (
         <div className="empty-state">
           <p>Nenhum consultor cadastrado ainda.</p>
-          <button type="button" className="btn btn-primary" onClick={abrirNovo}>
-            Cadastrar o primeiro consultor
-          </button>
+          {souAdministrador && (
+            <button type="button" className="btn btn-primary" onClick={abrirNovo}>
+              Cadastrar o primeiro consultor
+            </button>
+          )}
         </div>
       )}
 
@@ -250,8 +281,9 @@ export function Consultores() {
                 <th>E-mail</th>
                 <th>Telefone</th>
                 <th>Cargo</th>
+                <th>Papel</th>
                 <th>Status</th>
-                <th />
+                {souAdministrador && <th />}
               </tr>
             </thead>
             <tbody>
@@ -272,22 +304,25 @@ export function Consultores() {
                   <td>{c.email}</td>
                   <td>{c.telefone ?? '—'}</td>
                   <td>{c.cargo ?? '—'}</td>
+                  <td>{PAPEL_LABELS[c.role]}</td>
                   <td>
                     <span className={`status-badge status-tone-${c.ativo ? 'success' : 'danger'}`}>
                       {c.ativo ? 'Ativo' : 'Inativo'}
                     </span>
                   </td>
-                  <td className="table-actions">
-                    <button type="button" className="btn btn-secondary" onClick={() => abrirEdicao(c)}>
-                      Editar
-                    </button>{' '}
-                    <button type="button" className="btn btn-ghost" onClick={() => handleAlternarAtivo(c)}>
-                      {c.ativo ? 'Desativar' : 'Ativar'}
-                    </button>{' '}
-                    <button type="button" className="btn btn-ghost" onClick={() => handleExcluir(c)}>
-                      Excluir
-                    </button>
-                  </td>
+                  {souAdministrador && (
+                    <td className="table-actions">
+                      <button type="button" className="btn btn-secondary" onClick={() => abrirEdicao(c)}>
+                        Editar
+                      </button>{' '}
+                      <button type="button" className="btn btn-ghost" onClick={() => handleAlternarAtivo(c)}>
+                        {c.ativo ? 'Desativar' : 'Ativar'}
+                      </button>{' '}
+                      <button type="button" className="btn btn-ghost" onClick={() => handleExcluir(c)}>
+                        Excluir
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
