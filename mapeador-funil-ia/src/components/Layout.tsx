@@ -71,6 +71,9 @@ export function Layout() {
             <NavLink to="/campos-padrao" className={navLinkClass}>
               Campos Padrão
             </NavLink>
+            <NavLink to="/observabilidade-ia" className={navLinkClass}>
+              Observabilidade de IA
+            </NavLink>
           </nav>
         </div>
         <div className="topbar-user">

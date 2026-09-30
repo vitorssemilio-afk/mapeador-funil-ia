@@ -2,10 +2,30 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.110.8';
 import { formatRespostasTexto, formatValorPergunta } from '../../../src/data/formatRespostas.ts';
 import type { BlocoFormulario, FormularioTipo, Pergunta } from '../../../src/data/formSchema.ts';
 import type { EtapaFunil } from '../../../src/types/database.ts';
+import { ErroTimeoutIA, modeloAnthropicAtual } from '../_shared/anthropic.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { sincronizarLinhaGoogleSheets } from '../_shared/googleSheets.ts';
-import { gerarFunisComIA } from './ia.ts';
+import { ErroRespostaInvalidaIA, gerarFunisComIA } from './ia.ts';
 import { SYSTEM_PROMPT, SYSTEM_PROMPT_POS_VENDA } from './prompt.ts';
+
+// Mensagem amigável pro usuário — nunca expõe detalhe técnico (status HTTP,
+// stack trace, corpo de erro da Anthropic). O detalhe técnico vai só pro
+// log (console.error) e pra ia_operacoes.erro_mensagem_tecnica.
+function mensagemAmigavelErroIA(erro: unknown): { codigo: string; amigavel: string } {
+  if (erro instanceof ErroTimeoutIA) {
+    return { codigo: 'timeout', amigavel: 'A geração está demorando mais que o esperado. Tente novamente em instantes.' };
+  }
+  if (erro instanceof ErroRespostaInvalidaIA) {
+    return {
+      codigo: 'resposta_invalida',
+      amigavel: 'Não foi possível interpretar a resposta da IA. Nenhuma informação foi perdida — tente novamente.',
+    };
+  }
+  return {
+    codigo: 'erro_ia',
+    amigavel: 'Não conseguimos gerar o funil agora. Seus dados continuam salvos e você pode tentar novamente.',
+  };
+}
 
 // Não deixa a geração do funil falhar por causa da planilha — a integração
 // com o Sheets é um bônus, o funil em si é o que importa de verdade.
@@ -180,6 +200,24 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Mapeamento não encontrado.' }, 404);
   }
 
+  // Evita disparar duas gerações em paralelo pro mesmo mapeamento (clique
+  // duplo, aba duplicada) — usa o índice parcial em ia_operacoes.
+  const { data: operacaoEmAndamento } = await supabase
+    .from('ia_operacoes')
+    .select('id')
+    .eq('tipo_operacao', 'gerar_funil')
+    .eq('mapeamento_id', mapeamentoId)
+    .in('status', ['processando', 'tentando_novamente'])
+    .limit(1)
+    .maybeSingle();
+
+  if (operacaoEmAndamento) {
+    return jsonResponse(
+      { error: 'Já existe uma geração em andamento para este mapeamento. Aguarde ela terminar.' },
+      409,
+    );
+  }
+
   await supabase.from('mapeamentos').update({ status: 'processando_ia' }).eq('id', mapeamentoId);
 
   const tipo: FormularioTipo = (mapeamento.tipo as FormularioTipo | undefined) ?? 'vendas';
@@ -267,6 +305,19 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  const modelo = modeloAnthropicAtual();
+  const inicioMs = Date.now();
+  const { data: iaOperacaoId } = await supabase.rpc('registrar_inicio_ia_operacao', {
+    p_tipo_operacao: 'gerar_funil',
+    p_cliente_id: (mapeamento.cliente_id as string | null) ?? null,
+    p_mapeamento_id: mapeamentoId,
+    p_funil_id: null,
+    p_implementacao_id: null,
+    p_etapa_index: null,
+    p_tentativa: 1,
+    p_modelo: modelo,
+  });
+
   let resultado;
   try {
     resultado = await gerarFunisComIA(
@@ -279,6 +330,17 @@ Deno.serve(async (req: Request) => {
     );
   } catch (iaError) {
     console.error('Erro ao gerar funil com IA', iaError);
+    const { codigo, amigavel } = mensagemAmigavelErroIA(iaError);
+    if (iaOperacaoId) {
+      await supabase.rpc('registrar_fim_ia_operacao', {
+        p_id: iaOperacaoId,
+        p_status: codigo === 'resposta_invalida' ? 'resposta_invalida' : 'falhou',
+        p_duracao_ms: Date.now() - inicioMs,
+        p_erro_codigo: codigo,
+        p_erro_mensagem_tecnica: String(iaError instanceof Error ? iaError.message : iaError),
+        p_erro_mensagem_amigavel: amigavel,
+      });
+    }
     await supabase
       .from('mapeamentos')
       .update({
@@ -289,7 +351,7 @@ Deno.serve(async (req: Request) => {
         },
       })
       .eq('id', mapeamentoId);
-    return jsonResponse({ error: 'Falha ao gerar funil com IA.' }, 502);
+    return jsonResponse({ error: amigavel }, 502);
   }
 
   const respostasBase = { ...(mapeamento.respostas as Record<string, unknown> | null) };
@@ -303,6 +365,14 @@ Deno.serve(async (req: Request) => {
         respostas: { ...respostasBase, _perguntas_ia: resultado.perguntas },
       })
       .eq('id', mapeamentoId);
+
+    if (iaOperacaoId) {
+      await supabase.rpc('registrar_fim_ia_operacao', {
+        p_id: iaOperacaoId,
+        p_status: 'concluido',
+        p_duracao_ms: Date.now() - inicioMs,
+      });
+    }
 
     return jsonResponse({ ok: true, perguntas: resultado.perguntas });
   }
@@ -335,8 +405,19 @@ Deno.serve(async (req: Request) => {
 
   if (insertError) {
     console.error('Erro ao salvar funis_gerados', insertError);
+    if (iaOperacaoId) {
+      await supabase.rpc('registrar_fim_ia_operacao', {
+        p_id: iaOperacaoId,
+        p_status: 'falhou',
+        p_duracao_ms: Date.now() - inicioMs,
+        p_erro_codigo: 'erro_gravacao',
+        p_erro_mensagem_tecnica: insertError.message,
+        p_erro_mensagem_amigavel:
+          'Não conseguimos salvar o funil gerado agora. Seus dados continuam salvos e você pode tentar novamente.',
+      });
+    }
     await supabase.from('mapeamentos').update({ status: 'erro' }).eq('id', mapeamentoId);
-    return jsonResponse({ error: 'Não foi possível concluir esta operação.' }, 500);
+    return jsonResponse({ error: 'Não foi possível concluir esta operação. Seus dados continuam salvos — tente novamente.' }, 500);
   }
 
   const { error: metaError } = await supabase.from('geracoes_meta').insert({
@@ -376,6 +457,14 @@ Deno.serve(async (req: Request) => {
     .eq('id', mapeamentoId)
     .select()
     .single();
+
+  if (iaOperacaoId) {
+    await supabase.rpc('registrar_fim_ia_operacao', {
+      p_id: iaOperacaoId,
+      p_status: 'concluido',
+      p_duracao_ms: Date.now() - inicioMs,
+    });
+  }
 
   if (mapeamentoConcluido && tipo === 'vendas') {
     await sincronizarComGoogleSheetsSeConfigurado(mapeamentoConcluido, blocos);

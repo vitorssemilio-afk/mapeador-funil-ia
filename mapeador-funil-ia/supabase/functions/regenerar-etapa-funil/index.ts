@@ -5,6 +5,7 @@
 // nunca grava no banco — só devolve o JSON da etapa sugerida.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.110.8';
 import type { EtapaFunil } from '../../../src/types/database.ts';
+import { chamarAnthropic, ErroTimeoutIA, extrairJson, modeloAnthropicAtual, type ChatMessage } from '../_shared/anthropic.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -14,72 +15,14 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
+const MAX_TENTATIVAS = 2;
+const MAX_TOKENS = 8000;
 
-async function chamarAnthropic(prompt: string, systemPrompt: string): Promise<string> {
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada nas secrets da função.');
-
-  const model = Deno.env.get('ANTHROPIC_MODEL') || 'claude-sonnet-5';
-
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 8000,
-      thinking: { type: 'disabled' },
-      system: systemPrompt,
-      messages: [{ role: 'user', content: prompt }],
-      stream: true,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Anthropic API respondeu ${response.status}: ${await response.text()}`);
+class ErroRespostaInvalidaEtapa extends Error {
+  constructor() {
+    super('A IA não retornou um JSON válido após nova tentativa.');
+    this.name = 'ErroRespostaInvalidaEtapa';
   }
-
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Resposta da IA sem corpo para leitura em stream.');
-
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let texto = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const linhas = buffer.split('\n');
-    buffer = linhas.pop() ?? '';
-    for (const linha of linhas) {
-      if (!linha.startsWith('data: ')) continue;
-      const dados = linha.slice('data: '.length).trim();
-      if (!dados) continue;
-      try {
-        const evento = JSON.parse(dados);
-        if (evento.type === 'content_block_delta' && evento.delta?.type === 'text_delta') {
-          texto += String(evento.delta.text ?? '');
-        }
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  if (!texto) throw new Error('Resposta da IA não contém texto.');
-  return texto;
-}
-
-function extrairJson(texto: string): string {
-  const semEspacos = texto.trim();
-  const fenceMatch = semEspacos.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return fenceMatch ? fenceMatch[1] : semEspacos;
 }
 
 function isCampoEtapaIA(item: unknown): boolean {
@@ -136,6 +79,47 @@ Responda SOMENTE com um objeto JSON (sem markdown, sem texto fora do JSON) no fo
 
 Mantenha o gatilho_entrada coerente com o gatilho_saida da etapa anterior (se houver) e o gatilho_saida coerente com o gatilho_entrada da próxima (se houver) — a etapa precisa continuar encaixando no fluxo do funil como um todo, mesmo sendo reformulada.`;
 
+async function regenerarEtapaComIA(prompt: string): Promise<EtapaFunil> {
+  const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
+
+  for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
+    const textoResposta = await chamarAnthropic(messages, SYSTEM_PROMPT, MAX_TOKENS);
+    let json: unknown;
+    try {
+      json = JSON.parse(extrairJson(textoResposta));
+    } catch {
+      json = null;
+    }
+    if (json && isEtapaIA(json)) return json;
+
+    console.error('Resposta da IA não era uma etapa válida:', textoResposta.slice(0, 3000));
+    messages.push({ role: 'assistant', content: textoResposta });
+    messages.push({
+      role: 'user',
+      content:
+        'Sua resposta anterior não era um JSON válido no formato pedido. Responda apenas com o JSON da etapa, sem texto adicional.',
+    });
+  }
+
+  throw new ErroRespostaInvalidaEtapa();
+}
+
+function mensagemAmigavelErro(erro: unknown): { codigo: string; amigavel: string } {
+  if (erro instanceof ErroTimeoutIA) {
+    return { codigo: 'timeout', amigavel: 'A geração está demorando mais que o esperado. Tente novamente em instantes.' };
+  }
+  if (erro instanceof ErroRespostaInvalidaEtapa) {
+    return {
+      codigo: 'resposta_invalida',
+      amigavel: 'Não foi possível interpretar a resposta da IA. A etapa atual não foi alterada — tente novamente.',
+    };
+  }
+  return {
+    codigo: 'erro_ia',
+    amigavel: 'Não foi possível regenerar esta etapa agora. A etapa atual não foi alterada — tente novamente em instantes.',
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -171,7 +155,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: funil, error: funilError } = await supabase
     .from('funis_gerados')
-    .select('id, nome_funil, tipo_funil, etapas')
+    .select('id, mapeamento_id, nome_funil, tipo_funil, etapas')
     .eq('id', funilId)
     .single();
 
@@ -179,10 +163,35 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ error: 'Funil não encontrado.' }, 404);
   }
 
+  const { data: mapeamentoDoFunil } = await supabase
+    .from('mapeamentos')
+    .select('cliente_id')
+    .eq('id', funil.mapeamento_id as string)
+    .maybeSingle();
+  const clienteId = mapeamentoDoFunil?.cliente_id ?? null;
+
   const etapas = funil.etapas as EtapaFunil[];
   const etapaAlvo = etapas[etapaIndex];
   if (!etapaAlvo) {
     return jsonResponse({ error: 'Etapa não encontrada nesse índice.' }, 404);
+  }
+
+  // Evita duas regenerações simultâneas da mesma etapa (clique duplo).
+  const { data: operacaoEmAndamento } = await supabase
+    .from('ia_operacoes')
+    .select('id')
+    .eq('tipo_operacao', 'regenerar_etapa')
+    .eq('funil_id', funilId)
+    .eq('etapa_index', etapaIndex)
+    .in('status', ['processando', 'tentando_novamente'])
+    .limit(1)
+    .maybeSingle();
+
+  if (operacaoEmAndamento) {
+    return jsonResponse(
+      { error: 'Já existe uma regeneração em andamento para esta etapa. Aguarde ela terminar.' },
+      409,
+    );
   }
 
   const contexto = etapas
@@ -202,15 +211,41 @@ ${JSON.stringify(etapaAlvo, null, 2)}
 
 ${instrucoesExtras ? `Instruções específicas para esta etapa: ${instrucoesExtras}` : 'Sem instruções extras — refaça com o mesmo objetivo geral, melhorando clareza e completude.'}`;
 
+  const inicioMs = Date.now();
+  const { data: iaOperacaoId } = await supabase.rpc('registrar_inicio_ia_operacao', {
+    p_tipo_operacao: 'regenerar_etapa',
+    p_cliente_id: clienteId,
+    p_mapeamento_id: (funil.mapeamento_id as string | null) ?? null,
+    p_funil_id: funilId,
+    p_implementacao_id: null,
+    p_etapa_index: etapaIndex,
+    p_tentativa: 1,
+    p_modelo: modeloAnthropicAtual(),
+  });
+
   try {
-    const respostaTexto = await chamarAnthropic(prompt, SYSTEM_PROMPT);
-    const json = JSON.parse(extrairJson(respostaTexto));
-    if (!isEtapaIA(json)) {
-      return jsonResponse({ error: 'A IA respondeu num formato inesperado. Tente novamente.' }, 502);
+    const etapa = await regenerarEtapaComIA(prompt);
+    if (iaOperacaoId) {
+      await supabase.rpc('registrar_fim_ia_operacao', {
+        p_id: iaOperacaoId,
+        p_status: 'concluido',
+        p_duracao_ms: Date.now() - inicioMs,
+      });
     }
-    return jsonResponse({ etapa: json });
+    return jsonResponse({ etapa });
   } catch (err) {
     console.error('Erro ao regenerar etapa', err);
-    return jsonResponse({ error: 'Não foi possível regenerar esta etapa. Tente novamente em instantes.' }, 500);
+    const { codigo, amigavel } = mensagemAmigavelErro(err);
+    if (iaOperacaoId) {
+      await supabase.rpc('registrar_fim_ia_operacao', {
+        p_id: iaOperacaoId,
+        p_status: codigo === 'resposta_invalida' ? 'resposta_invalida' : 'falhou',
+        p_duracao_ms: Date.now() - inicioMs,
+        p_erro_codigo: codigo,
+        p_erro_mensagem_tecnica: String(err instanceof Error ? err.message : err),
+        p_erro_mensagem_amigavel: amigavel,
+      });
+    }
+    return jsonResponse({ error: amigavel }, 502);
   }
 });

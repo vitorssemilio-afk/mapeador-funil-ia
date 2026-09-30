@@ -47,6 +47,7 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
   const [respostas, setRespostas] = useState<Record<string, unknown>>(mapeamento.respostas ?? {});
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [submitting, setSubmitting] = useState(false);
+  const [submitDemorando, setSubmitDemorando] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -148,7 +149,9 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
       saveTimeout.current = null;
     }
     setSubmitting(true);
+    setSubmitDemorando(false);
     setSubmitError(null);
+    const avisoDemoraId = setTimeout(() => setSubmitDemorando(true), 20000);
 
     await persist(respostasRef.current);
 
@@ -157,9 +160,11 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
     });
 
     if (fnError) {
+      clearTimeout(avisoDemoraId);
       setSubmitting(false);
+      setSubmitDemorando(false);
       const mensagemDetalhada = await extrairMensagemErroEdgeFunction(fnError);
-      setSubmitError(mensagemDetalhada ?? 'Não foi possível gerar o funil. Tente novamente em instantes.');
+      setSubmitError(mensagemDetalhada ?? 'Não foi possível gerar o funil. Seus dados continuam salvos — tente novamente em instantes.');
       return;
     }
 
@@ -169,7 +174,9 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
       .eq('id', mapeamento.id)
       .single();
 
+    clearTimeout(avisoDemoraId);
     setSubmitting(false);
+    setSubmitDemorando(false);
 
     if (refetchError || !atualizado) {
       setSubmitError('O funil foi gerado, mas não foi possível atualizar a tela. Recarregue a página.');
@@ -223,7 +230,11 @@ export function MapeamentoWizard({ mapeamento, onStatusChange, iniciarNoResumo =
         )}
 
         {isResumo && submitting && (
-          <p className="field-hint">Gerando seu funil com IA, isso pode levar até 1 minuto…</p>
+          <p className="field-hint">
+            {submitDemorando
+              ? 'A geração está demorando mais que o esperado. Continue aguardando — seus dados já estão salvos.'
+              : 'Gerando seu funil com IA, isso pode levar até 1 minuto…'}
+          </p>
         )}
         {submitError && <p className="form-error">{submitError}</p>}
 

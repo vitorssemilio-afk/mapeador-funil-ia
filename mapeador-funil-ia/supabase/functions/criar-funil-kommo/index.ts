@@ -94,6 +94,24 @@ Deno.serve(async (req: Request) => {
     );
   }
 
+  const { data: implementacao } = await supabase
+    .from('implementacoes_crm')
+    .select('cliente_id')
+    .eq('id', implementacaoId)
+    .maybeSingle();
+
+  const inicioMs = Date.now();
+  const { data: iaOperacaoId } = await supabase.rpc('registrar_inicio_ia_operacao', {
+    p_tipo_operacao: 'criar_funil_kommo',
+    p_cliente_id: implementacao?.cliente_id ?? null,
+    p_mapeamento_id: null,
+    p_funil_id: funilId,
+    p_implementacao_id: implementacaoId,
+    p_etapa_index: null,
+    p_tentativa: 1,
+    p_modelo: null,
+  });
+
   let resultado;
   try {
     resultado = await criarFunilNoKommo(
@@ -104,10 +122,18 @@ Deno.serve(async (req: Request) => {
     );
   } catch (kommoError) {
     console.error('Erro ao criar funil no Kommo', kommoError);
-    return jsonResponse(
-      { error: kommoError instanceof Error ? kommoError.message : String(kommoError) },
-      502,
-    );
+    const amigavel = 'Não foi possível criar o funil no Kommo agora. Nenhuma alteração foi salva — verifique a conexão e tente novamente.';
+    if (iaOperacaoId) {
+      await supabase.rpc('registrar_fim_ia_operacao', {
+        p_id: iaOperacaoId,
+        p_status: 'falhou',
+        p_duracao_ms: Date.now() - inicioMs,
+        p_erro_codigo: 'erro_kommo',
+        p_erro_mensagem_tecnica: String(kommoError instanceof Error ? kommoError.message : kommoError),
+        p_erro_mensagem_amigavel: amigavel,
+      });
+    }
+    return jsonResponse({ error: amigavel }, 502);
   }
 
   const { data: userData } = await supabase.auth.getUser();
@@ -137,9 +163,17 @@ Deno.serve(async (req: Request) => {
       console.error('Erro ao tentar apagar o funil padrão do Kommo', limpezaError);
       funilPadrao = {
         apagado: false,
-        motivo: limpezaError instanceof Error ? limpezaError.message : String(limpezaError),
+        motivo: 'Não foi possível remover o funil padrão automaticamente — pode ser removido manualmente no Kommo.',
       };
     }
+  }
+
+  if (iaOperacaoId) {
+    await supabase.rpc('registrar_fim_ia_operacao', {
+      p_id: iaOperacaoId,
+      p_status: 'concluido',
+      p_duracao_ms: Date.now() - inicioMs,
+    });
   }
 
   return jsonResponse({ ok: true, ...resultado, funil_padrao: funilPadrao });

@@ -53,6 +53,7 @@ export function Mapeamento() {
   const [mostrarRegenerar, setMostrarRegenerar] = useState(false);
   const [instrucoesExtras, setInstrucoesExtras] = useState('');
   const [regenerando, setRegenerando] = useState(false);
+  const [regenerarDemorando, setRegenerarDemorando] = useState(false);
   const [regenerarError, setRegenerarError] = useState<string | null>(null);
   const [excluindo, setExcluindo] = useState(false);
   const [implementacaoExistente, setImplementacaoExistente] = useState<ImplementacaoCrm | null>(null);
@@ -403,16 +404,20 @@ export function Mapeamento() {
   async function handleRegenerar() {
     if (!mapeamento || !instrucoesExtras.trim()) return;
     setRegenerando(true);
+    setRegenerarDemorando(false);
     setRegenerarError(null);
+    const avisoDemoraId = setTimeout(() => setRegenerarDemorando(true), 20000);
 
     const { error: fnError } = await supabase.functions.invoke('gerar-funil', {
       body: { mapeamento_id: mapeamento.id, instrucoes_extras: instrucoesExtras.trim() },
     });
 
     if (fnError) {
+      clearTimeout(avisoDemoraId);
       setRegenerando(false);
+      setRegenerarDemorando(false);
       const mensagemDetalhada = await extrairMensagemErroEdgeFunction(fnError);
-      setRegenerarError(mensagemDetalhada ?? 'Não foi possível gerar uma nova versão. Tente novamente em instantes.');
+      setRegenerarError(mensagemDetalhada ?? 'Não foi possível gerar uma nova versão. Seus dados continuam salvos — tente novamente em instantes.');
       return;
     }
 
@@ -421,6 +426,9 @@ export function Mapeamento() {
       .select('*')
       .eq('id', mapeamento.id)
       .single();
+
+    clearTimeout(avisoDemoraId);
+    setRegenerarDemorando(false);
 
     if (refetchError || !atualizado) {
       setRegenerando(false);
@@ -721,7 +729,13 @@ export function Mapeamento() {
               autoFocus
             />
           </label>
-          {regenerando && <p className="field-hint">Gerando funil, isso pode levar até 1 minuto…</p>}
+          {regenerando && (
+            <p className="field-hint">
+              {regenerarDemorando
+                ? 'A geração está demorando mais que o esperado. Continue aguardando — seus dados já estão salvos.'
+                : 'Gerando funil, isso pode levar até 1 minuto…'}
+            </p>
+          )}
           {regenerarError && <p className="form-error">{regenerarError}</p>}
           <button
             type="button"
@@ -964,7 +978,11 @@ export function Mapeamento() {
                 />
               </label>
               {regenerando && (
-                <p className="field-hint">Gerando nova versão, isso pode levar até 1 minuto…</p>
+                <p className="field-hint">
+                  {regenerarDemorando
+                    ? 'A geração está demorando mais que o esperado. Continue aguardando — seus dados já estão salvos.'
+                    : 'Gerando nova versão, isso pode levar até 1 minuto…'}
+                </p>
               )}
               {regenerarError && <p className="form-error">{regenerarError}</p>}
               <div className="wizard-actions">

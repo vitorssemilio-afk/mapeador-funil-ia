@@ -4,6 +4,7 @@ import {
   textoCamposPorEntidade,
   valorEtapaParaTexto,
 } from '../../data/etapaCampos';
+import { extrairMensagemErroEdgeFunction } from '../../lib/edgeFunctionError';
 import { supabase } from '../../lib/supabaseClient';
 import type { CampoEtapa, EtapaFunil } from '../../types/database';
 
@@ -88,6 +89,7 @@ export function EtapaCard({
   onAceitarRegeneracao,
 }: Props) {
   const [regenerando, setRegenerando] = useState(false);
+  const [regenerarDemorando, setRegenerarDemorando] = useState(false);
   const [regenerarAberto, setRegenerarAberto] = useState(false);
   const [instrucoesRegerar, setInstrucoesRegerar] = useState('');
   const [erroRegerar, setErroRegerar] = useState<string | null>(null);
@@ -95,15 +97,22 @@ export function EtapaCard({
 
   async function handleRegenerar() {
     setRegenerando(true);
+    setRegenerarDemorando(false);
     setErroRegerar(null);
+    const avisoDemoraId = setTimeout(() => setRegenerarDemorando(true), 20000);
     const { data, error } = await supabase.functions.invoke<{ etapa?: EtapaFunil; error?: string }>(
       'regenerar-etapa-funil',
       { body: { funil_id: funilId, etapa_index: index, instrucoes_extras: instrucoesRegerar.trim() } },
     );
+    clearTimeout(avisoDemoraId);
     setRegenerando(false);
+    setRegenerarDemorando(false);
 
     if (error || !data?.etapa) {
-      setErroRegerar(data?.error ?? error?.message ?? 'Não foi possível regenerar esta etapa.');
+      const mensagemDetalhada = error ? await extrairMensagemErroEdgeFunction(error) : null;
+      setErroRegerar(
+        data?.error ?? mensagemDetalhada ?? 'Não foi possível regenerar esta etapa. Tente novamente em instantes.',
+      );
       return;
     }
     setSugestao(data.etapa);
@@ -231,6 +240,9 @@ export function EtapaCard({
                 />
               </label>
               {erroRegerar && <p className="form-error">{erroRegerar}</p>}
+              {regenerarDemorando && (
+                <p className="field-hint">A geração está demorando mais que o esperado. Continue aguardando ou tente novamente mais tarde.</p>
+              )}
               <div className="wizard-actions">
                 <button
                   type="button"

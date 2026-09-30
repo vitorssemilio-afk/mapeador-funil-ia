@@ -20,6 +20,7 @@ import { ImplementacoesCrm } from './pages/ImplementacoesCrm';
 import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
 import { NovoCliente } from './pages/NovoCliente';
+import { ObservabilidadeIA } from './pages/ObservabilidadeIA';
 import { RelatorioFunil } from './pages/RelatorioFunil';
 import { RelatorioRespostas } from './pages/RelatorioRespostas';
 import { RespostasFormulario } from './pages/RespostasFormulario';
@@ -69,6 +70,7 @@ function App() {
               <Route path="/formulario" element={<FormularioAdmin />} />
               <Route path="/implementacoes" element={<ImplementacoesCrm />} />
               <Route path="/consultores" element={<Consultores />} />
+              <Route path="/observabilidade-ia" element={<ObservabilidadeIA />} />
               <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
               <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
               <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
