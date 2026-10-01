@@ -477,6 +477,14 @@ img.brand-mark {
   background: var(--color-success);
 }
 
+/* ── Dashboard Gerencial: barra inline numa célula de tabela ── */
+.table-cell-com-barra {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 /* ── Relatório de Respostas: barras de frequência ── */
 .freq-bloco {
   margin-bottom: 28px;
