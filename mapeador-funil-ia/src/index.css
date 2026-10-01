@@ -2423,7 +2423,8 @@ img.auth-logo {
 .timeline-marcos li {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 8px 12px;
   border-radius: var(--radius-sm);
   background: var(--color-surface-raised);

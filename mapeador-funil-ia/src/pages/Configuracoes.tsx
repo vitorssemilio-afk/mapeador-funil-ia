@@ -1296,6 +1296,10 @@ export function Configuracoes() {
               disabled={!souAdministrador}
               onChange={(e) => setFormIA({ ...formIA, temperatura: e.target.value })}
             />
+            <span className="field-hint">
+              Controla o quanto a IA varia a resposta. Mais perto de 0 = respostas mais previsíveis e
+              consistentes entre gerações; mais perto de 1 = respostas mais variadas. Na dúvida, deixe em branco.
+            </span>
           </label>
           <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <input
@@ -1306,6 +1310,10 @@ export function Configuracoes() {
             />
             <span>Permitir que a IA faça perguntas de esclarecimento antes de gerar o funil</span>
           </label>
+          <p className="field-hint">
+            Desligado, a IA nunca para pra perguntar — ela gera o funil direto, assumindo o cenário mais provável
+            quando faltar alguma informação.
+          </p>
           <label className="field">
             <span>Etiqueta da versão do prompt (opcional, só informativo)</span>
             <input
