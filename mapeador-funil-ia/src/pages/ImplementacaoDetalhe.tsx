@@ -241,7 +241,7 @@ const ATIVIDADES_FORA_KOMMO_LABELS: Record<AtividadesForaKommoCheckpoint, string
 type FormGeral = {
   nome_cliente: string;
   consultor_responsavel_id: string;
-  consultor_apoio_id: string;
+  consultor_adicional_id: string;
   stakeholder_decisor: string;
   status: ImplementacaoStatus;
   conta_criada_via_v4: boolean;
@@ -290,7 +290,7 @@ function paraFormGeral(impl: ImplementacaoCrm): FormGeral {
   return {
     nome_cliente: impl.nome_cliente,
     consultor_responsavel_id: impl.consultor_responsavel_id ?? '',
-    consultor_apoio_id: impl.consultor_apoio_id ?? '',
+    consultor_adicional_id: impl.consultor_adicional_id ?? '',
     stakeholder_decisor: impl.stakeholder_decisor ?? '',
     status: impl.status,
     conta_criada_via_v4: impl.conta_criada_via_v4,
@@ -984,7 +984,7 @@ export function ImplementacaoDetalhe() {
       .from('implementacoes_crm')
       .update({
         nome_cliente: formGeral.nome_cliente.trim(),
-        consultor_apoio_id: formGeral.consultor_apoio_id || null,
+        consultor_adicional_id: formGeral.consultor_adicional_id || null,
         stakeholder_decisor: formGeral.stakeholder_decisor.trim() || null,
         status: formGeral.status,
         conta_criada_via_v4: formGeral.conta_criada_via_v4,
@@ -2321,10 +2321,10 @@ export function ImplementacaoDetalhe() {
               )}
 
               <label className="field">
-                <span>Consultor de apoio (opcional)</span>
+                <span>Consultor adicional (opcional)</span>
                 <select
-                  value={formGeral.consultor_apoio_id}
-                  onChange={(e) => setFormGeral({ ...formGeral, consultor_apoio_id: e.target.value })}
+                  value={formGeral.consultor_adicional_id}
+                  onChange={(e) => setFormGeral({ ...formGeral, consultor_adicional_id: e.target.value })}
                 >
                   <option value="">Nenhum</option>
                   {consultores.map((c) => (
@@ -2585,56 +2585,55 @@ export function ImplementacaoDetalhe() {
 
             {mensagemSucessoKommo && <p className="form-info">{mensagemSucessoKommo}</p>}
 
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Funil</th>
-                    <th>Status no Kommo</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {funisDoMapeamento.map((funil) => {
-                    const criacao = criacoesKommo[funil.id];
-                    return (
-                      <tr key={funil.id}>
-                        <td>{funil.nome_funil}</td>
-                        <td>
-                          {criacao
-                            ? `Criado (pipeline ${criacao.kommo_pipeline_id}) em ${new Date(criacao.criado_em).toLocaleString('pt-BR')}`
-                            : 'Ainda não criado'}
-                        </td>
-                        <td className="table-actions">
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => handleCriarFunilNoKommo(funil)}
-                            disabled={criandoFunilId === funil.id || !credencialKommoMeta}
-                            title={
-                              !credencialKommoMeta ? 'Cadastre a credencial de API acima primeiro' : undefined
-                            }
-                          >
-                            {criandoFunilId === funil.id
-                              ? 'Criando…'
-                              : criacao
-                                ? 'Criar de novo'
-                                : 'Criar no Kommo'}
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {funisDoMapeamento.length === 0 && (
+            {funisDoMapeamento.length === 0 ? (
+              <div className="empty-state">
+                <p>O mapeamento de origem ainda não tem funil gerado.</p>
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
                     <tr>
-                      <td colSpan={3} className="field-hint">
-                        O mapeamento de origem ainda não tem funil gerado.
-                      </td>
+                      <th>Funil</th>
+                      <th>Status no Kommo</th>
+                      <th />
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {funisDoMapeamento.map((funil) => {
+                      const criacao = criacoesKommo[funil.id];
+                      return (
+                        <tr key={funil.id}>
+                          <td>{funil.nome_funil}</td>
+                          <td>
+                            {criacao
+                              ? `Criado (pipeline ${criacao.kommo_pipeline_id}) em ${new Date(criacao.criado_em).toLocaleString('pt-BR')}`
+                              : 'Ainda não criado'}
+                          </td>
+                          <td className="table-actions">
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => handleCriarFunilNoKommo(funil)}
+                              disabled={criandoFunilId === funil.id || !credencialKommoMeta}
+                              title={
+                                !credencialKommoMeta ? 'Cadastre a credencial de API acima primeiro' : undefined
+                              }
+                            >
+                              {criandoFunilId === funil.id
+                                ? 'Criando…'
+                                : criacao
+                                  ? 'Criar de novo'
+                                  : 'Criar no Kommo'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </>
       )}

@@ -1246,8 +1246,8 @@ export function ClienteDetalhe() {
               <p>{resumo.consultor ?? '—'}</p>
             </div>
             <div>
-              <span className="etapa-card-label">Consultor de apoio</span>
-              <p>{resumo.consultorApoio ?? '—'}</p>
+              <span className="etapa-card-label">Consultor adicional</span>
+              <p>{resumo.consultorAdicional ?? '—'}</p>
             </div>
             <div>
               <span className="etapa-card-label">Fase atual</span>

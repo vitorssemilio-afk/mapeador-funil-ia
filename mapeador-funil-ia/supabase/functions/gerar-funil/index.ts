@@ -430,6 +430,7 @@ Deno.serve(async (req: Request) => {
     semanas_estimadas: resultado.estimativa?.semanas_estimadas ?? null,
     observacao_estimativa: resultado.estimativa?.observacao ?? null,
     indicadores_dashboard: resultado.indicadores_dashboard,
+    classificacao_modelo_negocio: resultado.classificacao_modelo_negocio,
   });
 
   // Versionamento (ver migration 0045) — uma linha por versão, com quem

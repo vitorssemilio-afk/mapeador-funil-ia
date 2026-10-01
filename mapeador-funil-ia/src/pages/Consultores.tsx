@@ -41,7 +41,7 @@ function paraForm(consultor: Consultor): FormConsultor {
 }
 
 // CRUD do time de consultores — quem aparece nos seletores de "Consultor
-// responsável"/"Consultor de apoio" na implementação de CRM. Excluir um
+// responsável"/"Consultor adicional" na implementação de CRM. Excluir um
 // consultor já vinculado a alguma implementação é barrado pelo próprio banco
 // (FK sem "on delete"), então o caminho normal pra tirar alguém de circulação
 // é desativar, não excluir.

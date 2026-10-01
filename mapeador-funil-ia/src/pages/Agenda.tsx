@@ -44,6 +44,7 @@ function formatarData(item: ItemAgendaOperacional): string {
 export function Agenda() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [mapeamentosVendas, setMapeamentosVendas] = useState<Mapeamento[]>([]);
+  const [mapeamentosPosVenda, setMapeamentosPosVenda] = useState<Mapeamento[]>([]);
   const [implementacoes, setImplementacoes] = useState<ImplementacaoCrm[]>([]);
   const [atividades, setAtividades] = useState<AtividadeCronograma[]>([]);
   const [statusRows, setStatusRows] = useState<AtividadeStatusRow[]>([]);
@@ -62,6 +63,7 @@ export function Agenda() {
     const [
       { data: clientesData, error: clientesError },
       { data: mapeamentosData, error: mapeamentosError },
+      { data: mapeamentosPosVendaData },
       { data: implementacoesData, error: implementacoesError },
       { data: atividadesData, error: atividadesError },
       { data: statusRowsData, error: statusRowsError },
@@ -72,6 +74,7 @@ export function Agenda() {
     ] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('mapeamentos').select('*').eq('tipo', 'vendas').order('created_at', { ascending: false }),
+      supabase.from('mapeamentos').select('*').eq('tipo', 'pos_venda').order('created_at', { ascending: false }),
       supabase.from('implementacoes_crm').select('*'),
       supabase.from('atividades_cronograma').select('*'),
       supabase.from('atividades_status').select('*'),
@@ -91,6 +94,7 @@ export function Agenda() {
 
     setClientes(clientesData ?? []);
     setMapeamentosVendas(mapeamentosData ?? []);
+    setMapeamentosPosVenda(mapeamentosPosVendaData ?? []);
     setImplementacoes(implementacoesData ?? []);
     setAtividades(atividadesData ?? []);
     setStatusRows(statusRowsData ?? []);
@@ -112,6 +116,7 @@ export function Agenda() {
       construirAgendaOperacional({
         clientes,
         mapeamentosVendas,
+        mapeamentosPosVenda,
         implementacoes,
         atividades,
         atividadesStatus: statusRows,
@@ -124,6 +129,7 @@ export function Agenda() {
     [
       clientes,
       mapeamentosVendas,
+      mapeamentosPosVenda,
       implementacoes,
       atividades,
       statusRows,

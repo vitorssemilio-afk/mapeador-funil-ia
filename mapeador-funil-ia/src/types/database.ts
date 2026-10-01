@@ -336,6 +336,7 @@ export type GeracaoMeta = {
   semanas_estimadas: number | null;
   observacao_estimativa: string | null;
   indicadores_dashboard: string[];
+  classificacao_modelo_negocio: string | null;
   created_at: string;
 };
 
@@ -453,7 +454,7 @@ export type ImplementacaoCrm = {
   // referência (ver migration 0040), não usado por código novo.
   consultor_responsavel_texto_legado: string | null;
   consultor_responsavel_id: string | null;
-  consultor_apoio_id: string | null;
+  consultor_adicional_id: string | null;
   stakeholder_decisor: string | null;
   status: ImplementacaoStatus;
   conta_criada_via_v4: boolean;

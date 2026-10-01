@@ -181,7 +181,11 @@ function calcularJanelaCiclo(
     return { diaDesdeKickoff: null, foraDaJanelaDoCiclo: false, diasAcimaDaJanela: 0 };
   }
 
-  const diaDesdeKickoff = diferencaEmDias(dataReferencia, new Date(kickoffRealizadoEm));
+  // P3-B5: +1 pra usar a mesma convenção 1-indexada de calcularDiaCiclo (dia
+  // do kickoff = Dia 1). Sem isso, uma atividade na borda do ciclo (ex:
+  // Dia 11, já fora do Ciclo 1 que termina no Dia 10) não era sinalizada
+  // como fora da janela, porque a diferença de calendário crua é 10.
+  const diaDesdeKickoff = diferencaEmDias(dataReferencia, new Date(kickoffRealizadoEm)) + 1;
   if (limiteDias == null) {
     return { diaDesdeKickoff, foraDaJanelaDoCiclo: false, diasAcimaDaJanela: 0 };
   }

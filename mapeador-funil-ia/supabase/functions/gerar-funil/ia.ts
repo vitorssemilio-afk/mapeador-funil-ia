@@ -23,6 +23,7 @@ export type ResultadoIA =
       transicoes_entre_funis: TransicaoEntreFunis[];
       estimativa: EstimativaIA | null;
       indicadores_dashboard: string[];
+      classificacao_modelo_negocio: string | null;
     }
   | { tipo: 'perguntas'; perguntas: string[] };
 
@@ -112,6 +113,26 @@ function extrairTransicoesEntreFunis(json: Record<string, unknown>): TransicaoEn
   });
 }
 
+const CLASSIFICACOES_MODELO_NEGOCIO = new Set([
+  'produto_entrega',
+  'servico_realizado',
+  'implantacao_onboarding',
+  'assinatura_mensalidade',
+  'recompra_tempo',
+  'hibrido',
+]);
+
+// P3-B4: só o prompt de pós-venda pede esse campo (prompt.ts) — pra vendas
+// a IA simplesmente não devolve essa chave, e o valor fica null (não é um
+// erro de parsing, é um conceito que só existe pro lado de pós-venda).
+function extrairClassificacaoModeloNegocio(json: Record<string, unknown>): string | null {
+  const valor = json.classificacao_modelo_negocio;
+  if (typeof valor === 'string' && CLASSIFICACOES_MODELO_NEGOCIO.has(valor)) {
+    return valor;
+  }
+  return null;
+}
+
 const NIVEIS_COMPLEXIDADE = new Set(['baixa', 'media', 'alta']);
 
 function extrairEstimativa(json: Record<string, unknown>): EstimativaIA | null {
@@ -166,6 +187,7 @@ function parseRespostaIA(texto: string): ResultadoIA | null {
     transicoes_entre_funis: extrairTransicoesEntreFunis(obj),
     estimativa: extrairEstimativa(obj),
     indicadores_dashboard: extrairIndicadoresDashboard(obj),
+    classificacao_modelo_negocio: extrairClassificacaoModeloNegocio(obj),
   };
 }
 
