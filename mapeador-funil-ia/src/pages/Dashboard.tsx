@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import { bucketDeItem, construirAgendaOperacional } from '../lib/agendaOperacional';
+import { construirMapaConfiguracoes } from '../lib/configuracaoImplementacao';
 import {
   construirAlertas,
   construirResumoClientes,
@@ -22,8 +23,10 @@ import type {
   AtividadeStatusRow,
   Cliente,
   ClienteOcorrencia,
+  ConfiguracaoImplementacao,
   Consultor,
   ImplementacaoCrm,
+  ImplementacaoSettingsSnapshot,
   ImplementacaoStatusHistorico,
   Mapeamento,
   Reuniao,
@@ -44,6 +47,8 @@ export function Dashboard() {
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [configGlobal, setConfigGlobal] = useState<ConfiguracaoImplementacao | null>(null);
+  const [snapshots, setSnapshots] = useState<ImplementacaoSettingsSnapshot[]>([]);
 
   const [busca, setBusca] = useState('');
   const [filtroFase, setFiltroFase] = useState('');
@@ -74,6 +79,8 @@ export function Dashboard() {
         { data: consultoresData },
         { data: ocorrenciasData },
         { data: reunioesData },
+        { data: configGlobalData },
+        { data: snapshotsData },
       ] = await Promise.all([
         supabase.from('clientes').select('*'),
         supabase.from('mapeamentos').select('*'),
@@ -84,6 +91,8 @@ export function Dashboard() {
         supabase.from('consultores').select('*').order('nome', { ascending: true }),
         supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
         supabase.from('reunioes').select('*'),
+        supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
+        supabase.from('implementacao_settings_snapshot').select('*'),
       ]);
 
       if (cancelled) return;
@@ -103,6 +112,8 @@ export function Dashboard() {
       setConsultores(consultoresData ?? []);
       setOcorrenciasAbertas(ocorrenciasData ?? []);
       setReunioes(reunioesData ?? []);
+      setConfigGlobal(configGlobalData ?? null);
+      setSnapshots(snapshotsData ?? []);
       setLoading(false);
     }
 
@@ -111,6 +122,15 @@ export function Dashboard() {
       cancelled = true;
     };
   }, [user]);
+
+  // Configurações (Fase 1): regras vigentes por cliente — snapshot do
+  // Kickoff se já existir, senão a configuração global. Nunca recalcula
+  // implementação em andamento com uma config diferente da que valia
+  // quando o Kickoff dela aconteceu.
+  const configuracoesPorCliente = useMemo(
+    () => construirMapaConfiguracoes(clientes.map((c) => c.id), snapshots, configGlobal),
+    [clientes, snapshots, configGlobal],
+  );
 
   const resumos = useMemo(
     () =>
@@ -124,8 +144,9 @@ export function Dashboard() {
         consultores,
         reunioes,
         hoje,
+        configuracoesPorCliente,
       }),
-    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, reunioes, hoje],
+    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, reunioes, hoje, configuracoesPorCliente],
   );
 
   const alertas = useMemo(
@@ -151,8 +172,21 @@ export function Dashboard() {
         ocorrenciasAbertas,
         reunioes,
         hoje,
+        configuracoesPorCliente,
       }),
-    [clientes, mapeamentos, implementacoes, atividades, statusRows, historico, consultores, ocorrenciasAbertas, reunioes, hoje],
+    [
+      clientes,
+      mapeamentos,
+      implementacoes,
+      atividades,
+      statusRows,
+      historico,
+      consultores,
+      ocorrenciasAbertas,
+      reunioes,
+      hoje,
+      configuracoesPorCliente,
+    ],
   );
 
   const itensHoje = useMemo(

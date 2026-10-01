@@ -8,14 +8,17 @@ import {
   type BucketAgenda,
   type ItemAgendaOperacional,
 } from '../lib/agendaOperacional';
+import { construirMapaConfiguracoes } from '../lib/configuracaoImplementacao';
 import { supabase } from '../lib/supabaseClient';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
   Cliente,
   ClienteOcorrencia,
+  ConfiguracaoImplementacao,
   Consultor,
   ImplementacaoCrm,
+  ImplementacaoSettingsSnapshot,
   ImplementacaoStatusHistorico,
   Mapeamento,
   Reuniao,
@@ -52,6 +55,8 @@ export function Agenda() {
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [ocorrenciasAbertas, setOcorrenciasAbertas] = useState<ClienteOcorrencia[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [configGlobal, setConfigGlobal] = useState<ConfiguracaoImplementacao | null>(null);
+  const [snapshots, setSnapshots] = useState<ImplementacaoSettingsSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [marcando, setMarcando] = useState<string | null>(null);
@@ -71,6 +76,8 @@ export function Agenda() {
       { data: consultoresData },
       { data: ocorrenciasData },
       { data: reunioesData },
+      { data: configGlobalData },
+      { data: snapshotsData },
     ] = await Promise.all([
       supabase.from('clientes').select('*'),
       supabase.from('mapeamentos').select('*').eq('tipo', 'vendas').order('created_at', { ascending: false }),
@@ -82,6 +89,8 @@ export function Agenda() {
       supabase.from('consultores').select('*'),
       supabase.from('cliente_ocorrencias').select('*').eq('status', 'aberta'),
       supabase.from('reunioes').select('*'),
+      supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
+      supabase.from('implementacao_settings_snapshot').select('*'),
     ]);
 
     const primeiroErro =
@@ -102,6 +111,8 @@ export function Agenda() {
     setConsultores(consultoresData ?? []);
     setOcorrenciasAbertas(ocorrenciasData ?? []);
     setReunioes(reunioesData ?? []);
+    setConfigGlobal(configGlobalData ?? null);
+    setSnapshots(snapshotsData ?? []);
     setLoading(false);
   }
 
@@ -110,6 +121,11 @@ export function Agenda() {
   }, []);
 
   const hoje = useMemo(() => inicioDoDia(new Date()), []);
+
+  const configuracoesPorCliente = useMemo(
+    () => construirMapaConfiguracoes(clientes.map((c) => c.id), snapshots, configGlobal),
+    [clientes, snapshots, configGlobal],
+  );
 
   const itens = useMemo(
     () =>
@@ -125,6 +141,7 @@ export function Agenda() {
         ocorrenciasAbertas,
         reunioes,
         hoje,
+        configuracoesPorCliente,
       }),
     [
       clientes,
@@ -138,6 +155,7 @@ export function Agenda() {
       ocorrenciasAbertas,
       reunioes,
       hoje,
+      configuracoesPorCliente,
     ],
   );
 

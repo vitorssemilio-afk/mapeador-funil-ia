@@ -5,7 +5,7 @@
 // clientes.kickoff_realizado_em/treinamento_realizado_em ao serem salvos —
 // ver comentário em src/types/database.ts (tipo Reuniao) e a migration
 // 0041.
-import { CICLOS_OPERACIONAIS, calcularDiaCiclo } from './atividadesCronograma';
+import { CICLOS_OPERACIONAIS, calcularDiaCiclo, type CicloJanela } from './atividadesCronograma';
 import type { Reuniao, StatusReuniao, TipoReuniao } from '../types/database';
 
 export const TIPO_REUNIAO_LABELS: Record<TipoReuniao, string> = {
@@ -66,8 +66,11 @@ export function alertaReuniaoObrigatoria(params: {
   reunioesDoTipo: Reuniao[];
   kickoffRealizadoEm: string | null;
   hoje: Date;
+  // Ciclos vigentes pra este cliente — default pros 4 hardcoded. Ver
+  // src/lib/configuracaoImplementacao.ts.
+  ciclos?: CicloJanela[];
 }): AlertaReuniaoObrigatoria | null {
-  const { tipo, reunioesDoTipo, kickoffRealizadoEm, hoje } = params;
+  const { tipo, reunioesDoTipo, kickoffRealizadoEm, hoje, ciclos = CICLOS_OPERACIONAIS } = params;
 
   const indiceCiclo = CICLO_OBRIGATORIO_POR_TIPO[tipo];
   if (indiceCiclo == null || !kickoffRealizadoEm) return null;
@@ -75,10 +78,10 @@ export function alertaReuniaoObrigatoria(params: {
   const jaMarcada = reunioesDoTipo.some((r) => r.status === 'agendada' || r.status === 'realizada');
   if (jaMarcada) return null;
 
-  const diaCiclo = calcularDiaCiclo(kickoffRealizadoEm, hoje);
+  const diaCiclo = calcularDiaCiclo(kickoffRealizadoEm, hoje, ciclos);
   if (!diaCiclo) return null;
 
-  const ciclo = CICLOS_OPERACIONAIS[indiceCiclo];
+  const ciclo = ciclos[indiceCiclo];
   const diasRestantesNoCiclo = ciclo.diaFim - diaCiclo.dia;
 
   // Só alerta durante a janela do próprio ciclo (nunca antes dele começar,

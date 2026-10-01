@@ -16,6 +16,7 @@ import {
   type AtividadeResolvida,
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import { CONFIGURACAO_PADRAO, resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import {
   resolverResumoCriteriosEntrega,
   STATUS_CONTRATACAO_KOMMO_LABELS,
@@ -59,6 +60,7 @@ import type {
   CheckpointAcompanhamento,
   CheckpointAdocao,
   Cliente,
+  ConfiguracaoImplementacao,
   ConfiguracaoPipefy,
   Consultor,
   CredencialApiKommoMeta,
@@ -70,6 +72,7 @@ import type {
   FunilKommoCriacao,
   FunilVersao,
   ImplementacaoCrm,
+  ImplementacaoSettingsSnapshot,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
   IntencaoManutencaoCheckpoint,
@@ -366,6 +369,8 @@ export function ImplementacaoDetalhe() {
   const [salvandoRemarcacaoReuniao, setSalvandoRemarcacaoReuniao] = useState(false);
   const [salvandoTrial, setSalvandoTrial] = useState(false);
   const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
+  const [configGlobal, setConfigGlobal] = useState<ConfiguracaoImplementacao | null>(null);
+  const [snapshot, setSnapshot] = useState<ImplementacaoSettingsSnapshot | null>(null);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [historicoConsultor, setHistoricoConsultor] = useState<ImplementacaoConsultorHistorico[]>([]);
   const [criterios, setCriterios] = useState<CriterioEntrega[]>([]);
@@ -421,13 +426,35 @@ export function ImplementacaoDetalhe() {
     [implementacao, historicoStatus],
   );
 
-  // "Dia X/40" + "Ciclo X — Dias X–Y", sempre visível — contado só do
-  // Kickoff realizado, independente de status manual ou de remarcações.
-  const diaCiclo = useMemo(() => calcularDiaCiclo(kickoffRealizadoEm, hoje), [kickoffRealizadoEm, hoje]);
+  // Área de Configurações: regras vigentes pra este cliente — snapshot do
+  // Kickoff dele, se já existir, senão a config global.
+  const configuracao = useMemo(() => {
+    if (!cliente) return CONFIGURACAO_PADRAO;
+    const snapshotsPorClienteId = new Map(snapshot ? [[snapshot.cliente_id, snapshot]] : []);
+    return resolverConfiguracaoCliente(cliente.id, snapshotsPorClienteId, configGlobal);
+  }, [cliente, snapshot, configGlobal]);
 
-  // Trial Kommo — indicador totalmente separado do prazo de 40 dias da
-  // implementação (esse é ancorado no Kickoff, o Trial em conta_kommo_criada_em).
-  const resumoTrial = useMemo(() => (cliente ? resolverResumoTrialKommo(cliente, hoje) : null), [cliente, hoje]);
+  // "Dia X/Y" + "Ciclo X — Dias X–Y", sempre visível — contado só do
+  // Kickoff realizado, independente de status manual ou de remarcações.
+  const diaCiclo = useMemo(
+    () => calcularDiaCiclo(kickoffRealizadoEm, hoje, configuracao.ciclos),
+    [kickoffRealizadoEm, hoje, configuracao],
+  );
+
+  // Trial Kommo — indicador totalmente separado do prazo da implementação
+  // (esse é ancorado no Kickoff, o Trial em conta_kommo_criada_em).
+  const resumoTrial = useMemo(
+    () =>
+      cliente
+        ? resolverResumoTrialKommo(cliente, hoje, {
+            diasInicial: configuracao.trialInicialDias,
+            diasExtensao14: configuracao.trialExtensao14Dias,
+            diasExtensao7: configuracao.trialExtensao7Dias,
+            diasAlerta: configuracao.trialAlertasDias,
+          })
+        : null,
+    [cliente, hoje, configuracao],
+  );
 
   const tempoReuniao = useMemo(
     () =>
@@ -448,9 +475,10 @@ export function ImplementacaoDetalhe() {
         reunioesDoTipo: reunioes.filter((r) => r.tipo === tipo),
         kickoffRealizadoEm: cliente.kickoff_realizado_em,
         hoje,
+        ciclos: configuracao.ciclos,
       }),
     ).filter((alerta): alerta is NonNullable<typeof alerta> => alerta != null);
-  }, [cliente, reunioes, hoje]);
+  }, [cliente, reunioes, hoje, configuracao]);
 
   // Cada atividade do template global (ou derivada desta implementação) +
   // a atividade virtual do Trial Kommo, todas já resolvidas com datas,
@@ -465,12 +493,20 @@ export function ImplementacaoDetalhe() {
         cliente,
         reunioes,
         hoje,
+        ciclos: configuracao.ciclos,
       }),
     );
     if (cliente) {
-      resolvidas.push(resolverTrialKommo(cliente, hoje));
+      resolvidas.push(
+        resolverTrialKommo(cliente, hoje, {
+          inicial: configuracao.trialInicialDias,
+          extensao14: configuracao.trialExtensao14Dias,
+          extensao7: configuracao.trialExtensao7Dias,
+        }),
+      );
 
-      const CICLO_1 = 'Ciclo 1 — Setup e Treinamento';
+      const CICLO_1 = configuracao.ciclos[0]?.nome ?? 'Ciclo 1 — Setup e Treinamento';
+      const diaFimCiclo1 = configuracao.ciclos[0]?.diaFim ?? 10;
       resolvidas.push(
         resolverMarcoAgendavel({
           nome: 'Kickoff',
@@ -491,7 +527,7 @@ export function ImplementacaoDetalhe() {
           valorIso: cliente.funil_validado_em,
           dependenciaLabel: 'Kickoff realizado',
           kickoffRealizadoEm: cliente.kickoff_realizado_em,
-          diaLimiteCiclo: 10,
+          diaLimiteCiclo: diaFimCiclo1,
         }),
       );
       resolvidas.push(
@@ -501,7 +537,7 @@ export function ImplementacaoDetalhe() {
           valorIso: cliente.conta_kommo_solicitada_em,
           dependenciaLabel: 'Kickoff realizado',
           kickoffRealizadoEm: cliente.kickoff_realizado_em,
-          diaLimiteCiclo: 10,
+          diaLimiteCiclo: diaFimCiclo1,
         }),
       );
       resolvidas.push(
@@ -511,7 +547,7 @@ export function ImplementacaoDetalhe() {
           valorIso: cliente.conta_kommo_criada_em,
           dependenciaLabel: 'Conta Kommo solicitada',
           kickoffRealizadoEm: cliente.kickoff_realizado_em,
-          diaLimiteCiclo: 10,
+          diaLimiteCiclo: diaFimCiclo1,
         }),
       );
       resolvidas.push(
@@ -522,13 +558,13 @@ export function ImplementacaoDetalhe() {
           realizadoEm: cliente.treinamento_realizado_em,
           remarcacoes: remarcacoes.filter((r) => r.campo_marco === 'treinamento_agendado_para'),
           kickoffRealizadoEm: cliente.kickoff_realizado_em,
-          diaLimiteCiclo: 10,
+          diaLimiteCiclo: configuracao.prazoTreinamentoDia,
           hoje,
         }),
       );
     }
     return resolvidas;
-  }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, remarcacoes, reunioes, hoje]);
+  }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, remarcacoes, reunioes, hoje, configuracao]);
 
   // Agrupadas por ciclo. Dentro de cada grupo, a ordem preserva a ordem de
   // carregamento (já vem ordenado por `ordem` da query) — mas a ORDEM DOS
@@ -568,6 +604,7 @@ export function ImplementacaoDetalhe() {
       { data: criteriosData },
       { data: criteriosStatusData },
       { data: checkpointAcompanhamentosData },
+      { data: configGlobalData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -602,6 +639,7 @@ export function ImplementacaoDetalhe() {
         .select('*')
         .eq('implementacao_id', implementacaoId)
         .order('created_at', { ascending: false }),
+      supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
     ]);
 
     setPipefyConfig(pipefyData ?? null);
@@ -610,6 +648,7 @@ export function ImplementacaoDetalhe() {
     setCriterios(criteriosData ?? []);
     setCriteriosStatus(criteriosStatusData ?? []);
     setCheckpointAcompanhamentos(checkpointAcompanhamentosData ?? []);
+    setConfigGlobal(configGlobalData ?? null);
 
     if (implError) {
       setError(implError.message);
@@ -651,6 +690,17 @@ export function ImplementacaoDetalhe() {
     setCliente(clienteData ?? null);
     setKickoffRealizadoEm(clienteData?.kickoff_realizado_em ?? null);
     setPosVendaMapeamento(posVendaData?.[0] ?? null);
+
+    if (clienteData) {
+      const { data: snapshotData } = await supabase
+        .from('implementacao_settings_snapshot')
+        .select('*')
+        .eq('cliente_id', clienteData.id)
+        .maybeSingle();
+      setSnapshot(snapshotData ?? null);
+    } else {
+      setSnapshot(null);
+    }
 
     if (mapeamentoOrigemData) {
       const { data: versoesData } = await supabase
@@ -1932,7 +1982,7 @@ export function ImplementacaoDetalhe() {
       {diaCiclo && (
         <div className="stats-grid">
           <div className="stat-card">
-            <span className="stat-value">Dia {diaCiclo.dia}/40</span>
+            <span className="stat-value">Dia {diaCiclo.dia}/{configuracao.duracaoTotalDias}</span>
             <span className="stat-label">
               {diaCiclo.ciclo
                 ? `${diaCiclo.ciclo.nome} (dias ${diaCiclo.ciclo.diaInicio}–${diaCiclo.ciclo.diaFim})`
@@ -2123,12 +2173,14 @@ export function ImplementacaoDetalhe() {
       {(diaCiclo || tempoReuniao) && (
         <div className="stats-grid">
           {diaCiclo && (
-            <div className={`stat-card${diaCiclo.dia > 40 ? ' stat-card-danger' : ''}`}>
+            <div className={`stat-card${diaCiclo.dia > configuracao.duracaoTotalDias ? ' stat-card-danger' : ''}`}>
               <span className="stat-value">
-                {diaCiclo.dia > 40 ? `${diaCiclo.dia - 40}d atrasado` : `${40 - diaCiclo.dia}d restantes`}
+                {diaCiclo.dia > configuracao.duracaoTotalDias
+                  ? `${diaCiclo.dia - configuracao.duracaoTotalDias}d atrasado`
+                  : `${configuracao.duracaoTotalDias - diaCiclo.dia}d restantes`}
               </span>
               <span className="stat-label">
-                Prazo geral da implementação — Dia {diaCiclo.dia}/40
+                Prazo geral da implementação — Dia {diaCiclo.dia}/{configuracao.duracaoTotalDias}
                 {diaCiclo.ciclo ? ` (${diaCiclo.ciclo.nome})` : ''}
               </span>
             </div>

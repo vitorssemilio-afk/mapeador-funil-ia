@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
 import { CICLOS_OPERACIONAIS, calcularDiaCiclo, IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
+import { resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
 import {
   construirResumoClientes,
@@ -32,12 +33,14 @@ import type {
   ClienteContato,
   ClienteObservacao,
   ClienteOcorrencia,
+  ConfiguracaoImplementacao,
   ConfiguracaoPipefy,
   Consultor,
   FunilVersao,
   ImpactoResponsavel,
   ImplementacaoConsultorHistorico,
   ImplementacaoCrm,
+  ImplementacaoSettingsSnapshot,
   Mapeamento,
   ReuniaoRemarcacao,
   Reuniao,
@@ -335,6 +338,8 @@ export function ClienteDetalhe() {
   const [versaoVendas, setVersaoVendas] = useState<FunilVersao | null>(null);
   const [versaoPosVenda, setVersaoPosVenda] = useState<FunilVersao | null>(null);
   const [pipefyConfig, setPipefyConfig] = useState<ConfiguracaoPipefy | null>(null);
+  const [configGlobal, setConfigGlobal] = useState<ConfiguracaoImplementacao | null>(null);
+  const [snapshot, setSnapshot] = useState<ImplementacaoSettingsSnapshot | null>(null);
 
   const [souAdministrador, setSouAdministrador] = useState(false);
   // Correção administrativa de um marco já registrado (kickoff/treinamento
@@ -362,6 +367,8 @@ export function ClienteDetalhe() {
       { data: reunioesData },
       { data: consultoresData },
       { data: pipefyConfigData },
+      { data: configGlobalData },
+      { data: snapshotData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -414,6 +421,8 @@ export function ClienteDetalhe() {
         .order('data_hora', { ascending: true }),
       supabase.from('consultores').select('*').order('nome', { ascending: true }),
       supabase.from('configuracoes_pipefy').select('*').eq('id', true).maybeSingle(),
+      supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
+      supabase.from('implementacao_settings_snapshot').select('*').eq('cliente_id', clienteId).maybeSingle(),
     ]);
 
     if (clienteError || !clienteData) {
@@ -436,6 +445,8 @@ export function ClienteDetalhe() {
     setReunioes(reunioesData ?? []);
     setConsultores(consultoresData ?? []);
     setPipefyConfig(pipefyConfigData ?? null);
+    setConfigGlobal(configGlobalData ?? null);
+    setSnapshot(snapshotData ?? null);
 
     // P2-A3: remarcações de reunião (Kickoff/Treinamento/Check-in 1/Check-in
     // 2/Reunião final) vivem em reuniao_remarcacoes desde a migration 0041 —
@@ -1154,6 +1165,7 @@ export function ClienteDetalhe() {
   // CRM", só que com arrays de um elemento só.
   const resumo = useMemo(() => {
     if (!cliente) return null;
+    const snapshotsPorClienteId = new Map(snapshot ? [[snapshot.cliente_id, snapshot]] : []);
     const resumos = construirResumoClientes({
       clientes: [cliente],
       mapeamentos: [mapeamentoVendas, mapeamentoPosVenda].filter((m): m is Mapeamento => m != null),
@@ -1164,6 +1176,7 @@ export function ClienteDetalhe() {
       consultores,
       reunioes,
       hoje: new Date(),
+      configuracoesPorCliente: new Map([[cliente.id, resolverConfiguracaoCliente(cliente.id, snapshotsPorClienteId, configGlobal)]]),
     });
     return resumos[0] ?? null;
   }, [
@@ -1175,17 +1188,32 @@ export function ClienteDetalhe() {
     statusAutomacao,
     consultores,
     reunioes,
+    snapshot,
+    configGlobal,
   ]);
 
-  const diaCiclo = useMemo(() => {
+  // Área de Configurações: regras vigentes pra este cliente — snapshot do
+  // Kickoff dele, se já existir, senão a config global.
+  const configuracao = useMemo(() => {
     if (!cliente) return null;
-    return calcularDiaCiclo(cliente.kickoff_realizado_em, new Date());
-  }, [cliente]);
+    const snapshotsPorClienteId = new Map(snapshot ? [[snapshot.cliente_id, snapshot]] : []);
+    return resolverConfiguracaoCliente(cliente.id, snapshotsPorClienteId, configGlobal);
+  }, [cliente, snapshot, configGlobal]);
+
+  const diaCiclo = useMemo(() => {
+    if (!cliente || !configuracao) return null;
+    return calcularDiaCiclo(cliente.kickoff_realizado_em, new Date(), configuracao.ciclos);
+  }, [cliente, configuracao]);
 
   const resumoTrial = useMemo(() => {
-    if (!cliente) return null;
-    return resolverResumoTrialKommo(cliente, new Date());
-  }, [cliente]);
+    if (!cliente || !configuracao) return null;
+    return resolverResumoTrialKommo(cliente, new Date(), {
+      diasInicial: configuracao.trialInicialDias,
+      diasExtensao14: configuracao.trialExtensao14Dias,
+      diasExtensao7: configuracao.trialExtensao7Dias,
+      diasAlerta: configuracao.trialAlertasDias,
+    });
+  }, [cliente, configuracao]);
 
   const proximaReuniao = useMemo(() => {
     const agora = new Date();
@@ -1303,8 +1331,8 @@ export function ClienteDetalhe() {
               <p>{resumo.progresso != null ? `${resumo.progresso}%` : '—'}</p>
             </div>
             <div>
-              <span className="etapa-card-label">Dia atual / 40</span>
-              <p>{diaCiclo ? `Dia ${diaCiclo.dia}/40` : 'Kickoff ainda não realizado'}</p>
+              <span className="etapa-card-label">Dia atual / {configuracao?.duracaoTotalDias ?? 40}</span>
+              <p>{diaCiclo ? `Dia ${diaCiclo.dia}/${configuracao?.duracaoTotalDias ?? 40}` : 'Kickoff ainda não realizado'}</p>
             </div>
             <div>
               <span className="etapa-card-label">Ciclo atual</span>
@@ -1500,8 +1528,12 @@ export function ClienteDetalhe() {
           </section>
 
           <section className="card">
-            <span className="etapa-card-label">Contador de 40 dias</span>
-            <p>{diaCiclo ? `Dia ${diaCiclo.dia}/40 — ${diaCiclo.ciclo?.nome ?? 'fora dos ciclos'}` : 'Kickoff ainda não realizado'}</p>
+            <span className="etapa-card-label">Contador de {configuracao?.duracaoTotalDias ?? 40} dias</span>
+            <p>
+              {diaCiclo
+                ? `Dia ${diaCiclo.dia}/${configuracao?.duracaoTotalDias ?? 40} — ${diaCiclo.ciclo?.nome ?? 'fora dos ciclos'}`
+                : 'Kickoff ainda não realizado'}
+            </p>
           </section>
 
           <section className="card">

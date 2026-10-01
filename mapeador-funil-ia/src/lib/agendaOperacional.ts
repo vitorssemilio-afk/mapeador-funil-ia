@@ -3,7 +3,8 @@
 // pendências (do cliente e internas), alertas e atrasos — num formato só,
 // organizado por urgência. Itens sem data não desaparecem: entram no grupo
 // "sem_data", com o texto "Aguardando <marco>" quando é isso que falta.
-import { resolverAtividade, resolverMarcoAgendavel, type AtividadeResolvida } from './atividadesCronograma';
+import { resolverAtividade, resolverMarcoAgendavel, type AtividadeResolvida, type CicloJanela } from './atividadesCronograma';
+import { CONFIGURACAO_PADRAO, type ConfiguracaoResolvida } from './configuracaoImplementacao';
 import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
 import { nomeConsultor } from './operacaoResumo';
 import { alertaReuniaoObrigatoria, STATUS_REUNIAO_LABELS, TIPO_REUNIAO_LABELS, TIPOS_REUNIAO_OBRIGATORIOS } from './reunioes';
@@ -206,8 +207,14 @@ function itensDeTrial(
   implementacao: ImplementacaoCrm | null,
   consultores: Consultor[],
   hoje: Date,
+  config: ConfiguracaoResolvida,
 ): ItemAgendaOperacional[] {
-  const resumo = resolverResumoTrialKommo(cliente, hoje);
+  const resumo = resolverResumoTrialKommo(cliente, hoje, {
+    diasInicial: config.trialInicialDias,
+    diasExtensao14: config.trialExtensao14Dias,
+    diasExtensao7: config.trialExtensao7Dias,
+    diasAlerta: config.trialAlertasDias,
+  });
   if (!resumo) return [];
 
   const itens: ItemAgendaOperacional[] = [];
@@ -243,8 +250,9 @@ function itemDeProximidadePrazoGeral(
   implementacao: ImplementacaoCrm,
   consultores: Consultor[],
   diaAtual: number,
+  duracaoTotalDias: number,
 ): ItemAgendaOperacional | null {
-  const diasRestantes = 40 - diaAtual;
+  const diasRestantes = duracaoTotalDias - diaAtual;
   if (diasRestantes < 0 || diasRestantes > DIAS_RESTANTES_PARA_ALERTAR_PRAZO) return null;
 
   return {
@@ -252,7 +260,7 @@ function itemDeProximidadePrazoGeral(
     clienteId: cliente.id,
     clienteNome: cliente.nome_empresa,
     tipo: 'alerta',
-    titulo: `Cliente está no dia ${diaAtual}/40`,
+    titulo: `Cliente está no dia ${diaAtual}/${duracaoTotalDias}`,
     responsavel: nomeConsultor(implementacao.consultor_responsavel_id, consultores),
     data: null,
     aguardando: null,
@@ -360,6 +368,7 @@ function itensDeAlertaReuniaoObrigatoria(
   implementacao: ImplementacaoCrm,
   consultores: Consultor[],
   hoje: Date,
+  ciclos: CicloJanela[],
 ): ItemAgendaOperacional[] {
   const itens: ItemAgendaOperacional[] = [];
 
@@ -369,6 +378,7 @@ function itensDeAlertaReuniaoObrigatoria(
       reunioesDoTipo: reunioesDoCliente.filter((r) => r.tipo === tipo),
       kickoffRealizadoEm: cliente.kickoff_realizado_em,
       hoje,
+      ciclos,
     });
     if (!alerta) continue;
 
@@ -404,6 +414,10 @@ export function construirAgendaOperacional(params: {
   ocorrenciasAbertas?: ClienteOcorrencia[];
   reunioes?: Reuniao[];
   hoje: Date;
+  // Área de Configurações: regras vigentes por cliente — default
+  // CONFIGURACAO_PADRAO (40 dias/4 ciclos/Trial 14+14+7 hardcoded) pra quem
+  // não tiver snapshot nem config global resolvida ainda.
+  configuracoesPorCliente?: Map<string, ConfiguracaoResolvida>;
 }): ItemAgendaOperacional[] {
   const {
     clientes,
@@ -417,6 +431,7 @@ export function construirAgendaOperacional(params: {
     ocorrenciasAbertas = [],
     reunioes = [],
     hoje,
+    configuracoesPorCliente,
   } = params;
 
   const itens: ItemAgendaOperacional[] = [];
@@ -427,6 +442,7 @@ export function construirAgendaOperacional(params: {
   }
 
   for (const cliente of clientes) {
+    const config = configuracoesPorCliente?.get(cliente.id) ?? CONFIGURACAO_PADRAO;
     const vendas = mapeamentosVendas.find((m) => m.cliente_id === cliente.id) ?? null;
     const implementacao = implementacoes.find((i) => i.cliente_id === cliente.id) ?? null;
 
@@ -461,6 +477,7 @@ export function construirAgendaOperacional(params: {
         cliente,
         reunioes,
         hoje,
+        ciclos: config.ciclos,
       });
       const item = itemDeAtividade(resolvida, cliente, implementacao, consultores);
       if (item) itens.push(item);
@@ -488,7 +505,7 @@ export function construirAgendaOperacional(params: {
       realizadoEm: cliente.treinamento_realizado_em,
       remarcacoes: [],
       kickoffRealizadoEm: cliente.kickoff_realizado_em,
-      diaLimiteCiclo: 10,
+      diaLimiteCiclo: config.prazoTreinamentoDia,
       hoje,
     });
     const itemTreinamento = itemDeAtividade(treinamento, cliente, implementacao, consultores);
@@ -496,13 +513,15 @@ export function construirAgendaOperacional(params: {
 
     const reunioesDoCliente = reunioes.filter((r) => r.cliente_id === cliente.id);
     itens.push(...itensDeReunioesEstruturadas(reunioesDoCliente, cliente, implementacao, consultores));
-    itens.push(...itensDeAlertaReuniaoObrigatoria(reunioesDoCliente, cliente, implementacao, consultores, hoje));
+    itens.push(
+      ...itensDeAlertaReuniaoObrigatoria(reunioesDoCliente, cliente, implementacao, consultores, hoje, config.ciclos),
+    );
 
-    itens.push(...itensDeTrial(cliente, implementacao, consultores, hoje));
+    itens.push(...itensDeTrial(cliente, implementacao, consultores, hoje, config));
 
     if (cliente.kickoff_realizado_em) {
       const diaAtual = diferencaEmDias(hoje, new Date(cliente.kickoff_realizado_em)) + 1;
-      const alerta = itemDeProximidadePrazoGeral(cliente, implementacao, consultores, diaAtual);
+      const alerta = itemDeProximidadePrazoGeral(cliente, implementacao, consultores, diaAtual, config.duracaoTotalDias);
       if (alerta) itens.push(alerta);
     }
   }
@@ -511,7 +530,8 @@ export function construirAgendaOperacional(params: {
   // pode ter sido criada antes — caso raro, mas não deve desaparecer).
   for (const cliente of clientes) {
     if (implementacoes.some((i) => i.cliente_id === cliente.id)) continue;
-    itens.push(...itensDeTrial(cliente, null, consultores, hoje));
+    const config = configuracoesPorCliente?.get(cliente.id) ?? CONFIGURACAO_PADRAO;
+    itens.push(...itensDeTrial(cliente, null, consultores, hoje, config));
   }
 
   return itens;
