@@ -757,16 +757,23 @@ export type ConfiguracaoIA = {
 };
 
 // Busca Global (Command Palette) — uma linha normalizada por resultado,
-// igual pras 9 funções de busca_* (migration 0075), pra renderizar todas
-// as categorias com o mesmo componente no frontend.
+// igual pras 12 funções de busca_* (migrations 0075 + 0076), pra
+// renderizar todas as categorias com o mesmo componente no frontend.
+// cliente_id/consultor_id/data_referencia (Fase 2) existem só pra
+// alimentar os filtros da página de Resultados da busca — nulos quando a
+// entidade não tem esse conceito (ex.: consultor não tem cliente_id).
 export type BuscaGlobalCategoria =
   | 'cliente'
   | 'contato'
   | 'implementacao'
+  | 'criterio'
   | 'funil'
+  | 'formulario'
   | 'reuniao'
+  | 'ata'
   | 'pendencia'
   | 'ocorrencia'
+  | 'arquivo'
   | 'consultor';
 
 export type BuscaGlobalResultado = {
@@ -777,6 +784,9 @@ export type BuscaGlobalResultado = {
   badge: string | null;
   rota: string;
   relevancia: number | null;
+  cliente_id: string | null;
+  consultor_id: string | null;
+  data_referencia: string | null;
 };
 
 export type ChecklistGrupoImplementacao = {
@@ -1387,6 +1397,33 @@ export type Database = {
       busca_consultores: {
         Args: { p_termo: string; p_limite?: number; p_offset?: number };
         Returns: BuscaGlobalResultado[];
+      };
+      busca_atas: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_arquivos: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_criterios_entrega: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_formularios: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      registrar_auditoria: {
+        Args: {
+          p_acao: string;
+          p_entidade: string;
+          p_entidade_id?: string | null;
+          p_cliente_id?: string | null;
+          p_implementacao_id?: string | null;
+          p_detalhes?: Record<string, unknown>;
+        };
+        Returns: string;
       };
       transferir_consultor_responsavel_implementacao: {
         Args: {

@@ -25,6 +25,7 @@ import { NovoCliente } from './pages/NovoCliente';
 import { ObservabilidadeIA } from './pages/ObservabilidadeIA';
 import { RelatorioFunil } from './pages/RelatorioFunil';
 import { RelatorioRespostas } from './pages/RelatorioRespostas';
+import { ResultadosBusca } from './pages/ResultadosBusca';
 import { RespostasFormulario } from './pages/RespostasFormulario';
 
 function App() {
@@ -76,6 +77,7 @@ function App() {
               <Route path="/observabilidade-ia" element={<ObservabilidadeIA />} />
               <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
               <Route path="/configuracoes" element={<Configuracoes />} />
+              <Route path="/busca" element={<ResultadosBusca />} />
               <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
               <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
             </Route>

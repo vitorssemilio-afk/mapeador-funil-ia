@@ -1,8 +1,9 @@
-// Busca Global (Command Palette, Ctrl/Cmd+K) — núcleo (Fase 1). A busca em
-// si roda inteira no Postgres (migration 0075, funções busca_*), já
-// respeitando a RLS por vínculo de cada tabela — este arquivo só chama as
-// RPCs e cuida do estado client-side (recentes, por usuário, em
-// localStorage — nunca sincronizado entre usuários nem com o backend).
+// Busca Global (Command Palette, Ctrl/Cmd+K) — núcleo (Fase 1) + mais 4
+// entidades e filtros (Fase 2). A busca em si roda inteira no Postgres
+// (migrations 0075 + 0076, funções busca_*), já respeitando a RLS por
+// vínculo de cada tabela — este arquivo só chama as RPCs e cuida do
+// estado client-side (recentes, por usuário, em localStorage — nunca
+// sincronizado entre usuários nem com o backend).
 import { supabase } from './supabaseClient';
 import type { BuscaGlobalCategoria, BuscaGlobalResultado } from '../types/database';
 
@@ -13,10 +14,14 @@ export const CATEGORIAS_ORDEM: CategoriaBusca[] = [
   'cliente',
   'contato',
   'implementacao',
+  'criterio',
   'funil',
+  'formulario',
   'reuniao',
+  'ata',
   'pendencia',
   'ocorrencia',
+  'arquivo',
   'consultor',
 ];
 
@@ -24,10 +29,14 @@ export const CATEGORIA_LABELS: Record<CategoriaBusca, string> = {
   cliente: 'Clientes',
   contato: 'Contatos',
   implementacao: 'Implementações',
+  criterio: 'Critérios de entrega',
   funil: 'Funis',
+  formulario: 'Formulários',
   reuniao: 'Reuniões',
+  ata: 'Atas',
   pendencia: 'Pendências',
   ocorrencia: 'Ocorrências',
+  arquivo: 'Arquivos',
   consultor: 'Consultores',
 };
 
@@ -35,10 +44,14 @@ const RPC_POR_CATEGORIA: Record<CategoriaBusca, string> = {
   cliente: 'busca_clientes',
   contato: 'busca_contatos',
   implementacao: 'busca_implementacoes',
+  criterio: 'busca_criterios_entrega',
   funil: 'busca_funis',
+  formulario: 'busca_formularios',
   reuniao: 'busca_reunioes',
+  ata: 'busca_atas',
   pendencia: 'busca_pendencias',
   ocorrencia: 'busca_ocorrencias',
+  arquivo: 'busca_arquivos',
   consultor: 'busca_consultores',
 };
 
@@ -109,6 +122,26 @@ export function registrarRecente(userId: string, item: ResultadoBusca): void {
     // localStorage indisponível (modo privado, etc.) — não é crítico, só
     // significa que "Recentes" fica vazio nesta sessão.
   }
+}
+
+// ============================================================
+// Analytics interno (Fase 2, seção 24) — reaproveita a auditoria que já
+// existe (registrar_auditoria, migration 0050) em vez de criar um módulo
+// novo. Registra só qual entidade foi aberta via busca, nunca o termo
+// digitado (evita guardar o que o usuário pesquisou).
+// ============================================================
+export function registrarAberturaViaBusca(item: ResultadoBusca): void {
+  supabase
+    .rpc('registrar_auditoria', {
+      p_acao: 'abrir_resultado_busca',
+      p_entidade: item.categoria,
+      p_entidade_id: item.entidade_id,
+      p_cliente_id: item.cliente_id,
+      p_implementacao_id: item.categoria === 'implementacao' ? item.entidade_id : null,
+    })
+    .then(({ error }) => {
+      if (error) console.error('Erro ao registrar auditoria de busca', error);
+    });
 }
 
 // ============================================================
