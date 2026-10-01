@@ -173,7 +173,7 @@ as $$
   from public.implementacoes_crm i
   left join public.clientes c on c.id = i.cliente_id
   left join public.consultores co on co.id = i.consultor_responsavel_id
-  left join public.consultores co2 on co2.id = i.consultor_apoio_id
+  left join public.consultores co2 on co2.id = i.consultor_adicional_id
   where length(trim(p_termo)) > 0
     and public.buscar_normalizar(
           i.nome_cliente || ' ' || coalesce(c.nome_fantasia,'') || ' ' || i.status || ' ' ||
