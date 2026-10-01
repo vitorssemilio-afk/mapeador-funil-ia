@@ -11,6 +11,7 @@ import {
   nomeConsultor,
   prazoLabelDe,
   SAUDE_LABELS,
+  SAUDE_TONE,
   type AlertaOperacao,
   type ClienteResumo,
   type SaudeCliente,
@@ -517,7 +518,7 @@ function LinhaCliente({
       </td>
       <td>{faseAtual}</td>
       <td>
-        <span className={`ops-saude-badge ops-saude-${saude}`}>{SAUDE_LABELS[saude]}</span>
+        <span className={`status-badge status-tone-${SAUDE_TONE[saude]}`}>{SAUDE_LABELS[saude]}</span>
       </td>
       <td>
         {progresso == null ? (

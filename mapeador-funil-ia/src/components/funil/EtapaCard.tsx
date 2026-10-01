@@ -210,7 +210,7 @@ export function EtapaCard({
                 Regenerar com IA
               </button>
               {total > 1 && (
-                <button type="button" className="btn btn-ghost btn-auto" onClick={onExcluir}>
+                <button type="button" className="btn btn-danger btn-auto" onClick={onExcluir}>
                   Excluir
                 </button>
               )}

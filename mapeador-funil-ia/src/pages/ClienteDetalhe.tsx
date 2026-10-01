@@ -3,19 +3,15 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
 import { CICLOS_OPERACIONAIS, calcularDiaCiclo, IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
 import { resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
-import {
-  construirResumoClientes,
-  nomeConsultor,
-  prazoLabelDe,
-  SAUDE_LABELS,
-  type SaudeCliente,
-} from '../lib/operacaoResumo';
+import { construirResumoClientes, nomeConsultor, prazoLabelDe, SAUDE_LABELS, SAUDE_TONE } from '../lib/operacaoResumo';
 import { STATUS_REUNIAO_LABELS, STATUS_REUNIAO_TONE, TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import {
@@ -268,6 +264,8 @@ export function ClienteDetalhe() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const confirmar = useConfirm();
+  const { mostrarToast } = useToast();
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [mapeamentoVendas, setMapeamentoVendas] = useState<Mapeamento | null>(null);
@@ -738,7 +736,13 @@ export function ClienteDetalhe() {
   }
 
   async function handleExcluirObservacao(observacaoId: string) {
-    if (!window.confirm('Excluir esta observação?')) return;
+    const confirmado = await confirmar({
+      titulo: 'Excluir esta observação?',
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindoObservacaoId(observacaoId);
     const { error: deleteError } = await supabase
@@ -752,6 +756,7 @@ export function ClienteDetalhe() {
       return;
     }
 
+    mostrarToast('Observação excluída.');
     setObservacoes((prev) => prev.filter((o) => o.id !== observacaoId));
   }
 
@@ -817,7 +822,13 @@ export function ClienteDetalhe() {
   }
 
   async function handleExcluirArquivo(arquivo: ClienteArquivo) {
-    if (!window.confirm(`Excluir o arquivo "${arquivo.nome_arquivo}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir o arquivo "${arquivo.nome_arquivo}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindoArquivoId(arquivo.id);
     const { error: storageError } = await supabase.storage
@@ -838,6 +849,7 @@ export function ClienteDetalhe() {
       return;
     }
 
+    mostrarToast('Arquivo excluído.');
     setArquivos((prev) => prev.filter((a) => a.id !== arquivo.id));
   }
 
@@ -934,7 +946,13 @@ export function ClienteDetalhe() {
   }
 
   async function handleExcluirContato(contato: ClienteContato) {
-    if (!window.confirm(`Excluir o contato "${contato.nome}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir o contato "${contato.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindoContatoId(contato.id);
     const { error: deleteError } = await supabase.from('cliente_contatos').delete().eq('id', contato.id);
@@ -945,6 +963,7 @@ export function ClienteDetalhe() {
       return;
     }
 
+    mostrarToast('Contato excluído.');
     setContatos((prev) => prev.filter((c) => c.id !== contato.id));
   }
 
@@ -1272,14 +1291,6 @@ export function ClienteDetalhe() {
     }
     return grupos.filter((g) => g.itens.length > 0);
   }, [arquivos]);
-
-  const SAUDE_TONE: Record<SaudeCliente, 'success' | 'warning' | 'danger' | 'info'> = {
-    normal: 'success',
-    atencao: 'warning',
-    critico: 'danger',
-    aguardando_cliente: 'info',
-    concluido: 'success',
-  };
 
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error && !cliente) return <p className="form-error">{error}</p>;
@@ -1819,7 +1830,7 @@ export function ClienteDetalhe() {
                       </button>{' '}
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="btn btn-danger"
                         onClick={() => handleExcluirContato(contato)}
                         disabled={excluindoContatoId === contato.id}
                       >
@@ -2754,7 +2765,7 @@ export function ClienteDetalhe() {
                         </button>{' '}
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className="btn btn-danger"
                           onClick={() => handleExcluirArquivo(a)}
                           disabled={excluindoArquivoId === a.id}
                         >
@@ -2813,7 +2824,7 @@ export function ClienteDetalhe() {
                   </span>
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className="btn btn-danger"
                     onClick={() => handleExcluirObservacao(o.id)}
                     disabled={excluindoObservacaoId === o.id}
                   >

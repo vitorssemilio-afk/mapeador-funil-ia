@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabaseClient';
 import type { Consultor, PapelConsultor } from '../types/database';
 
@@ -46,6 +48,8 @@ function paraForm(consultor: Consultor): FormConsultor {
 // (FK sem "on delete"), então o caminho normal pra tirar alguém de circulação
 // é desativar, não excluir.
 export function Consultores() {
+  const confirmar = useConfirm();
+  const { mostrarToast } = useToast();
   const [consultores, setConsultores] = useState<Consultor[]>([]);
   const [souAdministrador, setSouAdministrador] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -143,7 +147,13 @@ export function Consultores() {
   }
 
   async function handleExcluir(consultor: Consultor) {
-    if (!window.confirm(`Excluir o consultor "${consultor.nome}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir ${consultor.nome}?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setError(null);
     const { error: deleteError } = await supabase.from('consultores').delete().eq('id', consultor.id);
@@ -152,6 +162,7 @@ export function Consultores() {
       setError(deleteError.message);
       return;
     }
+    mostrarToast('Consultor excluído.');
     carregar();
   }
 
@@ -318,7 +329,7 @@ export function Consultores() {
                       <button type="button" className="btn btn-ghost" onClick={() => handleAlternarAtivo(c)}>
                         {c.ativo ? 'Desativar' : 'Ativar'}
                       </button>{' '}
-                      <button type="button" className="btn btn-ghost" onClick={() => handleExcluir(c)}>
+                      <button type="button" className="btn btn-danger" onClick={() => handleExcluir(c)}>
                         Excluir
                       </button>
                     </td>

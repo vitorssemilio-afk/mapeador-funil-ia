@@ -5,6 +5,8 @@ import { StatusBadge } from '../components/StatusBadge';
 import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
 import { ResumoWizard } from '../components/wizard/ResumoWizard';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import type { BlocoFormulario } from '../data/formSchema';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { exportarFunisParaExcel } from '../lib/exportXlsx';
@@ -67,6 +69,8 @@ export function Mapeamento() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const confirmar = useConfirm();
+  const { mostrarToast } = useToast();
   const [mapeamento, setMapeamento] = useState<MapeamentoType | null>(null);
   const [funis, setFunis] = useState<FunilGerado[]>([]);
   const [geracaoMeta, setGeracaoMeta] = useState<GeracaoMeta | null>(null);
@@ -327,11 +331,13 @@ export function Mapeamento() {
       setErroValidacaoFunil('Informe a data/hora em que o Kickoff foi realizado.');
       return;
     }
-    if (
-      !precisaRevisar &&
-      !window.confirm(`Você está aprovando a Versão ${versaoParaValidar} para implementação. Confirmar?`)
-    ) {
-      return;
+    if (!precisaRevisar) {
+      const confirmado = await confirmar({
+        titulo: `Aprovar a Versão ${versaoParaValidar}?`,
+        descricao: 'Esta versão passa a ser a usada na implementação.',
+        confirmarLabel: 'Aprovar',
+      });
+      if (!confirmado) return;
     }
 
     setSalvandoValidacaoFunil(true);
@@ -482,28 +488,31 @@ export function Mapeamento() {
     setLinkCopiado(true);
     setTimeout(() => setLinkCopiado(false), 2000);
 
-    if (
-      mapeamento.tipo === 'vendas' &&
-      mapeamento.cliente_id &&
-      window.confirm('Você vai enviar este link para o cliente agora? Isso marca o formulário como enviado.')
-    ) {
-      await supabase
-        .from('clientes')
-        .update({ formulario_enviado_em: new Date().toISOString() })
-        .eq('id', mapeamento.cliente_id)
-        .is('formulario_enviado_em', null);
+    if (mapeamento.tipo === 'vendas' && mapeamento.cliente_id) {
+      const confirmado = await confirmar({
+        titulo: 'Marcar formulário como enviado?',
+        descricao: 'Você vai enviar este link para o cliente agora.',
+        confirmarLabel: 'Marcar como enviado',
+      });
+      if (confirmado) {
+        await supabase
+          .from('clientes')
+          .update({ formulario_enviado_em: new Date().toISOString() })
+          .eq('id', mapeamento.cliente_id)
+          .is('formulario_enviado_em', null);
+      }
     }
   }
 
   async function handleExcluir() {
     if (!mapeamento) return;
-    if (
-      !window.confirm(
-        `Excluir o mapeamento "${mapeamento.nome_negocio}"? Essa ação não pode ser desfeita e também apaga os funis gerados a partir dele.`,
-      )
-    ) {
-      return;
-    }
+    const confirmado = await confirmar({
+      titulo: `Excluir o mapeamento "${mapeamento.nome_negocio}"?`,
+      descricao: 'Essa ação não pode ser desfeita e também apaga os funis gerados a partir dele.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindo(true);
     const { error: deleteError } = await supabase.from('mapeamentos').delete().eq('id', mapeamento.id);
@@ -514,6 +523,7 @@ export function Mapeamento() {
       return;
     }
 
+    mostrarToast('Mapeamento excluído.');
     navigate('/');
   }
 
@@ -771,7 +781,7 @@ export function Mapeamento() {
               )
             ))}
           {modo === 'tecnica' && (
-            <button type="button" className="btn btn-ghost" onClick={handleExcluir} disabled={excluindo}>
+            <button type="button" className="btn btn-danger" onClick={handleExcluir} disabled={excluindo}>
               {excluindo ? 'Excluindo…' : 'Excluir mapeamento'}
             </button>
           )}

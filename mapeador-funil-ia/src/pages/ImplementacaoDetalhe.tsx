@@ -3,6 +3,8 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import {
   calcularDiaCiclo,
@@ -313,6 +315,8 @@ export function ImplementacaoDetalhe() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const confirmarAcao = useConfirm();
+  const { mostrarToast } = useToast();
 
   const [implementacao, setImplementacao] = useState<ImplementacaoCrm | null>(null);
   const [atividadesTemplate, setAtividadesTemplate] = useState<AtividadeCronograma[]>([]);
@@ -808,13 +812,15 @@ export function ImplementacaoDetalhe() {
     if (!implementacao) return;
 
     const jaTemDerivados = atividadesTemplate.some((a) => a.implementacao_id === implementacao.id);
-    if (
-      jaTemDerivados &&
-      !window.confirm(
-        'Já existem atividades geradas a partir do funil nesta implementação. Gerar de novo substitui essas atividades — o que já tinha sido marcado nelas se perde. Continuar?',
-      )
-    ) {
-      return;
+    if (jaTemDerivados) {
+      const confirmado = await confirmarAcao({
+        titulo: 'Gerar as atividades de novo?',
+        descricao:
+          'Já existem atividades geradas a partir do funil nesta implementação. Gerar de novo substitui essas atividades — o que já tinha sido marcado nelas se perde.',
+        confirmarLabel: 'Gerar de novo',
+        destrutivo: true,
+      });
+      if (!confirmado) return;
     }
 
     setGerandoItens(true);
@@ -1085,9 +1091,12 @@ export function ImplementacaoDetalhe() {
 
     const nomeAtual = nomeConsultor(implementacao.consultor_responsavel_id, consultores) ?? 'sem responsável';
     const nomeNovo = nomeConsultor(novoConsultorTransferencia, consultores) ?? '—';
-    if (!window.confirm(`Transferir a responsabilidade desta implementação de "${nomeAtual}" para "${nomeNovo}"?`)) {
-      return;
-    }
+    const confirmado = await confirmarAcao({
+      titulo: 'Transferir consultor responsável?',
+      descricao: `De "${nomeAtual}" para "${nomeNovo}".`,
+      confirmarLabel: 'Transferir',
+    });
+    if (!confirmado) return;
 
     setSalvandoTransferenciaConsultor(true);
     setErroTransferenciaConsultor(null);
@@ -1114,6 +1123,7 @@ export function ImplementacaoDetalhe() {
       .eq('implementacao_id', implementacao.id)
       .order('alterado_em', { ascending: false });
     setHistoricoConsultor(historicoAtualizado ?? []);
+    mostrarToast('Consultor transferido.');
 
     fecharTransferirConsultor();
   }
@@ -1275,11 +1285,12 @@ export function ImplementacaoDetalhe() {
         setError('Selecione qual versão do funil está sendo validada.');
         return;
       }
-      if (
-        !window.confirm(`Você está aprovando a Versão ${versaoParaValidarKickoff} para implementação. Confirmar?`)
-      ) {
-        return;
-      }
+      const confirmado = await confirmarAcao({
+        titulo: `Aprovar a Versão ${versaoParaValidarKickoff}?`,
+        descricao: 'Esta versão passa a ser a usada na implementação.',
+        confirmarLabel: 'Aprovar',
+      });
+      if (!confirmado) return;
     }
 
     setSalvandoReuniao(true);
@@ -1701,13 +1712,13 @@ export function ImplementacaoDetalhe() {
 
   async function handleExcluirImplementacao() {
     if (!implementacao) return;
-    if (
-      !window.confirm(
-        `Excluir a implementação de "${implementacao.nome_cliente}"? Isso também apaga as credenciais salvas. Essa ação não pode ser desfeita.`,
-      )
-    ) {
-      return;
-    }
+    const confirmado = await confirmarAcao({
+      titulo: `Excluir a implementação de "${implementacao.nome_cliente}"?`,
+      descricao: 'Isso também apaga as credenciais salvas. Essa ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindo(true);
     const { error: deleteError } = await supabase
@@ -1721,6 +1732,7 @@ export function ImplementacaoDetalhe() {
       return;
     }
 
+    mostrarToast('Implementação excluída.');
     navigate('/implementacoes');
   }
 
@@ -1807,11 +1819,20 @@ export function ImplementacaoDetalhe() {
   }
 
   async function handleExcluirCredencial(credencial: CredencialCrmListada) {
-    if (!window.confirm(`Excluir a credencial "${credencial.login}"?`)) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Excluir a credencial "${credencial.login}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     const { error: deleteError } = await supabase.from('credenciais_crm').delete().eq('id', credencial.id);
     if (deleteError) setError(deleteError.message);
-    else setCredenciais((prev) => prev.filter((c) => c.id !== credencial.id));
+    else {
+      mostrarToast('Credencial excluída.');
+      setCredenciais((prev) => prev.filter((c) => c.id !== credencial.id));
+    }
   }
 
   function abrirFormCredencialKommo() {
@@ -1885,16 +1906,21 @@ export function ImplementacaoDetalhe() {
 
     const jaCriado = criacoesKommo[funil.id];
     if (jaCriado) {
-      const confirmar = window.confirm(
-        `O funil "${funil.nome_funil}" já foi criado no Kommo (pipeline ${jaCriado.kommo_pipeline_id}) em ${new Date(jaCriado.criado_em).toLocaleString('pt-BR')}. Criar de novo cria um pipeline NOVO e separado na conta do cliente — não atualiza o existente. Continuar mesmo assim?`,
-      );
-      if (!confirmar) return;
-    } else if (
-      !window.confirm(
-        `Confirma a criação do funil "${funil.nome_funil}" direto na conta Kommo do cliente? Isso grava o pipeline, as etapas e os campos personalizados de verdade — revise o funil antes de confirmar.`,
-      )
-    ) {
-      return;
+      const confirmado = await confirmarAcao({
+        titulo: `Criar o funil "${funil.nome_funil}" de novo no Kommo?`,
+        descricao: `Já foi criado (pipeline ${jaCriado.kommo_pipeline_id}) em ${new Date(jaCriado.criado_em).toLocaleString('pt-BR')}. Criar de novo cria um pipeline NOVO e separado na conta do cliente — não atualiza o existente.`,
+        confirmarLabel: 'Criar mesmo assim',
+        destrutivo: true,
+      });
+      if (!confirmado) return;
+    } else {
+      const confirmado = await confirmarAcao({
+        titulo: `Criar o funil "${funil.nome_funil}" no Kommo?`,
+        descricao:
+          'Isso grava o pipeline, as etapas e os campos personalizados de verdade na conta do cliente — revise o funil antes de confirmar.',
+        confirmarLabel: 'Criar no Kommo',
+      });
+      if (!confirmado) return;
     }
 
     setCriandoFunilId(funil.id);
@@ -1971,7 +1997,7 @@ export function ImplementacaoDetalhe() {
           </p>
         </div>
         <div className="page-header-actions">
-          <button type="button" className="btn btn-ghost" onClick={handleExcluirImplementacao} disabled={excluindo}>
+          <button type="button" className="btn btn-danger" onClick={handleExcluirImplementacao} disabled={excluindo}>
             {excluindo ? 'Excluindo…' : 'Excluir implementação'}
           </button>
         </div>
@@ -3089,7 +3115,7 @@ export function ImplementacaoDetalhe() {
                       </button>{' '}
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="btn btn-danger"
                         onClick={() => handleExcluirCredencial(credencial)}
                       >
                         Excluir

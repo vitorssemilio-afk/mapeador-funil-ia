@@ -909,7 +909,15 @@ export function GestaoDashboard() {
               key={s.saude}
               titulo={SAUDE_LABELS[s.saude]}
               valor={s.valor}
-              tone={s.saude === 'critico' ? 'danger' : s.saude === 'atencao' ? 'warning' : s.saude === 'normal' ? 'success' : 'info'}
+              tone={
+                s.saude === 'critico'
+                  ? 'danger'
+                  : s.saude === 'atencao'
+                    ? 'warning'
+                    : s.saude === 'aguardando_cliente'
+                      ? 'info'
+                      : 'success'
+              }
               onClick={() => abrirPainel(SAUDE_LABELS[s.saude], s.clientes)}
             />
           ))}
