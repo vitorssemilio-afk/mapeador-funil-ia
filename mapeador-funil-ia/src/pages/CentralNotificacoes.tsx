@@ -93,7 +93,7 @@ export function CentralNotificacoes() {
     return notificacoes.filter((n) => {
       if (n.arquivada !== mostrarArquivadas) return false;
 
-      if (filtroRapido === 'nao_lidas' && n.lida) return false;
+      if (filtroRapido === 'nao_lidas' && (n.lida || n.resolvida_em)) return false;
       else if (filtroRapido === 'criticas' && n.prioridade !== 'critica') return false;
       else if (
         filtroRapido !== 'todas' &&
@@ -143,7 +143,7 @@ export function CentralNotificacoes() {
     await marcarTodasComoLidas();
   }
 
-  const naoLidasCount = notificacoes.filter((n) => !n.lida && !n.arquivada).length;
+  const naoLidasCount = notificacoes.filter((n) => !n.lida && !n.arquivada && !n.resolvida_em).length;
 
   return (
     <div className="page">
@@ -232,13 +232,21 @@ export function CentralNotificacoes() {
       {!loading && notificacoesFiltradas.length > 0 && (
         <div className="notification-lista-completa">
           {notificacoesFiltradas.map((n) => (
-            <div key={n.id} className={`card notification-card${n.lida ? '' : ' notification-card-nao-lida'}`}>
+            <div
+              key={n.id}
+              className={`card notification-card${n.lida || n.resolvida_em ? '' : ' notification-card-nao-lida'}`}
+            >
               <div className="notification-card-header">
                 <span className={`status-badge status-tone-${PRIORIDADE_TONE[n.prioridade]}`}>
                   {PRIORIDADE_LABELS[n.prioridade]}
                 </span>
                 <span className="field-hint">{CATEGORIA_LABELS[n.categoria]}</span>
                 <span className="field-hint">{formatarDataHora(n.created_at)}</span>
+                {n.resolvida_em && (
+                  <span className="status-badge status-tone-info">
+                    Resolvida automaticamente em {formatarDataHora(n.resolvida_em)}
+                  </span>
+                )}
               </div>
               <h3 className="notification-card-titulo">{n.titulo}</h3>
               {n.descricao && <p className="notification-card-descricao">{n.descricao}</p>}

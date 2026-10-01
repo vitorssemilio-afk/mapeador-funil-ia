@@ -36,6 +36,7 @@ import type {
   Consultor,
   FunilVersao,
   ImpactoResponsavel,
+  ImplementacaoConsultorHistorico,
   ImplementacaoCrm,
   Mapeamento,
   ReuniaoRemarcacao,
@@ -299,6 +300,9 @@ export function ClienteDetalhe() {
   const [reuniaoRemarcacoes, setReuniaoRemarcacoes] = useState<ReuniaoRemarcacao[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [consultores, setConsultores] = useState<Consultor[]>([]);
+  // P3 da mini auditoria: mesma tabela que ImplementacaoDetalhe.tsx já usa
+  // (implementacao_consultor_historico) — fonte oficial, sem duplicar nada.
+  const [historicoConsultor, setHistoricoConsultor] = useState<ImplementacaoConsultorHistorico[]>([]);
 
   const [editandoInfo, setEditandoInfo] = useState(false);
   const [formInfo, setFormInfo] = useState<FormInfoCliente | null>(null);
@@ -484,20 +488,26 @@ export function ClienteDetalhe() {
       setCheckpointRespondidoEm(checkpointData?.respondido_em ?? null);
       setCheckpointAdocao(checkpointData ?? null);
 
-      const [{ data: atividadesData }, { data: statusData }] = await Promise.all([
+      const [{ data: atividadesData }, { data: statusData }, { data: historicoConsultorData }] = await Promise.all([
         supabase
           .from('atividades_cronograma')
           .select('*')
           .or(`implementacao_id.is.null,implementacao_id.eq.${implementacaoData.id}`)
           .in('ciclo', CICLOS_AUTOMACAO),
         supabase.from('atividades_status').select('*').eq('implementacao_id', implementacaoData.id),
+        supabase
+          .from('implementacao_consultor_historico')
+          .select('*')
+          .eq('implementacao_id', implementacaoData.id),
       ]);
       setAtividadesAutomacao(atividadesData ?? []);
       setStatusAutomacao(statusData ?? []);
+      setHistoricoConsultor(historicoConsultorData ?? []);
     } else {
       setCheckpointRespondidoEm(null);
       setAtividadesAutomacao([]);
       setStatusAutomacao([]);
+      setHistoricoConsultor([]);
     }
 
     setLoading(false);
@@ -1109,8 +1119,35 @@ export function ClienteDetalhe() {
       });
     }
 
+    // P3 da mini auditoria: transferência de responsável pela implementação
+    // — única fonte é implementacao_consultor_historico (já usada por
+    // ImplementacaoDetalhe.tsx), sem tabela nova. Um registro por
+    // transferência, então nunca duplica o mesmo evento.
+    for (const transferencia of historicoConsultor) {
+      const anterior = transferencia.consultor_anterior_id
+        ? (nomeConsultor(transferencia.consultor_anterior_id, consultores) ?? 'desconhecido')
+        : 'ninguém definido';
+      const novo = nomeConsultor(transferencia.consultor_novo_id, consultores) ?? 'desconhecido';
+      itens.push({
+        data: new Date(transferencia.alterado_em),
+        tipo: 'Responsabilidade da implementação transferida',
+        descricao: `${anterior} → ${novo}`,
+        usuario: transferencia.alterado_por_email,
+      });
+    }
+
     return itens.sort((a, b) => b.data.getTime() - a.data.getTime());
-  }, [cliente, reuniaoRemarcacoes, implementacao, atividadesAutomacao, statusAutomacao, reunioes, ocorrencias]);
+  }, [
+    cliente,
+    reuniaoRemarcacoes,
+    implementacao,
+    atividadesAutomacao,
+    statusAutomacao,
+    reunioes,
+    ocorrencias,
+    historicoConsultor,
+    consultores,
+  ]);
 
   // Resumo consolidado do cliente (fase, saúde, progresso, prazos,
   // consultores) — reaproveita a mesma função usada no dashboard "Operação
