@@ -230,7 +230,7 @@ export function ImplementacaoChecklistAdmin() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Cronograma de Implementação</h1>
+          <h1>Template do Cronograma</h1>
           <p className="field-hint">
             Template global de atividades do cronograma (dependências, prazos e responsáveis
             padrão). Alterar aqui vale pra próxima vez que alguém abrir o cronograma de uma

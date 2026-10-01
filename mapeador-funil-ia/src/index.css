@@ -1600,6 +1600,11 @@ img.auth-logo {
   flex-wrap: wrap;
 }
 
+.page-header-actions-split {
+  justify-content: space-between;
+  width: 100%;
+}
+
 /* ── Processando ── */
 .processando-card {
   display: flex;
@@ -1860,6 +1865,28 @@ img.auth-logo {
 .resumo-revisao-grid p {
   margin: 0;
   font-size: 14.5px;
+}
+
+/* ── Hierarquia no topo da ficha do cliente: os 4 sinais que mais
+   importam (saúde, dia/ciclo, próxima ação, próxima reunião) em destaque
+   acima do resto — ver seção 17 do polimento visual. ── */
+.resumo-destaque-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.resumo-destaque-valor {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.resumo-revisao-grid-secundaria p {
+  color: var(--color-text-muted);
 }
 
 .modo-visualizacao-toggle {

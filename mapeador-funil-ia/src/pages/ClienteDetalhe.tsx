@@ -1316,7 +1316,38 @@ export function ClienteDetalhe() {
 
       {resumo && (
         <section className="card resumo-revisao-card">
-          <div className="resumo-revisao-grid">
+          <div className="resumo-destaque-grid">
+            <div>
+              <span className="etapa-card-label">Saúde</span>
+              <p>
+                <span className={`status-badge status-tone-${SAUDE_TONE[resumo.saude]}`}>
+                  {SAUDE_LABELS[resumo.saude]}
+                </span>
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Dia atual · Ciclo</span>
+              <p className="resumo-destaque-valor">
+                {diaCiclo
+                  ? `Dia ${diaCiclo.dia}/${configuracao?.duracaoTotalDias ?? 40} · ${diaCiclo.ciclo?.nome ?? '—'}`
+                  : 'Kickoff ainda não realizado'}
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Próxima ação</span>
+              <p className="resumo-destaque-valor">{resumo.proximaAcao}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Próxima reunião</span>
+              <p className="resumo-destaque-valor">
+                {proximaReuniao
+                  ? `${TIPO_REUNIAO_LABELS[proximaReuniao.tipo]} em ${formatarDataHora(proximaReuniao.data_hora!)}`
+                  : 'Nenhuma reunião agendada'}
+              </p>
+            </div>
+          </div>
+
+          <div className="resumo-revisao-grid resumo-revisao-grid-secundaria">
             <div>
               <span className="etapa-card-label">Consultor responsável</span>
               <p>{resumo.consultor ?? '—'}</p>
@@ -1330,24 +1361,8 @@ export function ClienteDetalhe() {
               <p>{resumo.faseAtual}</p>
             </div>
             <div>
-              <span className="etapa-card-label">Saúde da implementação</span>
-              <p>
-                <span className={`status-badge status-tone-${SAUDE_TONE[resumo.saude]}`}>
-                  {SAUDE_LABELS[resumo.saude]}
-                </span>
-              </p>
-            </div>
-            <div>
               <span className="etapa-card-label">Progresso</span>
               <p>{resumo.progresso != null ? `${resumo.progresso}%` : '—'}</p>
-            </div>
-            <div>
-              <span className="etapa-card-label">Dia atual / {configuracao?.duracaoTotalDias ?? 40}</span>
-              <p>{diaCiclo ? `Dia ${diaCiclo.dia}/${configuracao?.duracaoTotalDias ?? 40}` : 'Kickoff ainda não realizado'}</p>
-            </div>
-            <div>
-              <span className="etapa-card-label">Ciclo atual</span>
-              <p>{diaCiclo?.ciclo?.nome ?? '—'}</p>
             </div>
             <div>
               <span className="etapa-card-label">Status do Trial Kommo</span>
@@ -1362,20 +1377,8 @@ export function ClienteDetalhe() {
               </p>
             </div>
             <div>
-              <span className="etapa-card-label">Próxima ação</span>
-              <p>{resumo.proximaAcao}</p>
-            </div>
-            <div>
               <span className="etapa-card-label">Prazo geral da implementação</span>
               <p>{prazoLabelDe(resumo) ?? '—'}</p>
-            </div>
-            <div>
-              <span className="etapa-card-label">Próxima reunião</span>
-              <p>
-                {proximaReuniao
-                  ? `${TIPO_REUNIAO_LABELS[proximaReuniao.tipo]} em ${formatarDataHora(proximaReuniao.data_hora!)}`
-                  : 'Nenhuma reunião agendada'}
-              </p>
             </div>
             <div>
               <span className="etapa-card-label">Pendências do cliente</span>
@@ -1677,7 +1680,7 @@ export function ClienteDetalhe() {
       )}
 
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Informações do cliente</h2>
           {!editandoInfo && (
             <button
@@ -1792,7 +1795,7 @@ export function ClienteDetalhe() {
         <p className="field-hint">Pessoas envolvidas no projeto por parte do cliente — pode haver mais de uma.</p>
 
         {contatosOrdenados.length === 0 ? (
-          <p className="field-hint">Nenhum contato cadastrado ainda.</p>
+          <p className="field-hint">Nenhum contato cadastrado ainda. Adicione o primeiro contato abaixo.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -1933,7 +1936,7 @@ export function ClienteDetalhe() {
           registradas neste cliente — não editável diretamente aqui.
         </p>
         {historicoTimeline.length === 0 ? (
-          <p className="field-hint">Nenhum evento registrado ainda.</p>
+          <p className="field-hint">Nenhum evento registrado ainda. O histórico aparece aqui conforme a implementação avança.</p>
         ) : (
           <ol className="timeline-marcos">
             {historicoTimeline.map((item, index) => (
@@ -1952,7 +1955,7 @@ export function ClienteDetalhe() {
       </section>
 
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Ocorrências</h2>
           {!formOcorrencia && (
             <button type="button" className="btn btn-secondary btn-auto" onClick={abrirNovaOcorrencia}>
@@ -2083,7 +2086,7 @@ export function ClienteDetalhe() {
         )}
 
         {ocorrenciasOrdenadas.length === 0 ? (
-          <p className="field-hint">Nenhuma ocorrência registrada ainda.</p>
+          <p className="field-hint">Nenhuma ocorrência registrada ainda. Use "Registrar ocorrência" acima quando algo impactar o cronograma.</p>
         ) : (
           <ul className="observacoes-lista">
             {ocorrenciasOrdenadas.map((o) => (
@@ -2124,7 +2127,7 @@ export function ClienteDetalhe() {
       </section>
 
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Marcos e linha do tempo</h2>
           {!editandoMarcos && (
             <button
@@ -2349,7 +2352,7 @@ export function ClienteDetalhe() {
 
       {aba === 'reunioes' && (
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Reuniões</h2>
           {implementacao && (
             <Link to={`/implementacoes/${implementacao.id}`} className="btn btn-secondary btn-auto">
@@ -2362,7 +2365,7 @@ export function ClienteDetalhe() {
           implementação.
         </p>
         {reunioes.length === 0 ? (
-          <p className="field-hint">Nenhuma reunião registrada ainda.</p>
+          <p className="field-hint">Nenhuma reunião registrada ainda. Use "Gerenciar reuniões" acima para agendar a primeira.</p>
         ) : (
           <>
           <div className="table-wrap">
@@ -2451,7 +2454,7 @@ export function ClienteDetalhe() {
       <h2>Mapeamento</h2>
       <h3>Vendas</h3>
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Mapeamento de vendas</h2>
           {mapeamentoVendas && (
             <StatusBadge
@@ -2491,7 +2494,7 @@ export function ClienteDetalhe() {
       <h3>Pós-venda</h3>
       {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
-          <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <div className="page-header-actions page-header-actions-split">
             <h2 style={{ marginBottom: 0 }}>Mapeamento de pós-venda</h2>
             {mapeamentoPosVenda && (
               <StatusBadge
@@ -2535,7 +2538,7 @@ export function ClienteDetalhe() {
       <>
       {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
-          <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <div className="page-header-actions page-header-actions-split">
             <h2 style={{ marginBottom: 0 }}>Implementação de CRM</h2>
             {implementacao && <ImplementacaoStatusBadge status={implementacao.status} />}
           </div>
@@ -2603,7 +2606,7 @@ export function ClienteDetalhe() {
           }
           return (
             <section className="card form-card">
-              <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+              <div className="page-header-actions page-header-actions-split">
                 <h2 style={{ marginBottom: 0 }}>Trial Kommo</h2>
                 <span className={`status-badge status-tone-${STATUS_TRIAL_TONE[resumoTrial.status]}`}>
                   {STATUS_TRIAL_LABELS[resumoTrial.status]}
@@ -2739,7 +2742,7 @@ export function ClienteDetalhe() {
         </label>
 
         {arquivos.length === 0 ? (
-          <p className="field-hint">Nenhum arquivo anexado ainda.</p>
+          <p className="field-hint">Nenhum arquivo anexado ainda. Use "Adicionar arquivo" acima.</p>
         ) : (
           arquivosPorCategoria.map((grupo) => (
             <div key={grupo.nome}>
@@ -2812,7 +2815,7 @@ export function ClienteDetalhe() {
         </form>
 
         {observacoes.length === 0 ? (
-          <p className="field-hint">Nenhuma observação registrada ainda.</p>
+          <p className="field-hint">Nenhuma observação registrada ainda. Use o campo acima para a primeira.</p>
         ) : (
           <ul className="observacoes-lista">
             {observacoes.map((o) => (

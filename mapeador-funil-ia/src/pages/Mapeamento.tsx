@@ -1088,7 +1088,7 @@ export function Mapeamento() {
         <>
           {modo === 'tecnica' && versaoAtualInfo && (
             <section className="card">
-              <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+              <div className="page-header-actions page-header-actions-split">
                 <h2 style={{ marginBottom: 0 }}>
                   Versão {versaoAtualInfo.versao}
                   {versaoAtualInfo.versao !== versaoMaisRecente && ' (somente leitura)'}

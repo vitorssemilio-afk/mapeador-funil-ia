@@ -2846,7 +2846,7 @@ export function ImplementacaoDetalhe() {
 
       {aba === 'criterios' && implementacao && (
         <section className="card form-card">
-          <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <div className="page-header-actions page-header-actions-split">
             <h2 style={{ marginBottom: 0 }}>Critérios de Entrega</h2>
             {(() => {
               const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id);
@@ -3219,7 +3219,7 @@ export function ImplementacaoDetalhe() {
                     </p>
                   )}
 
-                  <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                  <div className="page-header-actions page-header-actions-split">
                     <h3 style={{ marginBottom: 0 }}>Adoção</h3>
                     <span className={`status-badge status-tone-${STATUS_DIAGNOSTICO_TONE[diagnostico.status]}`}>
                       {STATUS_DIAGNOSTICO_LABELS[diagnostico.status]}
@@ -3375,7 +3375,7 @@ export function ImplementacaoDetalhe() {
 
               return (
                 <section key={tipo} className="card form-card">
-                  <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                  <div className="page-header-actions page-header-actions-split">
                     <h2 style={{ marginBottom: 0 }}>
                       {TIPO_REUNIAO_LABELS[tipo]}
                       {reuniao && (
@@ -3516,7 +3516,7 @@ export function ImplementacaoDetalhe() {
 
               return (
                 <section key={tipo} className="card form-card">
-                  <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+                  <div className="page-header-actions page-header-actions-split">
                     <h2 style={{ marginBottom: 0 }}>{TIPO_REUNIAO_LABELS[tipo]}</h2>
                     {!formAberto && (
                       <button

@@ -40,6 +40,17 @@ export const TIPO_ITEM_AGENDA_LABELS: Record<TipoItemAgenda, string> = {
   alerta: 'Alerta',
 };
 
+// Diferenciação visual por tipo na Agenda (polimento visual, seção 20) —
+// sempre acompanhada do rótulo de texto acima, nunca só a cor.
+export const TIPO_ITEM_AGENDA_TONE: Record<TipoItemAgenda, 'info' | 'neutral' | 'warning' | 'danger'> = {
+  reuniao: 'info',
+  tarefa: 'neutral',
+  trial: 'warning',
+  pendencia_cliente: 'warning',
+  pendencia_interna: 'neutral',
+  alerta: 'danger',
+};
+
 export type BucketAgenda = 'atrasados' | 'hoje' | 'amanha' | 'proximos7' | 'sem_data';
 
 export const BUCKET_AGENDA_LABELS: Record<BucketAgenda, string> = {
