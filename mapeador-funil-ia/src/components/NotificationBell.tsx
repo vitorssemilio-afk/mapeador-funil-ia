@@ -48,7 +48,9 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', aoClicarFora);
   }, [aberto]);
 
-  const naoLidas = notificacoes.filter((n) => !n.lida);
+  // P2 da mini auditoria: alerta auto-resolvido não conta como urgência nem
+  // entra no badge, mesmo que o usuário nunca tenha aberto a notificação.
+  const naoLidas = notificacoes.filter((n) => !n.lida && !n.resolvida_em);
   const recentes = notificacoes.slice(0, 20);
   const grupos = agruparPorData(recentes);
 
@@ -76,7 +78,7 @@ export function NotificationBell() {
           <button
             type="button"
             key={n.id}
-            className={`notification-item${n.lida ? '' : ' notification-item-nao-lida'}`}
+            className={`notification-item${n.lida || n.resolvida_em ? '' : ' notification-item-nao-lida'}`}
             onClick={() => handleAbrirNotificacao(n)}
           >
             <span className={`notification-item-dot notification-tone-${PRIORIDADE_TONE[n.prioridade]}`} />
@@ -85,6 +87,7 @@ export function NotificationBell() {
               {n.descricao && <span className="notification-item-descricao">{n.descricao}</span>}
               <span className="notification-item-meta">
                 {CATEGORIA_LABELS[n.categoria]} · {formatarHorario(n.created_at)}
+                {n.resolvida_em && ' · Resolvida automaticamente'}
               </span>
             </span>
           </button>

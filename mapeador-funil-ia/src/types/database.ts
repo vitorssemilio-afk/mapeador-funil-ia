@@ -143,6 +143,12 @@ export type Notificacao = {
   entidade_tipo: string | null;
   entidade_id: string | null;
   chave_idempotencia: string;
+  // P2 da mini auditoria de estabilidade: preenchido pelo sistema quando a
+  // condição que gerou o alerta deixa de existir (ex: formulário respondido,
+  // pendência resolvida) — null enquanto o alerta ainda está ativo. Nunca é
+  // "desarquivar"/"ocultar": a linha e seu histórico continuam existindo,
+  // só para de contar como pendência/urgência.
+  resolvida_em: string | null;
   created_at: string;
 };
 

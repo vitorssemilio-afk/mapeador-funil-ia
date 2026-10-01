@@ -68,7 +68,9 @@ export async function carregarNotificacoes(limite = 200): Promise<{
 export async function contarNaoLidas(): Promise<number> {
   const { notificacoes, error } = await carregarNotificacoes(500);
   if (error) return 0;
-  return notificacoes.filter((n) => !n.lida && !n.arquivada).length;
+  // P2 da mini auditoria: um alerta auto-resolvido não conta mais como
+  // pendência, mesmo que ninguém tenha marcado como lido manualmente.
+  return notificacoes.filter((n) => !n.lida && !n.arquivada && !n.resolvida_em).length;
 }
 
 async function upsertStatus(
