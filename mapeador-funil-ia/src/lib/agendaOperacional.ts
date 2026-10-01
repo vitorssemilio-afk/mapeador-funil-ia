@@ -395,6 +395,7 @@ function itensDeAlertaReuniaoObrigatoria(
 export function construirAgendaOperacional(params: {
   clientes: Cliente[];
   mapeamentosVendas: Mapeamento[];
+  mapeamentosPosVenda?: Mapeamento[];
   implementacoes: ImplementacaoCrm[];
   atividades: AtividadeCronograma[];
   atividadesStatus: AtividadeStatusRow[];
@@ -407,6 +408,7 @@ export function construirAgendaOperacional(params: {
   const {
     clientes,
     mapeamentosVendas,
+    mapeamentosPosVenda = [],
     implementacoes,
     atividades,
     atividadesStatus,
@@ -434,6 +436,14 @@ export function construirAgendaOperacional(params: {
 
       const pendenciaCliente = itemDePendenciaClienteFormulario(cliente, vendas, hoje);
       if (pendenciaCliente) itens.push(pendenciaCliente);
+    }
+
+    // P3-M1: formulário de pós-venda sem resposta também é uma pendência do
+    // cliente — antes só o de vendas gerava esse alerta.
+    const posVenda = mapeamentosPosVenda.find((m) => m.cliente_id === cliente.id) ?? null;
+    if (posVenda) {
+      const pendenciaClientePosVenda = itemDePendenciaClienteFormulario(cliente, posVenda, hoje);
+      if (pendenciaClientePosVenda) itens.push(pendenciaClientePosVenda);
     }
 
     if (!implementacao) continue;

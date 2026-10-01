@@ -79,7 +79,7 @@ export type ClienteResumo = {
   reuniaoObrigatoriaPendente: boolean;
   consultor: string | null;
   consultorEmail: string | null;
-  consultorApoio: string | null;
+  consultorAdicional: string | null;
 };
 
 export type AlertaOperacao = {
@@ -304,7 +304,7 @@ export function construirResumoClientes(params: {
       reuniaoObrigatoriaPendente,
       consultor: nomeConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
       consultorEmail: emailConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
-      consultorApoio: nomeConsultor(implementacao?.consultor_apoio_id ?? null, consultores),
+      consultorAdicional: nomeConsultor(implementacao?.consultor_adicional_id ?? null, consultores),
     };
   });
 }

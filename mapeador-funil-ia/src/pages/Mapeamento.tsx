@@ -41,6 +41,28 @@ const NIVEL_COMPLEXIDADE_LABELS: Record<string, string> = {
   alta: 'Alta',
 };
 
+// P3-B4: mesmos valores usados pela pergunta classificadora do formulário de
+// pós-venda (pos_classificador_situacao, migration 0049) e pela classificação
+// que a IA agora é obrigada a devolver (classificacao_modelo_negocio,
+// migration 0068) — "hibrido" é o equivalente IA de "mais_de_uma" do
+// formulário, por isso aparece nos dois lados do mapa de equivalência abaixo.
+const CLASSIFICACAO_MODELO_NEGOCIO_LABELS: Record<string, string> = {
+  produto_entrega: 'Produto entregue/retirado',
+  servico_realizado: 'Serviço realizado',
+  implantacao_onboarding: 'Implantação/onboarding',
+  assinatura_mensalidade: 'Assinatura/mensalidade',
+  recompra_tempo: 'Recompra eventual',
+  hibrido: 'Híbrido / mais de uma situação',
+};
+const FORM_PARA_CLASSIFICACAO_IA: Record<string, string> = {
+  produto_entrega: 'produto_entrega',
+  servico_realizado: 'servico_realizado',
+  implantacao_onboarding: 'implantacao_onboarding',
+  assinatura_mensalidade: 'assinatura_mensalidade',
+  recompra_tempo: 'recompra_tempo',
+  mais_de_uma: 'hibrido',
+};
+
 export function Mapeamento() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
@@ -447,6 +469,12 @@ export function Mapeamento() {
     }
   }
 
+  // P3-M2: copiar o link não é a mesma coisa que enviá-lo — o consultor pode
+  // copiar pra testar, copiar de novo depois de já ter enviado, ou copiar e
+  // esquecer de mandar. Marcar "formulário enviado" automaticamente nesse
+  // clique inferia um evento que pode nunca ter acontecido, distorcendo o
+  // prazo de resposta e os marcos de "Contratação → envio". Agora é uma
+  // confirmação explícita, separada da cópia em si.
   async function handleCopiarLink() {
     if (!mapeamento) return;
     const link = `${window.location.origin}/f/${mapeamento.codigo_curto}`;
@@ -454,7 +482,11 @@ export function Mapeamento() {
     setLinkCopiado(true);
     setTimeout(() => setLinkCopiado(false), 2000);
 
-    if (mapeamento.tipo === 'vendas' && mapeamento.cliente_id) {
+    if (
+      mapeamento.tipo === 'vendas' &&
+      mapeamento.cliente_id &&
+      window.confirm('Você vai enviar este link para o cliente agora? Isso marca o formulário como enviado.')
+    ) {
       await supabase
         .from('clientes')
         .update({ formulario_enviado_em: new Date().toISOString() })
@@ -1101,8 +1133,36 @@ export function Mapeamento() {
             (geracaoMeta.pontos_para_validar.length > 0 ||
               geracaoMeta.transicoes_entre_funis.length > 0 ||
               geracaoMeta.indicadores_dashboard.length > 0 ||
-              geracaoMeta.nivel_complexidade) && (
+              geracaoMeta.nivel_complexidade ||
+              geracaoMeta.classificacao_modelo_negocio) && (
               <section className="card geracao-meta-card">
+                {mapeamento.tipo === 'pos_venda' && geracaoMeta.classificacao_modelo_negocio && (() => {
+                  const declarado = mapeamento.respostas?.pos_classificador_situacao;
+                  const declaradoTexto = typeof declarado === 'string' ? declarado : null;
+                  const classificacaoEsperadaPelaIA = declaradoTexto
+                    ? FORM_PARA_CLASSIFICACAO_IA[declaradoTexto]
+                    : null;
+                  const divergente =
+                    classificacaoEsperadaPelaIA != null &&
+                    classificacaoEsperadaPelaIA !== geracaoMeta.classificacao_modelo_negocio;
+                  return (
+                    <div className={`field-hint${divergente ? ' form-error' : ''}`}>
+                      <strong>Modelo de negócio identificado pela IA: </strong>
+                      {CLASSIFICACAO_MODELO_NEGOCIO_LABELS[geracaoMeta.classificacao_modelo_negocio] ??
+                        geracaoMeta.classificacao_modelo_negocio}
+                      {divergente && (
+                        <>
+                          {' '}— diferente do que o formulário indicou (
+                          {CLASSIFICACAO_MODELO_NEGOCIO_LABELS[classificacaoEsperadaPelaIA] ??
+                            classificacaoEsperadaPelaIA}
+                          ). A IA pode ter cruzado com o resto das respostas pra refinar essa classificação —
+                          vale conferir se o funil gerado realmente reflete o modelo deste negócio antes de aprovar.
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {modo === 'tecnica' && geracaoMeta.nivel_complexidade && (
                   <div className="estimativa-badge">
                     <span className={`estimativa-nivel estimativa-nivel-${geracaoMeta.nivel_complexidade}`}>

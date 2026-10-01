@@ -142,6 +142,7 @@ export function Dashboard() {
       construirAgendaOperacional({
         clientes,
         mapeamentosVendas: mapeamentos.filter((m) => m.tipo === 'vendas'),
+        mapeamentosPosVenda: mapeamentos.filter((m) => m.tipo === 'pos_venda'),
         implementacoes,
         atividades,
         atividadesStatus: statusRows,

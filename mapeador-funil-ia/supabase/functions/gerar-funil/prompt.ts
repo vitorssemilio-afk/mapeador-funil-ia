@@ -253,19 +253,23 @@ REGRAS:
    fornecido — se estiver, não pergunte de novo. Faça de 2 a 5 perguntas objetivas e específicas
    do nicho do cliente. Fora desses casos raros, ignore esta regra e vá direto pras regras 1-18.
 
-1. Antes de desenhar qualquer funil, classifique internamente o modelo deste negócio como uma
-   combinação de: produto físico, serviço, implantação/onboarding, assinatura/recorrência,
-   recompra eventual, ou híbrido (quando mais de uma dessas categorias se aplica ao mesmo tempo —
-   ex: venda de equipamento com mensalidade de manutenção). Use a resposta da pergunta
-   classificadora do formulário como ponto de partida, mas cruze com o resto das respostas (o que
-   é vendido, se existe cobrança recorrente, se há uma fase de implantação antes do uso) pra
-   confirmar ou refinar essa classificação — não aceite a resposta isolada se o resto do
-   formulário contradisser. Essa classificação não aparece como campo separado no JSON de saída,
-   mas deve guiar toda decisão daqui pra frente: quantos funis fazem sentido, quantas etapas cada
-   um precisa, os SLAs (uma assinatura pede SLA de resposta mais agressivo que uma recompra
-   esporádica), as automações cabíveis, o tipo de acompanhamento (contato recorrente programado
-   para recorrência/assinatura, check-in pontual para compra única) e os indicadores de
-   dashboard mais relevantes pra esse modelo.
+1. Antes de desenhar qualquer funil, classifique o modelo deste negócio como um destes valores:
+   "produto_entrega" (produto físico entregue/retirado), "servico_realizado" (serviço realizado),
+   "implantacao_onboarding" (implantação/onboarding antes do uso), "assinatura_mensalidade"
+   (assinatura/recorrência), "recompra_tempo" (recompra eventual) ou "hibrido" (quando mais de uma
+   categoria se aplica ao mesmo tempo — ex: venda de equipamento com mensalidade de manutenção).
+   Use a resposta da pergunta classificadora do formulário (pos_classificador_situacao) como ponto
+   de partida, mas cruze com o resto das respostas (o que é vendido, se existe cobrança recorrente,
+   se há uma fase de implantação antes do uso) pra confirmar ou refinar essa classificação — não
+   aceite a resposta isolada se o resto do formulário contradisser. Diferente do que uma versão
+   anterior destas instruções dizia, essa classificação AGORA é obrigatória como campo separado no
+   JSON de saída (classificacao_modelo_negocio, ver regra 19) — é o que permite a quem revisa o
+   funil comparar o que você concluiu com o que o formulário tinha indicado, em vez de confiar cegamente
+   no resultado. Essa classificação deve guiar toda decisão daqui pra frente: quantos funis fazem
+   sentido, quantas etapas cada um precisa, os SLAs (uma assinatura pede SLA de resposta mais
+   agressivo que uma recompra esporádica), as automações cabíveis, o tipo de acompanhamento
+   (contato recorrente programado para recorrência/assinatura, check-in pontual para compra única)
+   e os indicadores de dashboard mais relevantes pra esse modelo.
 
 2. Decida quantos funis de pós-venda fazem sentido para este negócio — normalmente 1, mas separe
    em mais de um quando houver fases com responsáveis, ritmos ou objetivos claramente distintos.
@@ -447,26 +451,30 @@ REGRAS:
     contradizendo o que foi respondido — sem marcador dentro do texto, e registre em
     pontos_para_validar (regra 11).
 
-18. Devolva as mesmas quatro informações no nível raiz do JSON que um funil de vendas devolveria:
+18. Devolva as mesmas quatro informações no nível raiz do JSON que um funil de vendas devolveria,
+    mais a classificação da regra 1:
     pontos_para_validar (perguntas diretas e naturais pro dono do negócio confirmar/decidir, sem
     jargão técnico nem nomes internos de campo/etapa — inclua tanto suposições sobre o que já
     existe quanto recomendações novas que você propôs, regra 11), transicoes_entre_funis (quando
     houver mais de um funil de pós-venda, ou quando o retorno pro funil de vendas da regra 8 puder
     ser representado — ex: sai de Onboarding quando o cliente ativa, entra em
-    Acompanhamento/Sucesso), estimativa (nivel_complexidade/semanas_estimadas/observacao) e
+    Acompanhamento/Sucesso), estimativa (nivel_complexidade/semanas_estimadas/observacao),
     indicadores_dashboard (relatórios do Kommo relevantes pra pós-venda, coerentes com o modelo de
     negócio da regra 1 — ex: "Carga de trabalho da equipe" pra volume de atendimentos pós-venda,
     "Relatório de eventos-alvo" pra taxa de ativação/renovação — mesmo formato de um funil de
-    vendas: nome do relatório + o que precisa estar configurado no funil pra ele funcionar).
+    vendas: nome do relatório + o que precisa estar configurado no funil pra ele funcionar) e
+    classificacao_modelo_negocio (um dos 6 valores da regra 1, nunca null quando a chave "funis"
+    estiver presente).
 
 19. Responda APENAS com um JSON válido, sem markdown, sem texto fora do JSON. Preserve
     rigorosamente as chaves e a estrutura abaixo — o parser da aplicação depende exatamente destes
     nomes de campo, tanto no nível de cada etapa (nome, objetivo, gatilho_entrada, gatilho_saida,
     tarefas, campos_obrigatorios, campos_desejaveis, sla, regras_negocio, regras_perda,
     responsavel, automacao, script_sugerido) quanto no nível raiz (funis, pontos_para_validar,
-    transicoes_entre_funis, estimativa, indicadores_dashboard). Use o formato de perguntas da
-    regra 0 se a informação for insuficiente (nesse caso, essa é a ÚNICA chave do JSON). Caso
-    contrário, use este formato (idêntico ao de um funil de vendas):
+    transicoes_entre_funis, estimativa, indicadores_dashboard, classificacao_modelo_negocio). Use o
+    formato de perguntas da regra 0 se a informação for insuficiente (nesse caso, essa é a ÚNICA
+    chave do JSON). Caso contrário, use este formato (idêntico ao de um funil de vendas, com o
+    campo adicional classificacao_modelo_negocio):
 
 {
   "funis": [
@@ -506,5 +514,6 @@ REGRAS:
     "semanas_estimadas": number,
     "observacao": "string ou null"
   },
-  "indicadores_dashboard": ["string"]
+  "indicadores_dashboard": ["string"],
+  "classificacao_modelo_negocio": "produto_entrega | servico_realizado | implantacao_onboarding | assinatura_mensalidade | recompra_tempo | hibrido"
 }`;
