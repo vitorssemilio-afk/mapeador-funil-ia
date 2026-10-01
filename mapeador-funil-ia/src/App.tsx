@@ -14,6 +14,7 @@ import { Cronograma } from './pages/Cronograma';
 import { Dashboard } from './pages/Dashboard';
 import { FormularioAdmin } from './pages/FormularioAdmin';
 import { FormularioPublico } from './pages/FormularioPublico';
+import { GestaoDashboard } from './pages/GestaoDashboard';
 import { ImplementacaoChecklistAdmin } from './pages/ImplementacaoChecklistAdmin';
 import { ImplementacaoDetalhe } from './pages/ImplementacaoDetalhe';
 import { ImplementacoesCrm } from './pages/ImplementacoesCrm';
@@ -59,6 +60,7 @@ function App() {
               }
             >
               <Route path="/" element={<Dashboard />} />
+              <Route path="/gestao" element={<GestaoDashboard />} />
               <Route path="/agenda" element={<Agenda />} />
               <Route path="/notificacoes" element={<CentralNotificacoes />} />
               <Route path="/cronograma" element={<Cronograma />} />
