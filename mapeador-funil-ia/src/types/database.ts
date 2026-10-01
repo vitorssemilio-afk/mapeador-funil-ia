@@ -756,6 +756,29 @@ export type ConfiguracaoIA = {
   updated_at: string;
 };
 
+// Busca Global (Command Palette) — uma linha normalizada por resultado,
+// igual pras 9 funções de busca_* (migration 0075), pra renderizar todas
+// as categorias com o mesmo componente no frontend.
+export type BuscaGlobalCategoria =
+  | 'cliente'
+  | 'contato'
+  | 'implementacao'
+  | 'funil'
+  | 'reuniao'
+  | 'pendencia'
+  | 'ocorrencia'
+  | 'consultor';
+
+export type BuscaGlobalResultado = {
+  categoria: BuscaGlobalCategoria;
+  entidade_id: string;
+  titulo: string;
+  subtitulo: string | null;
+  badge: string | null;
+  rota: string;
+  relevancia: number | null;
+};
+
 export type ChecklistGrupoImplementacao = {
   id: string;
   chave: string;
@@ -1328,6 +1351,42 @@ export type Database = {
       public_get_branding: {
         Args: Record<PropertyKey, never>;
         Returns: { nome_operacao: string; nome_produto: string }[];
+      };
+      busca_global: {
+        Args: { p_termo: string; p_limite_por_categoria?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_clientes: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_contatos: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_implementacoes: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_funis: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_reunioes: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_pendencias: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_ocorrencias: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_consultores: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
       };
       transferir_consultor_responsavel_implementacao: {
         Args: {

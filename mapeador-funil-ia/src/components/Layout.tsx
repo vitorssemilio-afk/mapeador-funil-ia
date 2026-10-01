@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabaseClient';
+import { GlobalSearch } from './GlobalSearch';
 import { NotificationBell } from './NotificationBell';
 
 function navLinkClass({ isActive }: { isActive: boolean }): string {
@@ -97,6 +98,7 @@ export function Layout() {
           </nav>
         </div>
         <div className="topbar-user">
+          <GlobalSearch />
           <NotificationBell />
           <span className="topbar-email">{user?.email}</span>
           <ThemeToggle />
