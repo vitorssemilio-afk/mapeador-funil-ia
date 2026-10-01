@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { formatCampoEtapaLabel } from '../data/etapaCampos';
 import { exportarFunilParaPptx } from '../lib/exportPptx';
 import { supabase } from '../lib/supabaseClient';
@@ -267,12 +267,26 @@ function ValidarComClienteSlide({ pontos }: { pontos: string[] }) {
 
 export function RelatorioFunil() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
+  const versaoSolicitada = searchParams.get('versao');
   const [mapeamento, setMapeamento] = useState<Mapeamento | null>(null);
   const [funis, setFunis] = useState<FunilGerado[]>([]);
   const [geracaoMeta, setGeracaoMeta] = useState<GeracaoMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportandoPptx, setExportandoPptx] = useState(false);
+  const [marcaOperacao, setMarcaOperacao] = useState('V4');
+
+  useEffect(() => {
+    supabase
+      .from('configuracoes_operacao')
+      .select('nome_operacao')
+      .eq('id', true)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.nome_operacao) setMarcaOperacao(data.nome_operacao);
+      });
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -296,13 +310,19 @@ export function RelatorioFunil() {
         return;
       }
 
-      const { data: versaoAtual } = await supabase
-        .from('funis_gerados')
-        .select('versao')
-        .eq('mapeamento_id', id as string)
-        .order('versao', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const versaoNumero = versaoSolicitada ? Number(versaoSolicitada) : null;
+      const versaoAtual =
+        versaoNumero && Number.isInteger(versaoNumero)
+          ? { versao: versaoNumero }
+          : (
+              await supabase
+                .from('funis_gerados')
+                .select('versao')
+                .eq('mapeamento_id', id as string)
+                .order('versao', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+            ).data;
 
       if (versaoAtual) {
         const { data: funisData, error: funisError } = await supabase
@@ -341,7 +361,7 @@ export function RelatorioFunil() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, versaoSolicitada]);
 
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error) return <p className="form-error">{error}</p>;
@@ -390,7 +410,7 @@ export function RelatorioFunil() {
             {new Date().toLocaleDateString('pt-BR')}
           </p>
           <span className="brand-mark" aria-hidden="true">
-            V4
+            {marcaOperacao}
           </span>
         </section>
 

@@ -232,7 +232,22 @@ Deno.serve(async (req: Request) => {
     .select('entidade, nome_campo, tipo, opcoes');
   const camposPadraoTexto = formatCamposPadraoTexto(camposPadrao ?? []);
 
-  const systemPrompt = tipo === 'pos_venda' ? SYSTEM_PROMPT_POS_VENDA : SYSTEM_PROMPT;
+  let systemPrompt = tipo === 'pos_venda' ? SYSTEM_PROMPT_POS_VENDA : SYSTEM_PROMPT;
+
+  // Config de IA (Fase 2 de Configurações) — só parâmetros não sensíveis.
+  // Se não houver linha de config ainda, mantém o comportamento atual
+  // (perguntas de esclarecimento permitidas, temperatura padrão do modelo).
+  const { data: configIA } = await supabase
+    .from('configuracoes_ia')
+    .select('temperatura, permitir_perguntas_esclarecimento')
+    .eq('id', true)
+    .maybeSingle();
+
+  if (configIA?.permitir_perguntas_esclarecimento === false) {
+    systemPrompt += `\n\n## Override de configuração\nNão faça perguntas de esclarecimento nesta geração, mesmo que a Regra 0 do prompt acima normalmente peça isso. Gere os funis diretamente com as informações disponíveis, assumindo o cenário mais provável quando faltar algum detalhe.`;
+  }
+
+  const temperaturaIA = typeof configIA?.temperatura === 'number' ? configIA.temperatura : null;
 
   let contextoAdicional: string | undefined;
   if (tipo === 'pos_venda' && mapeamento.mapeamento_origem_id) {
@@ -327,6 +342,7 @@ Deno.serve(async (req: Request) => {
       instrucoesExtras,
       systemPrompt,
       contextoAdicional,
+      temperaturaIA,
     );
   } catch (iaError) {
     console.error('Erro ao gerar funil com IA', iaError);

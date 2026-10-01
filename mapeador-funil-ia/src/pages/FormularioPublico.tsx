@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { WizardPublico } from '../components/wizard/WizardPublico';
 import { supabase } from '../lib/supabaseClient';
-import type { MapeamentoPublico } from '../types/database';
+import type { ConfiguracaoFormulario, MapeamentoPublico } from '../types/database';
 
 export function FormularioPublico() {
   const { id, codigo } = useParams<{ id?: string; codigo?: string }>();
@@ -10,6 +10,8 @@ export function FormularioPublico() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enviado, setEnviado] = useState(false);
+  const [marcaOperacao, setMarcaOperacao] = useState('V4');
+  const [configFormulario, setConfigFormulario] = useState<ConfiguracaoFormulario | null>(null);
 
   const tituloFormulario =
     mapeamento?.tipo === 'pos_venda'
@@ -23,6 +25,20 @@ export function FormularioPublico() {
       document.title = tituloAnterior;
     };
   }, [tituloFormulario]);
+
+  useEffect(() => {
+    supabase.rpc('public_get_branding').then(({ data }) => {
+      const branding = data?.[0];
+      if (branding?.nome_operacao) setMarcaOperacao(branding.nome_operacao);
+    });
+
+    supabase
+      .from('configuracoes_formulario')
+      .select('*')
+      .eq('id', true)
+      .maybeSingle()
+      .then(({ data }) => setConfigFormulario(data ?? null));
+  }, []);
 
   useEffect(() => {
     if (!id && !codigo) return;
@@ -61,7 +77,7 @@ export function FormularioPublico() {
       <header className="topbar">
         <span className="topbar-brand">
           <span className="brand-mark" aria-hidden="true">
-            V4
+            {marcaOperacao}
           </span>
           {tituloFormulario}
         </span>
@@ -75,8 +91,11 @@ export function FormularioPublico() {
             <section className="card">
               <h2>Obrigado!</h2>
               <p className="field-hint">
-                Recebemos suas respostas. Nossa equipe vai analisar as informações e entrar em
-                contato em breve.
+                {mapeamento.tipo === 'pos_venda'
+                  ? configFormulario?.mensagem_conclusao_pos_venda ??
+                    'Recebemos suas respostas. Nossa equipe vai analisar as informações e entrar em contato em breve.'
+                  : configFormulario?.mensagem_conclusao_vendas ??
+                    'Recebemos suas respostas. Nossa equipe vai analisar as informações e entrar em contato em breve.'}
               </p>
             </section>
           )}
@@ -88,8 +107,10 @@ export function FormularioPublico() {
                   <h1>{mapeamento.nome_negocio}</h1>
                   <p className="field-hint">
                     {mapeamento.tipo === 'pos_venda'
-                      ? 'Preencha as perguntas abaixo sobre o relacionamento com o cliente depois da venda.'
-                      : 'Preencha as perguntas abaixo sobre o seu processo comercial.'}
+                      ? configFormulario?.texto_inicial_pos_venda ??
+                        'Preencha as perguntas abaixo sobre o relacionamento com o cliente depois da venda.'
+                      : configFormulario?.texto_inicial_vendas ??
+                        'Preencha as perguntas abaixo sobre o seu processo comercial.'}
                   </p>
                 </div>
               </div>

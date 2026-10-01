@@ -10,14 +10,27 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import type { CicloConfiguravel, ConfiguracaoHistoricoItem, ConfiguracaoImplementacao, ConfiguracaoPipefy } from '../types/database';
+import type {
+  CicloConfiguravel,
+  ConfiguracaoAlertas,
+  ConfiguracaoFormulario,
+  ConfiguracaoHistoricoItem,
+  ConfiguracaoIA,
+  ConfiguracaoImplementacao,
+  ConfiguracaoOperacao,
+  ConfiguracaoPipefy,
+} from '../types/database';
 
-type AbaConfiguracoes = 'implementacao' | 'trial' | 'pipefy' | 'historico';
+type AbaConfiguracoes = 'implementacao' | 'trial' | 'formulario' | 'alertas' | 'pipefy' | 'operacao' | 'ia' | 'historico';
 
 const ABAS: { valor: AbaConfiguracoes; label: string }[] = [
   { valor: 'implementacao', label: 'Implementação' },
   { valor: 'trial', label: 'Trial' },
+  { valor: 'formulario', label: 'Formulários' },
+  { valor: 'alertas', label: 'Alertas' },
   { valor: 'pipefy', label: 'Pipefy' },
+  { valor: 'operacao', label: 'Operação' },
+  { valor: 'ia', label: 'IA' },
   { valor: 'historico', label: 'Histórico' },
 ];
 
@@ -83,6 +96,91 @@ function paraFormPipefy(c: ConfiguracaoPipefy): FormPipefy {
   };
 }
 
+type FormFormulario = {
+  prazo_resposta_vendas_dias: string;
+  prazo_resposta_pos_venda_dias: string;
+  texto_inicial_vendas: string;
+  texto_inicial_pos_venda: string;
+  mensagem_conclusao_vendas: string;
+  mensagem_conclusao_pos_venda: string;
+  tempo_estimado_vendas_minutos: string;
+  tempo_estimado_pos_venda_minutos: string;
+};
+
+function paraFormFormulario(c: ConfiguracaoFormulario): FormFormulario {
+  return {
+    prazo_resposta_vendas_dias: String(c.prazo_resposta_vendas_dias),
+    prazo_resposta_pos_venda_dias: String(c.prazo_resposta_pos_venda_dias),
+    texto_inicial_vendas: c.texto_inicial_vendas,
+    texto_inicial_pos_venda: c.texto_inicial_pos_venda,
+    mensagem_conclusao_vendas: c.mensagem_conclusao_vendas,
+    mensagem_conclusao_pos_venda: c.mensagem_conclusao_pos_venda,
+    tempo_estimado_vendas_minutos: c.tempo_estimado_vendas_minutos != null ? String(c.tempo_estimado_vendas_minutos) : '',
+    tempo_estimado_pos_venda_minutos:
+      c.tempo_estimado_pos_venda_minutos != null ? String(c.tempo_estimado_pos_venda_minutos) : '',
+  };
+}
+
+type FormAlertas = {
+  implementacao_alertas_dias: string;
+  pendencia_alertas_antes_dias: string;
+  pendencia_alerta_alta_dias_vencida: string;
+  pendencia_alerta_critica_dias_vencida: string;
+  formulario_lembrete_1_dias: string;
+  formulario_lembrete_2_dias: string;
+};
+
+function paraFormAlertas(c: ConfiguracaoAlertas): FormAlertas {
+  return {
+    implementacao_alertas_dias: c.implementacao_alertas_dias.join(', '),
+    pendencia_alertas_antes_dias: c.pendencia_alertas_antes_dias.join(', '),
+    pendencia_alerta_alta_dias_vencida: String(c.pendencia_alerta_alta_dias_vencida),
+    pendencia_alerta_critica_dias_vencida: String(c.pendencia_alerta_critica_dias_vencida),
+    formulario_lembrete_1_dias: String(c.formulario_lembrete_1_dias),
+    formulario_lembrete_2_dias: String(c.formulario_lembrete_2_dias),
+  };
+}
+
+type FormOperacao = {
+  nome_operacao: string;
+  nome_produto: string;
+  razao_social: string;
+  cnpj: string;
+  texto_padrao_rodape: string;
+};
+
+function paraFormOperacao(c: ConfiguracaoOperacao): FormOperacao {
+  return {
+    nome_operacao: c.nome_operacao,
+    nome_produto: c.nome_produto,
+    razao_social: c.razao_social ?? '',
+    cnpj: c.cnpj ?? '',
+    texto_padrao_rodape: c.texto_padrao_rodape ?? '',
+  };
+}
+
+type FormIA = {
+  temperatura: string;
+  permitir_perguntas_esclarecimento: boolean;
+  versao_prompt_label: string;
+};
+
+function paraFormIA(c: ConfiguracaoIA): FormIA {
+  return {
+    temperatura: c.temperatura != null ? String(c.temperatura) : '',
+    permitir_perguntas_esclarecimento: c.permitir_perguntas_esclarecimento,
+    versao_prompt_label: c.versao_prompt_label ?? '',
+  };
+}
+
+function parseListaNumeros(valor: string): number[] {
+  return valor
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .map(Number);
+}
+
 export function Configuracoes() {
   const { user } = useAuth();
   const [souAdministrador, setSouAdministrador] = useState(false);
@@ -93,6 +191,14 @@ export function Configuracoes() {
   const [formTrial, setFormTrial] = useState<FormTrial | null>(null);
   const [configPipefy, setConfigPipefy] = useState<ConfiguracaoPipefy | null>(null);
   const [formPipefy, setFormPipefy] = useState<FormPipefy | null>(null);
+  const [configFormulario, setConfigFormulario] = useState<ConfiguracaoFormulario | null>(null);
+  const [formFormulario, setFormFormulario] = useState<FormFormulario | null>(null);
+  const [configAlertas, setConfigAlertas] = useState<ConfiguracaoAlertas | null>(null);
+  const [formAlertas, setFormAlertas] = useState<FormAlertas | null>(null);
+  const [configOperacao, setConfigOperacao] = useState<ConfiguracaoOperacao | null>(null);
+  const [formOperacao, setFormOperacao] = useState<FormOperacao | null>(null);
+  const [configIA, setConfigIA] = useState<ConfiguracaoIA | null>(null);
+  const [formIA, setFormIA] = useState<FormIA | null>(null);
   const [historico, setHistorico] = useState<ConfiguracaoHistoricoItem[]>([]);
 
   const [loading, setLoading] = useState(true);
@@ -104,13 +210,25 @@ export function Configuracoes() {
     setLoading(true);
     setError(null);
 
-    const [{ data: souAdmin }, { data: implData, error: implError }, { data: pipefyData }, { data: historicoData }] =
-      await Promise.all([
-        supabase.rpc('sou_administrador'),
-        supabase.from('configuracoes_implementacao').select('*').eq('id', true).single(),
-        supabase.from('configuracoes_pipefy').select('*').eq('id', true).maybeSingle(),
-        supabase.from('configuracoes_historico').select('*').order('created_at', { ascending: false }).limit(100),
-      ]);
+    const [
+      { data: souAdmin },
+      { data: implData, error: implError },
+      { data: pipefyData },
+      { data: formularioData },
+      { data: alertasData },
+      { data: operacaoData },
+      { data: iaData },
+      { data: historicoData },
+    ] = await Promise.all([
+      supabase.rpc('sou_administrador'),
+      supabase.from('configuracoes_implementacao').select('*').eq('id', true).single(),
+      supabase.from('configuracoes_pipefy').select('*').eq('id', true).maybeSingle(),
+      supabase.from('configuracoes_formulario').select('*').eq('id', true).maybeSingle(),
+      supabase.from('configuracoes_alertas').select('*').eq('id', true).maybeSingle(),
+      supabase.from('configuracoes_operacao').select('*').eq('id', true).maybeSingle(),
+      supabase.from('configuracoes_ia').select('*').eq('id', true).maybeSingle(),
+      supabase.from('configuracoes_historico').select('*').order('created_at', { ascending: false }).limit(100),
+    ]);
 
     setSouAdministrador(souAdmin === true);
 
@@ -125,6 +243,14 @@ export function Configuracoes() {
     setFormTrial(paraFormTrial(implData));
     setConfigPipefy(pipefyData ?? null);
     if (pipefyData) setFormPipefy(paraFormPipefy(pipefyData));
+    setConfigFormulario(formularioData ?? null);
+    if (formularioData) setFormFormulario(paraFormFormulario(formularioData));
+    setConfigAlertas(alertasData ?? null);
+    if (alertasData) setFormAlertas(paraFormAlertas(alertasData));
+    setConfigOperacao(operacaoData ?? null);
+    if (operacaoData) setFormOperacao(paraFormOperacao(operacaoData));
+    setConfigIA(iaData ?? null);
+    if (iaData) setFormIA(paraFormIA(iaData));
     setHistorico(historicoData ?? []);
     setLoading(false);
   }
@@ -341,6 +467,281 @@ export function Configuracoes() {
 
     setSalvo(true);
     setTimeout(() => setSalvo(false), 2000);
+  }
+
+  async function handleSalvarFormulario(e: FormEvent) {
+    e.preventDefault();
+    if (!formFormulario || !configFormulario) return;
+
+    const prazoVendas = Number(formFormulario.prazo_resposta_vendas_dias);
+    const prazoPosVenda = Number(formFormulario.prazo_resposta_pos_venda_dias);
+    const tempoVendas = formFormulario.tempo_estimado_vendas_minutos.trim()
+      ? Number(formFormulario.tempo_estimado_vendas_minutos)
+      : null;
+    const tempoPosVenda = formFormulario.tempo_estimado_pos_venda_minutos.trim()
+      ? Number(formFormulario.tempo_estimado_pos_venda_minutos)
+      : null;
+
+    if (!Number.isInteger(prazoVendas) || prazoVendas <= 0) {
+      setError('Prazo de resposta de vendas precisa ser um número inteiro positivo.');
+      return;
+    }
+    if (!Number.isInteger(prazoPosVenda) || prazoPosVenda <= 0) {
+      setError('Prazo de resposta de pós-venda precisa ser um número inteiro positivo.');
+      return;
+    }
+    if (!formFormulario.texto_inicial_vendas.trim() || !formFormulario.texto_inicial_pos_venda.trim()) {
+      setError('O texto inicial não pode ficar vazio.');
+      return;
+    }
+    if (!formFormulario.mensagem_conclusao_vendas.trim() || !formFormulario.mensagem_conclusao_pos_venda.trim()) {
+      setError('A mensagem de conclusão não pode ficar vazia.');
+      return;
+    }
+    if (tempoVendas !== null && (!Number.isInteger(tempoVendas) || tempoVendas <= 0)) {
+      setError('O tempo estimado de vendas precisa ser um número inteiro positivo (ou vazio).');
+      return;
+    }
+    if (tempoPosVenda !== null && (!Number.isInteger(tempoPosVenda) || tempoPosVenda <= 0)) {
+      setError('O tempo estimado de pós-venda precisa ser um número inteiro positivo (ou vazio).');
+      return;
+    }
+
+    const atual = {
+      prazo_resposta_vendas_dias: prazoVendas,
+      prazo_resposta_pos_venda_dias: prazoPosVenda,
+      texto_inicial_vendas: formFormulario.texto_inicial_vendas.trim(),
+      texto_inicial_pos_venda: formFormulario.texto_inicial_pos_venda.trim(),
+      mensagem_conclusao_vendas: formFormulario.mensagem_conclusao_vendas.trim(),
+      mensagem_conclusao_pos_venda: formFormulario.mensagem_conclusao_pos_venda.trim(),
+      tempo_estimado_vendas_minutos: tempoVendas,
+      tempo_estimado_pos_venda_minutos: tempoPosVenda,
+    };
+    const original = {
+      prazo_resposta_vendas_dias: configFormulario.prazo_resposta_vendas_dias,
+      prazo_resposta_pos_venda_dias: configFormulario.prazo_resposta_pos_venda_dias,
+      texto_inicial_vendas: configFormulario.texto_inicial_vendas,
+      texto_inicial_pos_venda: configFormulario.texto_inicial_pos_venda,
+      mensagem_conclusao_vendas: configFormulario.mensagem_conclusao_vendas,
+      mensagem_conclusao_pos_venda: configFormulario.mensagem_conclusao_pos_venda,
+      tempo_estimado_vendas_minutos: configFormulario.tempo_estimado_vendas_minutos,
+      tempo_estimado_pos_venda_minutos: configFormulario.tempo_estimado_pos_venda_minutos,
+    };
+    const patch = patchComparado(original, atual);
+    if (Object.keys(patch).length === 0) return;
+
+    // Textos do formulário público — não altera respostas já enviadas por
+    // clientes, só o texto exibido pra quem ainda vai preencher.
+    if (
+      (patch.texto_inicial_vendas !== undefined ||
+        patch.texto_inicial_pos_venda !== undefined ||
+        patch.mensagem_conclusao_vendas !== undefined ||
+        patch.mensagem_conclusao_pos_venda !== undefined) &&
+      !window.confirm(
+        'Alterar esses textos não modifica nem remove respostas já enviadas por clientes — vale só para quem ainda vai preencher o formulário a partir de agora. Confirmar?',
+      )
+    ) {
+      return;
+    }
+
+    setSalvando(true);
+    setError(null);
+    setSalvo(false);
+
+    const { data, error: salvarError } = await supabase.rpc('atualizar_configuracao_formulario', { p_patch: patch });
+
+    setSalvando(false);
+
+    if (salvarError) {
+      setError(salvarError.message);
+      return;
+    }
+
+    setConfigFormulario(data);
+    setFormFormulario(paraFormFormulario(data));
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+    carregar();
+  }
+
+  async function handleSalvarAlertas(e: FormEvent) {
+    e.preventDefault();
+    if (!formAlertas || !configAlertas) return;
+
+    const implementacaoDias = parseListaNumeros(formAlertas.implementacao_alertas_dias);
+    const pendenciaAntesDias = parseListaNumeros(formAlertas.pendencia_alertas_antes_dias);
+    const pendenciaAlta = Number(formAlertas.pendencia_alerta_alta_dias_vencida);
+    const pendenciaCritica = Number(formAlertas.pendencia_alerta_critica_dias_vencida);
+    const lembrete1 = Number(formAlertas.formulario_lembrete_1_dias);
+    const lembrete2 = Number(formAlertas.formulario_lembrete_2_dias);
+
+    if (implementacaoDias.length === 0 || implementacaoDias.some((d) => !Number.isInteger(d) || d <= 0)) {
+      setError('Os marcos de alerta de implementação precisam ser uma lista de números inteiros positivos separados por vírgula.');
+      return;
+    }
+    if (implementacaoDias.length > 6) {
+      setError('No máximo 6 marcos de alerta de implementação — mais que isso vira spam de notificação.');
+      return;
+    }
+    if (pendenciaAntesDias.length === 0 || pendenciaAntesDias.some((d) => !Number.isInteger(d) || d < 0)) {
+      setError('Os marcos de alerta de pendência precisam ser uma lista de números inteiros não-negativos separados por vírgula.');
+      return;
+    }
+    if (pendenciaAntesDias.length > 6) {
+      setError('No máximo 6 marcos de alerta de pendência — mais que isso vira spam de notificação.');
+      return;
+    }
+    if (!Number.isInteger(pendenciaAlta) || pendenciaAlta <= 0) {
+      setError('O limite de dias vencidos para prioridade alta precisa ser um número inteiro positivo.');
+      return;
+    }
+    if (!Number.isInteger(pendenciaCritica) || pendenciaCritica <= pendenciaAlta) {
+      setError('O limite de dias vencidos para prioridade crítica precisa ser maior que o de prioridade alta.');
+      return;
+    }
+    if (!Number.isInteger(lembrete1) || lembrete1 <= 0) {
+      setError('O primeiro lembrete de formulário precisa ser um número inteiro positivo.');
+      return;
+    }
+    if (!Number.isInteger(lembrete2) || lembrete2 <= lembrete1) {
+      setError('O segundo lembrete de formulário precisa ser maior que o primeiro.');
+      return;
+    }
+
+    if (
+      !window.confirm(
+        'Esta alteração muda quando os alertas de implementação, pendências e formulários são disparados a partir de agora. Confirmar?',
+      )
+    ) {
+      return;
+    }
+
+    const atual = {
+      implementacao_alertas_dias: [...implementacaoDias].sort((a, b) => a - b),
+      pendencia_alertas_antes_dias: [...pendenciaAntesDias].sort((a, b) => b - a),
+      pendencia_alerta_alta_dias_vencida: pendenciaAlta,
+      pendencia_alerta_critica_dias_vencida: pendenciaCritica,
+      formulario_lembrete_1_dias: lembrete1,
+      formulario_lembrete_2_dias: lembrete2,
+    };
+    const original = {
+      implementacao_alertas_dias: configAlertas.implementacao_alertas_dias,
+      pendencia_alertas_antes_dias: configAlertas.pendencia_alertas_antes_dias,
+      pendencia_alerta_alta_dias_vencida: configAlertas.pendencia_alerta_alta_dias_vencida,
+      pendencia_alerta_critica_dias_vencida: configAlertas.pendencia_alerta_critica_dias_vencida,
+      formulario_lembrete_1_dias: configAlertas.formulario_lembrete_1_dias,
+      formulario_lembrete_2_dias: configAlertas.formulario_lembrete_2_dias,
+    };
+    const patch = patchComparado(original, atual);
+    if (Object.keys(patch).length === 0) return;
+
+    setSalvando(true);
+    setError(null);
+    setSalvo(false);
+
+    const { data, error: salvarError } = await supabase.rpc('atualizar_configuracao_alertas', { p_patch: patch });
+
+    setSalvando(false);
+
+    if (salvarError) {
+      setError(salvarError.message);
+      return;
+    }
+
+    setConfigAlertas(data);
+    setFormAlertas(paraFormAlertas(data));
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+    carregar();
+  }
+
+  async function handleSalvarOperacao(e: FormEvent) {
+    e.preventDefault();
+    if (!formOperacao || !configOperacao) return;
+
+    if (!formOperacao.nome_operacao.trim() || !formOperacao.nome_produto.trim()) {
+      setError('Nome da operação e nome do produto não podem ficar vazios.');
+      return;
+    }
+
+    const atual = {
+      nome_operacao: formOperacao.nome_operacao.trim(),
+      nome_produto: formOperacao.nome_produto.trim(),
+      razao_social: formOperacao.razao_social.trim() || null,
+      cnpj: formOperacao.cnpj.trim() || null,
+      texto_padrao_rodape: formOperacao.texto_padrao_rodape.trim() || null,
+    };
+    const original = {
+      nome_operacao: configOperacao.nome_operacao,
+      nome_produto: configOperacao.nome_produto,
+      razao_social: configOperacao.razao_social,
+      cnpj: configOperacao.cnpj,
+      texto_padrao_rodape: configOperacao.texto_padrao_rodape,
+    };
+    const patch = patchComparado(original, atual);
+    if (Object.keys(patch).length === 0) return;
+
+    setSalvando(true);
+    setError(null);
+    setSalvo(false);
+
+    const { data, error: salvarError } = await supabase.rpc('atualizar_configuracao_operacao', { p_patch: patch });
+
+    setSalvando(false);
+
+    if (salvarError) {
+      setError(salvarError.message);
+      return;
+    }
+
+    setConfigOperacao(data);
+    setFormOperacao(paraFormOperacao(data));
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+    carregar();
+  }
+
+  async function handleSalvarIA(e: FormEvent) {
+    e.preventDefault();
+    if (!formIA || !configIA) return;
+
+    const temperatura = formIA.temperatura.trim() ? Number(formIA.temperatura) : null;
+    if (temperatura !== null && (Number.isNaN(temperatura) || temperatura < 0 || temperatura > 1)) {
+      setError('A temperatura precisa ser um número entre 0 e 1 (ou vazio pra usar o padrão).');
+      return;
+    }
+
+    const atual = {
+      temperatura,
+      permitir_perguntas_esclarecimento: formIA.permitir_perguntas_esclarecimento,
+      versao_prompt_label: formIA.versao_prompt_label.trim() || null,
+    };
+    const original = {
+      temperatura: configIA.temperatura,
+      permitir_perguntas_esclarecimento: configIA.permitir_perguntas_esclarecimento,
+      versao_prompt_label: configIA.versao_prompt_label,
+    };
+    const patch = patchComparado(original, atual);
+    if (Object.keys(patch).length === 0) return;
+
+    setSalvando(true);
+    setError(null);
+    setSalvo(false);
+
+    const { data, error: salvarError } = await supabase.rpc('atualizar_configuracao_ia', { p_patch: patch });
+
+    setSalvando(false);
+
+    if (salvarError) {
+      setError(salvarError.message);
+      return;
+    }
+
+    setConfigIA(data);
+    setFormIA(paraFormIA(data));
+    setSalvo(true);
+    setTimeout(() => setSalvo(false), 2500);
+    carregar();
   }
 
   function atualizarCiclo(index: number, campo: 'dia_inicio' | 'dia_fim', valor: string) {
@@ -589,6 +990,338 @@ export function Configuracoes() {
         <div className="empty-state">
           <p>Nenhuma configuração de Pipefy encontrada.</p>
         </div>
+      )}
+
+      {aba === 'formulario' && formFormulario && configFormulario && (
+        <form onSubmit={handleSalvarFormulario} className="card form-card">
+          <h2>Formulários</h2>
+          <p className="field-hint">
+            {configFormulario.atualizado_por_email
+              ? `Última alteração por ${configFormulario.atualizado_por_email} em ${formatarDataHora(configFormulario.updated_at)}.`
+              : 'Nenhuma alteração registrada ainda — valores padrão do sistema.'}
+          </p>
+          <p className="field-hint">
+            Os prazos abaixo são só referência exibida — quem realmente controla quando um alerta de "fora do
+            prazo" dispara é a aba Alertas.
+          </p>
+
+          <div className="form-grid">
+            <label className="field">
+              <span>Prazo de resposta — Vendas (dias)</span>
+              <input
+                type="number"
+                min={1}
+                value={formFormulario.prazo_resposta_vendas_dias}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormFormulario({ ...formFormulario, prazo_resposta_vendas_dias: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Prazo de resposta — Pós-venda (dias)</span>
+              <input
+                type="number"
+                min={1}
+                value={formFormulario.prazo_resposta_pos_venda_dias}
+                disabled={!souAdministrador}
+                onChange={(e) =>
+                  setFormFormulario({ ...formFormulario, prazo_resposta_pos_venda_dias: e.target.value })
+                }
+              />
+            </label>
+          </div>
+
+          <label className="field">
+            <span>Texto inicial — Vendas</span>
+            <textarea
+              rows={2}
+              value={formFormulario.texto_inicial_vendas}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormFormulario({ ...formFormulario, texto_inicial_vendas: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Texto inicial — Pós-venda</span>
+            <textarea
+              rows={2}
+              value={formFormulario.texto_inicial_pos_venda}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormFormulario({ ...formFormulario, texto_inicial_pos_venda: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Mensagem de conclusão — Vendas</span>
+            <textarea
+              rows={2}
+              value={formFormulario.mensagem_conclusao_vendas}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormFormulario({ ...formFormulario, mensagem_conclusao_vendas: e.target.value })}
+            />
+          </label>
+          <label className="field">
+            <span>Mensagem de conclusão — Pós-venda</span>
+            <textarea
+              rows={2}
+              value={formFormulario.mensagem_conclusao_pos_venda}
+              disabled={!souAdministrador}
+              onChange={(e) =>
+                setFormFormulario({ ...formFormulario, mensagem_conclusao_pos_venda: e.target.value })
+              }
+            />
+          </label>
+
+          <div className="form-grid">
+            <label className="field">
+              <span>Tempo estimado — Vendas (minutos, opcional)</span>
+              <input
+                type="number"
+                min={1}
+                value={formFormulario.tempo_estimado_vendas_minutos}
+                disabled={!souAdministrador}
+                onChange={(e) =>
+                  setFormFormulario({ ...formFormulario, tempo_estimado_vendas_minutos: e.target.value })
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Tempo estimado — Pós-venda (minutos, opcional)</span>
+              <input
+                type="number"
+                min={1}
+                value={formFormulario.tempo_estimado_pos_venda_minutos}
+                disabled={!souAdministrador}
+                onChange={(e) =>
+                  setFormFormulario({ ...formFormulario, tempo_estimado_pos_venda_minutos: e.target.value })
+                }
+              />
+            </label>
+          </div>
+
+          {souAdministrador && (
+            <div className="wizard-actions">
+              <button type="submit" className="btn btn-primary" disabled={salvando}>
+                {salvando ? 'Salvando…' : salvo ? 'Salvo!' : 'Salvar'}
+              </button>
+            </div>
+          )}
+        </form>
+      )}
+
+      {aba === 'alertas' && formAlertas && configAlertas && (
+        <form onSubmit={handleSalvarAlertas} className="card form-card">
+          <h2>Alertas e notificações</h2>
+          <p className="field-hint">
+            {configAlertas.atualizado_por_email
+              ? `Última alteração por ${configAlertas.atualizado_por_email} em ${formatarDataHora(configAlertas.updated_at)}.`
+              : 'Nenhuma alteração registrada ainda — valores padrão do sistema.'}
+          </p>
+
+          <label className="field">
+            <span>Implementação — dias (desde o Kickoff) em que avisa, separados por vírgula</span>
+            <input
+              type="text"
+              placeholder="30, 35, 40"
+              value={formAlertas.implementacao_alertas_dias}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormAlertas({ ...formAlertas, implementacao_alertas_dias: e.target.value })}
+            />
+            <span className="field-hint">Máximo de 6 marcos, pra não virar spam de notificação.</span>
+          </label>
+
+          <label className="field">
+            <span>Pendências — dias antes do vencimento em que avisa, separados por vírgula</span>
+            <input
+              type="text"
+              placeholder="3, 1, 0"
+              value={formAlertas.pendencia_alertas_antes_dias}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormAlertas({ ...formAlertas, pendencia_alertas_antes_dias: e.target.value })}
+            />
+          </label>
+          <div className="form-grid">
+            <label className="field">
+              <span>Pendências — dias vencida para virar prioridade Alta</span>
+              <input
+                type="number"
+                min={1}
+                value={formAlertas.pendencia_alerta_alta_dias_vencida}
+                disabled={!souAdministrador}
+                onChange={(e) =>
+                  setFormAlertas({ ...formAlertas, pendencia_alerta_alta_dias_vencida: e.target.value })
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Pendências — dias vencida para virar prioridade Crítica</span>
+              <input
+                type="number"
+                min={1}
+                value={formAlertas.pendencia_alerta_critica_dias_vencida}
+                disabled={!souAdministrador}
+                onChange={(e) =>
+                  setFormAlertas({ ...formAlertas, pendencia_alerta_critica_dias_vencida: e.target.value })
+                }
+              />
+            </label>
+          </div>
+
+          <div className="form-grid">
+            <label className="field">
+              <span>Formulário — primeiro lembrete (dias sem resposta)</span>
+              <input
+                type="number"
+                min={1}
+                value={formAlertas.formulario_lembrete_1_dias}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormAlertas({ ...formAlertas, formulario_lembrete_1_dias: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Formulário — segundo lembrete (dias sem resposta)</span>
+              <input
+                type="number"
+                min={1}
+                value={formAlertas.formulario_lembrete_2_dias}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormAlertas({ ...formAlertas, formulario_lembrete_2_dias: e.target.value })}
+              />
+            </label>
+          </div>
+
+          {souAdministrador && (
+            <div className="wizard-actions">
+              <button type="submit" className="btn btn-primary" disabled={salvando}>
+                {salvando ? 'Salvando…' : salvo ? 'Salvo!' : 'Salvar'}
+              </button>
+            </div>
+          )}
+        </form>
+      )}
+
+      {aba === 'operacao' && formOperacao && configOperacao && (
+        <form onSubmit={handleSalvarOperacao} className="card form-card">
+          <h2>Operação</h2>
+          <p className="field-hint">
+            {configOperacao.atualizado_por_email
+              ? `Última alteração por ${configOperacao.atualizado_por_email} em ${formatarDataHora(configOperacao.updated_at)}.`
+              : 'Nenhuma alteração registrada ainda — valores padrão do sistema.'}
+          </p>
+          <p className="field-hint">
+            Esses dados definem o nome exibido na interface (login, topo das páginas, relatório em PDF). Não
+            implementa múltiplas operações simultâneas nesta versão — vale pra toda a instalação.
+          </p>
+
+          <div className="form-grid">
+            <label className="field">
+              <span>Nome da operação</span>
+              <input
+                type="text"
+                value={formOperacao.nome_operacao}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormOperacao({ ...formOperacao, nome_operacao: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Nome exibido do produto</span>
+              <input
+                type="text"
+                value={formOperacao.nome_produto}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormOperacao({ ...formOperacao, nome_produto: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="form-grid">
+            <label className="field">
+              <span>Razão social (opcional)</span>
+              <input
+                type="text"
+                value={formOperacao.razao_social}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormOperacao({ ...formOperacao, razao_social: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>CNPJ (opcional)</span>
+              <input
+                type="text"
+                value={formOperacao.cnpj}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormOperacao({ ...formOperacao, cnpj: e.target.value })}
+              />
+            </label>
+          </div>
+          <label className="field">
+            <span>Texto padrão de rodapé (opcional)</span>
+            <textarea
+              rows={2}
+              value={formOperacao.texto_padrao_rodape}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormOperacao({ ...formOperacao, texto_padrao_rodape: e.target.value })}
+            />
+          </label>
+
+          {souAdministrador && (
+            <div className="wizard-actions">
+              <button type="submit" className="btn btn-primary" disabled={salvando}>
+                {salvando ? 'Salvando…' : salvo ? 'Salvo!' : 'Salvar'}
+              </button>
+            </div>
+          )}
+        </form>
+      )}
+
+      {aba === 'ia' && formIA && configIA && (
+        <form onSubmit={handleSalvarIA} className="card form-card">
+          <h2>IA</h2>
+          <p className="field-hint">
+            {configIA.atualizado_por_email
+              ? `Última alteração por ${configIA.atualizado_por_email} em ${formatarDataHora(configIA.updated_at)}.`
+              : 'Nenhuma alteração registrada ainda — valores padrão do sistema.'}
+          </p>
+          <p className="field-hint">
+            Só parâmetros não sensíveis. A chave de API continua guardada em ambiente seguro do servidor, nunca
+            aqui. O conteúdo do prompt em si também não é editável por aqui nesta versão.
+          </p>
+
+          <label className="field">
+            <span>Temperatura (0 a 1, opcional — vazio usa o padrão do modelo)</span>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.1}
+              value={formIA.temperatura}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormIA({ ...formIA, temperatura: e.target.value })}
+            />
+          </label>
+          <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={formIA.permitir_perguntas_esclarecimento}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormIA({ ...formIA, permitir_perguntas_esclarecimento: e.target.checked })}
+            />
+            <span>Permitir que a IA faça perguntas de esclarecimento antes de gerar o funil</span>
+          </label>
+          <label className="field">
+            <span>Etiqueta da versão do prompt (opcional, só informativo)</span>
+            <input
+              type="text"
+              value={formIA.versao_prompt_label}
+              disabled={!souAdministrador}
+              onChange={(e) => setFormIA({ ...formIA, versao_prompt_label: e.target.value })}
+            />
+          </label>
+
+          {souAdministrador && (
+            <div className="wizard-actions">
+              <button type="submit" className="btn btn-primary" disabled={salvando}>
+                {salvando ? 'Salvando…' : salvo ? 'Salvo!' : 'Salvar'}
+              </button>
+            </div>
+          )}
+        </form>
       )}
 
       {aba === 'historico' && souAdministrador && (

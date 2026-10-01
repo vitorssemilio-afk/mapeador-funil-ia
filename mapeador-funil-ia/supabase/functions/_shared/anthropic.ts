@@ -34,6 +34,7 @@ export async function chamarAnthropic(
   messages: ChatMessage[],
   systemPrompt: string,
   maxTokens: number,
+  temperatura?: number | null,
 ): Promise<string> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   if (!apiKey) {
@@ -60,6 +61,7 @@ export async function chamarAnthropic(
         system: systemPrompt,
         messages,
         stream: true,
+        ...(temperatura != null ? { temperature: temperatura } : {}),
       }),
       signal: controller.signal,
     });

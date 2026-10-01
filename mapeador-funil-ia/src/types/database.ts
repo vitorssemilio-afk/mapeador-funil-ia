@@ -702,6 +702,83 @@ export type ConfiguracaoHistoricoItem = {
   created_at: string;
 };
 
+// Área de Configurações (Fase 2, parte aditiva) — ver
+// src/lib/configuracaoOperacional.ts. Prazos de resposta aqui são só
+// referência exibida: o que realmente dispara o alerta de "fora do
+// prazo" vive em ConfiguracaoAlertas.
+export type ConfiguracaoFormulario = {
+  id: true;
+  prazo_resposta_vendas_dias: number;
+  prazo_resposta_pos_venda_dias: number;
+  texto_inicial_vendas: string;
+  texto_inicial_pos_venda: string;
+  mensagem_conclusao_vendas: string;
+  mensagem_conclusao_pos_venda: string;
+  tempo_estimado_vendas_minutos: number | null;
+  tempo_estimado_pos_venda_minutos: number | null;
+  atualizado_por_email: string | null;
+  updated_at: string;
+};
+
+export type ConfiguracaoAlertas = {
+  id: true;
+  implementacao_alertas_dias: number[];
+  pendencia_alertas_antes_dias: number[];
+  pendencia_alerta_alta_dias_vencida: number;
+  pendencia_alerta_critica_dias_vencida: number;
+  formulario_lembrete_1_dias: number;
+  formulario_lembrete_2_dias: number;
+  atualizado_por_email: string | null;
+  updated_at: string;
+};
+
+// Branding/identidade da operação — só texto de interface, não é
+// multi-tenant (uma linha só vale pra toda a instalação).
+export type ConfiguracaoOperacao = {
+  id: true;
+  nome_operacao: string;
+  nome_produto: string;
+  razao_social: string | null;
+  cnpj: string | null;
+  texto_padrao_rodape: string | null;
+  atualizado_por_email: string | null;
+  updated_at: string;
+};
+
+// Parâmetros não sensíveis de IA — a API key continua em secret da Edge
+// Function, nunca aqui. versao_prompt_label é só uma etiqueta informativa.
+export type ConfiguracaoIA = {
+  id: true;
+  temperatura: number | null;
+  permitir_perguntas_esclarecimento: boolean;
+  versao_prompt_label: string | null;
+  atualizado_por_email: string | null;
+  updated_at: string;
+};
+
+// Busca Global (Command Palette) — uma linha normalizada por resultado,
+// igual pras 9 funções de busca_* (migration 0075), pra renderizar todas
+// as categorias com o mesmo componente no frontend.
+export type BuscaGlobalCategoria =
+  | 'cliente'
+  | 'contato'
+  | 'implementacao'
+  | 'funil'
+  | 'reuniao'
+  | 'pendencia'
+  | 'ocorrencia'
+  | 'consultor';
+
+export type BuscaGlobalResultado = {
+  categoria: BuscaGlobalCategoria;
+  entidade_id: string;
+  titulo: string;
+  subtitulo: string | null;
+  badge: string | null;
+  rota: string;
+  relevancia: number | null;
+};
+
 export type ChecklistGrupoImplementacao = {
   id: string;
   chave: string;
@@ -1107,6 +1184,30 @@ export type Database = {
         Update: Partial<ConfiguracaoHistoricoItem>;
         Relationships: [];
       };
+      configuracoes_formulario: {
+        Row: ConfiguracaoFormulario;
+        Insert: Partial<ConfiguracaoFormulario>;
+        Update: Partial<ConfiguracaoFormulario>;
+        Relationships: [];
+      };
+      configuracoes_alertas: {
+        Row: ConfiguracaoAlertas;
+        Insert: Partial<ConfiguracaoAlertas>;
+        Update: Partial<ConfiguracaoAlertas>;
+        Relationships: [];
+      };
+      configuracoes_operacao: {
+        Row: ConfiguracaoOperacao;
+        Insert: Partial<ConfiguracaoOperacao>;
+        Update: Partial<ConfiguracaoOperacao>;
+        Relationships: [];
+      };
+      configuracoes_ia: {
+        Row: ConfiguracaoIA;
+        Insert: Partial<ConfiguracaoIA>;
+        Update: Partial<ConfiguracaoIA>;
+        Relationships: [];
+      };
     };
     Views: {
       mapeamentos_respostas_flat: {
@@ -1230,6 +1331,62 @@ export type Database = {
       atualizar_configuracao_implementacao: {
         Args: { p_patch: Record<string, unknown> };
         Returns: ConfiguracaoImplementacao;
+      };
+      atualizar_configuracao_formulario: {
+        Args: { p_patch: Record<string, unknown> };
+        Returns: ConfiguracaoFormulario;
+      };
+      atualizar_configuracao_alertas: {
+        Args: { p_patch: Record<string, unknown> };
+        Returns: ConfiguracaoAlertas;
+      };
+      atualizar_configuracao_operacao: {
+        Args: { p_patch: Record<string, unknown> };
+        Returns: ConfiguracaoOperacao;
+      };
+      atualizar_configuracao_ia: {
+        Args: { p_patch: Record<string, unknown> };
+        Returns: ConfiguracaoIA;
+      };
+      public_get_branding: {
+        Args: Record<PropertyKey, never>;
+        Returns: { nome_operacao: string; nome_produto: string }[];
+      };
+      busca_global: {
+        Args: { p_termo: string; p_limite_por_categoria?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_clientes: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_contatos: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_implementacoes: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_funis: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_reunioes: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_pendencias: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_ocorrencias: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
+      };
+      busca_consultores: {
+        Args: { p_termo: string; p_limite?: number; p_offset?: number };
+        Returns: BuscaGlobalResultado[];
       };
       transferir_consultor_responsavel_implementacao: {
         Args: {

@@ -198,6 +198,7 @@ export async function gerarFunisComIA(
   instrucoesExtras?: string,
   systemPrompt: string = SYSTEM_PROMPT,
   contextoAdicional?: string,
+  temperatura?: number | null,
 ): Promise<ResultadoIA> {
   let conteudo = `Negócio: ${nomeNegocio}\n\n${respostasTexto}`;
 
@@ -216,7 +217,7 @@ export async function gerarFunisComIA(
   const messages: ChatMessage[] = [{ role: 'user', content: conteudo }];
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
-    const textoResposta = await chamarAnthropic(messages, systemPrompt, MAX_TOKENS);
+    const textoResposta = await chamarAnthropic(messages, systemPrompt, MAX_TOKENS, temperatura);
     const resultado = parseRespostaIA(textoResposta);
     if (resultado) return resultado;
 
