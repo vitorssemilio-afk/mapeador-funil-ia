@@ -13,6 +13,7 @@ import {
   CATEGORIAS_ORDEM,
   carregarRecentes,
   normalizarTexto,
+  registrarAberturaViaBusca,
   registrarRecente,
   type CategoriaBusca,
   type ResultadoBusca,
@@ -130,8 +131,14 @@ export function GlobalSearch() {
 
   function handleAbrir(item: ResultadoBusca) {
     if (user) registrarRecente(user.id, item);
+    registrarAberturaViaBusca(item);
     setAberto(false);
     navigate(item.rota);
+  }
+
+  function handleVerTodosResultados() {
+    setAberto(false);
+    navigate(`/busca?q=${encodeURIComponent(termo)}`);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -254,6 +261,14 @@ export function GlobalSearch() {
               </div>
             ))}
         </div>
+
+        {!loading && termo.trim() && grupos.length > 0 && (
+          <div className="command-palette-footer">
+            <button type="button" className="command-palette-ver-todos" onClick={handleVerTodosResultados}>
+              Ver todos os resultados e filtrar →
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
