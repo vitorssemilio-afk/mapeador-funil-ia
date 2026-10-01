@@ -2611,6 +2611,10 @@ img.auth-logo {
   color: var(--color-danger);
 }
 
+.notification-tone-success {
+  color: var(--color-success);
+}
+
 .notification-item-corpo {
   display: flex;
   flex-direction: column;

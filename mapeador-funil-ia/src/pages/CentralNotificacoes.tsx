@@ -237,19 +237,21 @@ export function CentralNotificacoes() {
               className={`card notification-card${n.lida || n.resolvida_em ? '' : ' notification-card-nao-lida'}`}
             >
               <div className="notification-card-header">
-                <span className={`status-badge status-tone-${PRIORIDADE_TONE[n.prioridade]}`}>
-                  {PRIORIDADE_LABELS[n.prioridade]}
-                </span>
-                <span className="field-hint">{CATEGORIA_LABELS[n.categoria]}</span>
-                <span className="field-hint">{formatarDataHora(n.created_at)}</span>
-                {n.resolvida_em && (
-                  <span className="status-badge status-tone-info">
-                    Resolvida automaticamente em {formatarDataHora(n.resolvida_em)}
+                {n.resolvida_em ? (
+                  <span className="status-badge status-tone-success">Resolvida</span>
+                ) : (
+                  <span className={`status-badge status-tone-${PRIORIDADE_TONE[n.prioridade]}`}>
+                    {PRIORIDADE_LABELS[n.prioridade]}
                   </span>
                 )}
+                <span className="field-hint">{CATEGORIA_LABELS[n.categoria]}</span>
+                <span className="field-hint">{formatarDataHora(n.created_at)}</span>
               </div>
               <h3 className="notification-card-titulo">{n.titulo}</h3>
               {n.descricao && <p className="notification-card-descricao">{n.descricao}</p>}
+              {n.resolvida_em && (
+                <p className="field-hint">Resolvida automaticamente em {formatarDataHora(n.resolvida_em)}.</p>
+              )}
               {n.cliente_id && (
                 <p className="field-hint">
                   Cliente: <strong>{nomeCliente(n.cliente_id)}</strong>

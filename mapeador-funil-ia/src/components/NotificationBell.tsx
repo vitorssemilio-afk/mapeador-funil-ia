@@ -81,7 +81,9 @@ export function NotificationBell() {
             className={`notification-item${n.lida || n.resolvida_em ? '' : ' notification-item-nao-lida'}`}
             onClick={() => handleAbrirNotificacao(n)}
           >
-            <span className={`notification-item-dot notification-tone-${PRIORIDADE_TONE[n.prioridade]}`} />
+            <span
+              className={`notification-item-dot notification-tone-${n.resolvida_em ? 'success' : PRIORIDADE_TONE[n.prioridade]}`}
+            />
             <span className="notification-item-corpo">
               <span className="notification-item-titulo">{n.titulo}</span>
               {n.descricao && <span className="notification-item-descricao">{n.descricao}</span>}
@@ -103,6 +105,7 @@ export function NotificationBell() {
         className="notification-bell-trigger"
         onClick={() => setAberto((v) => !v)}
         title="Notificações"
+        aria-label="Notificações"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path
