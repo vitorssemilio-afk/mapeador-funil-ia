@@ -79,11 +79,11 @@ Responda SOMENTE com um objeto JSON (sem markdown, sem texto fora do JSON) no fo
 
 Mantenha o gatilho_entrada coerente com o gatilho_saida da etapa anterior (se houver) e o gatilho_saida coerente com o gatilho_entrada da próxima (se houver) — a etapa precisa continuar encaixando no fluxo do funil como um todo, mesmo sendo reformulada.`;
 
-async function regenerarEtapaComIA(prompt: string): Promise<EtapaFunil> {
+async function regenerarEtapaComIA(prompt: string, temperatura?: number | null): Promise<EtapaFunil> {
   const messages: ChatMessage[] = [{ role: 'user', content: prompt }];
 
   for (let tentativa = 0; tentativa < MAX_TENTATIVAS; tentativa++) {
-    const textoResposta = await chamarAnthropic(messages, SYSTEM_PROMPT, MAX_TOKENS);
+    const textoResposta = await chamarAnthropic(messages, SYSTEM_PROMPT, MAX_TOKENS, temperatura);
     let json: unknown;
     try {
       json = JSON.parse(extrairJson(textoResposta));
@@ -223,8 +223,15 @@ ${instrucoesExtras ? `Instruções específicas para esta etapa: ${instrucoesExt
     p_modelo: modeloAnthropicAtual(),
   });
 
+  const { data: configIA } = await supabase
+    .from('configuracoes_ia')
+    .select('temperatura')
+    .eq('id', true)
+    .maybeSingle();
+  const temperaturaIA = typeof configIA?.temperatura === 'number' ? configIA.temperatura : null;
+
   try {
-    const etapa = await regenerarEtapaComIA(prompt);
+    const etapa = await regenerarEtapaComIA(prompt, temperaturaIA);
     if (iaOperacaoId) {
       await supabase.rpc('registrar_fim_ia_operacao', {
         p_id: iaOperacaoId,

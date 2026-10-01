@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { supabase } from '../lib/supabaseClient';
 import { NotificationBell } from './NotificationBell';
 
 function navLinkClass({ isActive }: { isActive: boolean }): string {
@@ -40,6 +42,18 @@ function ThemeToggle() {
 
 export function Layout() {
   const { user, signOut } = useAuth();
+  const [nomeProduto, setNomeProduto] = useState('CRM Flow');
+
+  useEffect(() => {
+    supabase
+      .from('configuracoes_operacao')
+      .select('nome_produto')
+      .eq('id', true)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.nome_produto) setNomeProduto(data.nome_produto);
+      });
+  }, []);
 
   return (
     <div className="app-shell">
@@ -47,7 +61,7 @@ export function Layout() {
         <div className="topbar-left">
           <NavLink to="/" end className="topbar-brand">
             <img src="/favicon.svg" alt="" className="brand-mark" />
-            CRM Flow
+            {nomeProduto}
           </NavLink>
           <nav className="topbar-nav">
             <NavLink to="/agenda" className={navLinkClass}>

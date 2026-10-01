@@ -273,6 +273,18 @@ export function RelatorioFunil() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportandoPptx, setExportandoPptx] = useState(false);
+  const [marcaOperacao, setMarcaOperacao] = useState('V4');
+
+  useEffect(() => {
+    supabase
+      .from('configuracoes_operacao')
+      .select('nome_operacao')
+      .eq('id', true)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.nome_operacao) setMarcaOperacao(data.nome_operacao);
+      });
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -390,7 +402,7 @@ export function RelatorioFunil() {
             {new Date().toLocaleDateString('pt-BR')}
           </p>
           <span className="brand-mark" aria-hidden="true">
-            V4
+            {marcaOperacao}
           </span>
         </section>
 

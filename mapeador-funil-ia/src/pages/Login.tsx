@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabaseClient';
 
 export function Login() {
   const { user, signIn, signUp } = useAuth();
@@ -10,6 +11,14 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [nomeProduto, setNomeProduto] = useState('CRM Flow');
+
+  useEffect(() => {
+    supabase.rpc('public_get_branding').then(({ data }) => {
+      const branding = data?.[0];
+      if (branding?.nome_produto) setNomeProduto(branding.nome_produto);
+    });
+  }, []);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -39,7 +48,7 @@ export function Login() {
     <div className="auth-screen">
       <div className="auth-card">
         <img src="/favicon.svg" alt="" className="auth-logo" />
-        <h1 className="auth-title">CRM Flow</h1>
+        <h1 className="auth-title">{nomeProduto}</h1>
         <p className="auth-subtitle">
           {mode === 'entrar' ? 'Entre na sua conta' : 'Crie sua conta'}
         </p>
