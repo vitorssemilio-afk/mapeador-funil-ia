@@ -85,12 +85,12 @@ export type AtividadeResolvida = {
 // demorou; só serve pra sinalizar "isso passou do dia X do projeto", nunca
 // pra empurrar o prazo geral de 40 dias (esse continua ancorado só em
 // kickoff_realizado_em, ver cronograma.ts).
-const JANELA_CICLO_DIAS: Partial<Record<string, number>> = {
-  'Ciclo 1 — Setup e Treinamento': 10,
-  'Ciclo 2 — Automações I e Check-in 1': 20,
-  'Ciclo 3 — Automações II e Check-in 2': 30,
-  'Ciclo 4 — Finalização e Entrega': 40,
-};
+// Construída a partir da lista de ciclos vigente (snapshot ou config
+// global) em vez de fixa, desde a área de Configurações — nomes de ciclo
+// continuam estáveis (não editáveis nesta fase), só os dias-limite mudam.
+function janelaCicloDiasDe(ciclos: CicloJanela[]): Partial<Record<string, number>> {
+  return Object.fromEntries(ciclos.map((c) => [c.nome, c.diaFim]));
+}
 
 // Os 4 ciclos, na ordem, com o dia final de cada um — usado pra montar o
 // cabeçalho "Dia X/40" + "Ciclo X — Dias X–Y" mostrado sempre na tela da
@@ -102,18 +102,28 @@ export const CICLOS_OPERACIONAIS: { nome: string; diaInicio: number; diaFim: num
   { nome: 'Ciclo 4 — Finalização e Entrega', diaInicio: 31, diaFim: 40 },
 ];
 
+export type CicloJanela = { nome: string; diaInicio: number; diaFim: number };
+
 export type DiaCiclo = {
   dia: number; // "Dia X/40" — 1 = o próprio dia do Kickoff
-  ciclo: { nome: string; diaInicio: number; diaFim: number } | null; // null = kickoff ainda não aconteceu, ou dia já passou dos 40
+  ciclo: CicloJanela | null; // null = kickoff ainda não aconteceu, ou dia já passou do fim do último ciclo
 };
 
-// Calcula em que dia do projeto (1 a 40+) e em que ciclo operacional hoje
-// está, só a partir do Kickoff realizado — nunca de nenhum outro marco.
-export function calcularDiaCiclo(kickoffRealizadoEm: string | null, hoje: Date): DiaCiclo | null {
+// Calcula em que dia do projeto (1 a 40+, ou outra duração configurada) e
+// em que ciclo operacional hoje está, só a partir do Kickoff realizado —
+// nunca de nenhum outro marco. `ciclos` é opcional e default pros 4 ciclos
+// hardcoded — área de Configurações (src/lib/configuracaoImplementacao.ts)
+// resolve o valor certo por cliente (snapshot do Kickoff, ou a config
+// global pra quem ainda não teve Kickoff) e passa aqui.
+export function calcularDiaCiclo(
+  kickoffRealizadoEm: string | null,
+  hoje: Date,
+  ciclos: CicloJanela[] = CICLOS_OPERACIONAIS,
+): DiaCiclo | null {
   if (!kickoffRealizadoEm) return null;
 
   const dia = diferencaEmDias(hoje, new Date(kickoffRealizadoEm)) + 1;
-  const ciclo = CICLOS_OPERACIONAIS.find((c) => dia >= c.diaInicio && dia <= c.diaFim) ?? null;
+  const ciclo = ciclos.find((c) => dia >= c.diaInicio && dia <= c.diaFim) ?? null;
 
   return { dia, ciclo };
 }
@@ -227,8 +237,12 @@ export function resolverAtividade(params: {
   // que ainda não passam esse dado.
   reunioes?: Reuniao[];
   hoje: Date;
+  // Ciclos vigentes pra este cliente (snapshot do Kickoff, ou config
+  // global) — default pros 4 ciclos hardcoded, pra nenhuma chamada que
+  // ainda não foi migrada pra Configurações quebrar.
+  ciclos?: CicloJanela[];
 }): AtividadeResolvida {
-  const { atividade, statusRow, historico, cliente, reunioes = [], hoje } = params;
+  const { atividade, statusRow, historico, cliente, reunioes = [], hoje, ciclos = CICLOS_OPERACIONAIS } = params;
 
   let liberada = true;
   let dataLiberacao: Date | null = null;
@@ -313,7 +327,7 @@ export function resolverAtividade(params: {
   const janela = calcularJanelaCiclo(
     dataReal ?? dataPlanejada,
     cliente?.kickoff_realizado_em ?? null,
-    JANELA_CICLO_DIAS[atividade.ciclo],
+    janelaCicloDiasDe(ciclos)[atividade.ciclo],
   );
 
   return {
@@ -339,7 +353,11 @@ export function resolverAtividade(params: {
 // aprovada, +7 se a 2ª também foi. Nunca inventa vencimento antes da conta
 // existir — enquanto conta_kommo_criada_em não acontece, fica "aguardando
 // etapa anterior" como qualquer outra atividade dependente de marco.
-export function resolverTrialKommo(cliente: Cliente, hoje: Date): AtividadeResolvida {
+export function resolverTrialKommo(
+  cliente: Cliente,
+  hoje: Date,
+  trialDias: { inicial: number; extensao14: number; extensao7: number } = { inicial: 14, extensao14: 14, extensao7: 7 },
+): AtividadeResolvida {
   if (!cliente.conta_kommo_criada_em) {
     return {
       id: null,
@@ -347,7 +365,7 @@ export function resolverTrialKommo(cliente: Cliente, hoje: Date): AtividadeResol
       ciclo: 'Trial Kommo',
       responsavel: null,
       dependenciaLabel: 'Conta Kommo criada',
-      prazoDias: 14,
+      prazoDias: trialDias.inicial,
       dataLiberacao: null,
       dataPlanejada: null,
       dataReal: null,
@@ -363,9 +381,9 @@ export function resolverTrialKommo(cliente: Cliente, hoje: Date): AtividadeResol
   }
 
   const inicio = new Date(cliente.conta_kommo_criada_em);
-  let vencimento = adicionarDias(inicio, 14);
-  if (cliente.extensao_14_aprovada_em) vencimento = adicionarDias(vencimento, 14);
-  if (cliente.extensao_7_aprovada_em) vencimento = adicionarDias(vencimento, 7);
+  let vencimento = adicionarDias(inicio, trialDias.inicial);
+  if (cliente.extensao_14_aprovada_em) vencimento = adicionarDias(vencimento, trialDias.extensao14);
+  if (cliente.extensao_7_aprovada_em) vencimento = adicionarDias(vencimento, trialDias.extensao7);
 
   const atrasado = hoje.getTime() > vencimento.getTime();
 

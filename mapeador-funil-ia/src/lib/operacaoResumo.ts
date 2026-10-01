@@ -20,8 +20,10 @@ import {
   calcularDiaCiclo,
   resolverAtividade,
   type AtividadeResolvida,
+  type CicloJanela,
   type DiaCiclo,
 } from './atividadesCronograma';
+import { CONFIGURACAO_PADRAO, type ConfiguracaoResolvida } from './configuracaoImplementacao';
 import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
 import { alertaReuniaoObrigatoria, TIPOS_REUNIAO_OBRIGATORIOS } from './reunioes';
 import { funilValidado, MAPEAMENTO_STATUS_LABELS } from './statusFluxo';
@@ -71,6 +73,9 @@ export type ClienteResumo = {
   // Dia do projeto/ciclo atual (ver atividadesCronograma.ts) — null sem
   // Kickoff realizado ainda. Única fonte de "atraso geral" da implementação.
   diaCiclo: DiaCiclo | null;
+  // Duração total configurada pra ESTE cliente (snapshot do Kickoff, ou a
+  // config global) — nunca um "40" fixo. Ver src/lib/configuracaoImplementacao.ts.
+  duracaoTotalDias: number;
   // Atividades do cronograma com status 'atrasado' agora — mesmo cálculo
   // usado na tela da implementação (resolverAtividade), nunca uma versão
   // simplificada à parte.
@@ -127,8 +132,9 @@ function resolverAtividadesDaImplementacao(params: {
   cliente: Cliente;
   reunioes: Reuniao[];
   hoje: Date;
+  ciclos: CicloJanela[];
 }): AtividadeResolvida[] {
-  const { implementacaoId, atividades, statusRows, historico, cliente, reunioes, hoje } = params;
+  const { implementacaoId, atividades, statusRows, historico, cliente, reunioes, hoje, ciclos } = params;
   const atividadesVisiveis = atividades.filter(
     (a) => a.implementacao_id === null || a.implementacao_id === implementacaoId,
   );
@@ -143,6 +149,7 @@ function resolverAtividadesDaImplementacao(params: {
       cliente,
       reunioes,
       hoje,
+      ciclos,
     }),
   );
 }
@@ -200,8 +207,9 @@ function calcularSaude(params: {
   atividadesAtrasadas: AtividadeResolvida[];
   reuniaoObrigatoriaPendente: boolean;
   trial: ResumoTrialKommo | null;
+  duracaoTotalDias: number;
 }): SaudeCliente {
-  const { vendas, implementacao, diaCiclo, atividadesAtrasadas, reuniaoObrigatoriaPendente, trial } = params;
+  const { vendas, implementacao, diaCiclo, atividadesAtrasadas, reuniaoObrigatoriaPendente, trial, duracaoTotalDias } = params;
 
   if (implementacao?.status === 'concluida') return 'concluido';
   if (implementacao?.status === 'cancelada') return 'normal';
@@ -209,8 +217,12 @@ function calcularSaude(params: {
 
   if (implementacao) {
     const trialEmRiscoImediato = trial ? trial.status === 'encerrado' || trial.diasRestantes <= 1 : false;
-    const prazoVencido = diaCiclo != null && diaCiclo.dia > 40;
-    const pertoDoFimComPendencia = diaCiclo != null && diaCiclo.dia >= 35 && atividadesAtrasadas.length > 0;
+    const prazoVencido = diaCiclo != null && diaCiclo.dia > duracaoTotalDias;
+    // Últimos 5 dias do prazo total configurado — mesma relação de antes
+    // (dia 35 de 40), agora proporcional à duração vigente pra este
+    // cliente em vez de um "35" fixo que só fazia sentido com 40 dias.
+    const pertoDoFimComPendencia =
+      diaCiclo != null && diaCiclo.dia >= duracaoTotalDias - 5 && atividadesAtrasadas.length > 0;
 
     if (prazoVencido || trialEmRiscoImediato || pertoDoFimComPendencia) return 'critico';
     if (atividadesAtrasadas.length > 0 || reuniaoObrigatoriaPendente || trial?.precisaAlerta) return 'atencao';
@@ -232,6 +244,12 @@ export function construirResumoClientes(params: {
   consultores: Consultor[];
   reunioes?: Reuniao[];
   hoje: Date;
+  // Área de Configurações: regras vigentes por cliente (snapshot do
+  // Kickoff, ou a config global pra quem ainda não teve Kickoff). Default
+  // pra todo mundo usando CONFIGURACAO_PADRAO — os 40 dias/4 ciclos/Trial
+  // 14+14+7 hardcoded de sempre — pra chamadas que ainda não migraram pra
+  // Configurações continuarem idênticas.
+  configuracoesPorCliente?: Map<string, ConfiguracaoResolvida>;
 }): ClienteResumo[] {
   const {
     clientes,
@@ -243,15 +261,17 @@ export function construirResumoClientes(params: {
     consultores,
     reunioes = [],
     hoje,
+    configuracoesPorCliente,
   } = params;
 
   return clientes.map((cliente) => {
+    const config = configuracoesPorCliente?.get(cliente.id) ?? CONFIGURACAO_PADRAO;
     const doCliente = mapeamentos.filter((m) => m.cliente_id === cliente.id);
     const vendas = doCliente.find((m) => m.tipo === 'vendas') ?? null;
     const posVenda = doCliente.find((m) => m.tipo === 'pos_venda') ?? null;
     const implementacao = implementacoes.find((i) => i.cliente_id === cliente.id) ?? null;
 
-    const diaCiclo = calcularDiaCiclo(cliente.kickoff_realizado_em, hoje);
+    const diaCiclo = calcularDiaCiclo(cliente.kickoff_realizado_em, hoje, config.ciclos);
     const atividadesResolvidas = implementacao
       ? resolverAtividadesDaImplementacao({
           implementacaoId: implementacao.id,
@@ -261,6 +281,7 @@ export function construirResumoClientes(params: {
           cliente,
           reunioes,
           hoje,
+          ciclos: config.ciclos,
         })
       : [];
     const atividadesAtrasadas = atividadesResolvidas.filter((a) => a.status === 'atrasado');
@@ -273,10 +294,16 @@ export function construirResumoClientes(params: {
           reunioesDoTipo: reunioesDoCliente.filter((r) => r.tipo === tipo),
           kickoffRealizadoEm: cliente.kickoff_realizado_em,
           hoje,
+          ciclos: config.ciclos,
         }) != null,
     );
 
-    const trial = resolverResumoTrialKommo(cliente, hoje);
+    const trial = resolverResumoTrialKommo(cliente, hoje, {
+      diasInicial: config.trialInicialDias,
+      diasExtensao14: config.trialExtensao14Dias,
+      diasExtensao7: config.trialExtensao7Dias,
+      diasAlerta: config.trialAlertasDias,
+    });
 
     const precisaPosVenda =
       !!implementacao &&
@@ -289,7 +316,16 @@ export function construirResumoClientes(params: {
       posVenda,
       implementacao,
       faseAtual: faseAtualLabel(vendas, implementacao),
-      saude: calcularSaude({ vendas, implementacao, diaCiclo, atividadesAtrasadas, reuniaoObrigatoriaPendente, trial }),
+      duracaoTotalDias: config.duracaoTotalDias,
+      saude: calcularSaude({
+        vendas,
+        implementacao,
+        diaCiclo,
+        atividadesAtrasadas,
+        reuniaoObrigatoriaPendente,
+        trial,
+        duracaoTotalDias: config.duracaoTotalDias,
+      }),
       progresso: implementacao ? progressoImplementacao(implementacao.id, atividades, statusRows) : null,
       proximaAcao: proximaAcaoLabel({
         vendas,
@@ -313,14 +349,15 @@ export function construirResumoClientes(params: {
 // cliente) — nunca formatado de novo localmente.
 export function prazoLabelDe(resumo: ClienteResumo): string | null {
   if (!resumo.diaCiclo) return null;
-  const restantes = 40 - resumo.diaCiclo.dia;
+  const restantes = resumo.duracaoTotalDias - resumo.diaCiclo.dia;
   return restantes < 0 ? `${Math.abs(restantes)}d atrasado` : `${restantes}d restantes`;
 }
 
-// Único critério de "está atrasado" — prazo geral vencido (passou do Dia 40)
-// ou pelo menos uma atividade do cronograma atrasada agora.
+// Único critério de "está atrasado" — prazo geral vencido (passou do dia
+// final da duração configurada pra este cliente) ou pelo menos uma
+// atividade do cronograma atrasada agora.
 export function estaAtrasado(resumo: ClienteResumo): boolean {
-  return (resumo.diaCiclo != null && resumo.diaCiclo.dia > 40) || resumo.atividadesAtrasadas.length > 0;
+  return (resumo.diaCiclo != null && resumo.diaCiclo.dia > resumo.duracaoTotalDias) || resumo.atividadesAtrasadas.length > 0;
 }
 
 const DIAS_SEM_RESPOSTA_PARA_ALERTAR = 3;

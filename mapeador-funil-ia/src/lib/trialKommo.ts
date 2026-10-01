@@ -76,19 +76,42 @@ function diferencaEmDias(depois: Date, antes: Date): number {
   return Math.round((inicioDoDia(depois).getTime() - inicioDoDia(antes).getTime()) / MS_POR_DIA);
 }
 
+export type ConfiguracaoTrialKommo = {
+  diasInicial: number;
+  diasExtensao14: number;
+  diasExtensao7: number;
+  diasAlerta: number[];
+};
+
+export const CONFIGURACAO_TRIAL_PADRAO: ConfiguracaoTrialKommo = {
+  diasInicial: DIAS_TRIAL_INICIAL,
+  diasExtensao14: DIAS_EXTENSAO_14,
+  diasExtensao7: DIAS_EXTENSAO_7,
+  diasAlerta: DIAS_ALERTA,
+};
+
 // null = Trial ainda não começou (conta Kommo ainda não foi criada) — nunca
-// mostra período/vencimento antes disso.
-export function resolverResumoTrialKommo(cliente: Cliente, hoje: Date): ResumoTrialKommo | null {
+// mostra período/vencimento antes disso. `config` é opcional e default pros
+// 3 períodos + alertas hardcoded — a área de Configurações resolve o valor
+// certo por cliente (snapshot do Kickoff, ou a config global pra quem
+// ainda não teve Kickoff) e passa aqui.
+export function resolverResumoTrialKommo(
+  cliente: Cliente,
+  hoje: Date,
+  config: ConfiguracaoTrialKommo = CONFIGURACAO_TRIAL_PADRAO,
+): ResumoTrialKommo | null {
   if (!cliente.conta_kommo_criada_em) return null;
 
+  const { diasInicial, diasExtensao14, diasExtensao7, diasAlerta } = config;
+
   const inicio = new Date(cliente.conta_kommo_criada_em);
-  const vencimentoTrialInicial = adicionarDias(inicio, DIAS_TRIAL_INICIAL);
+  const vencimentoTrialInicial = adicionarDias(inicio, diasInicial);
   const ext14Aprovada = !!cliente.extensao_14_aprovada_em;
   const ext7Aprovada = !!cliente.extensao_7_aprovada_em;
 
-  const vencimentoComExt14 = ext14Aprovada ? adicionarDias(vencimentoTrialInicial, DIAS_EXTENSAO_14) : null;
+  const vencimentoComExt14 = ext14Aprovada ? adicionarDias(vencimentoTrialInicial, diasExtensao14) : null;
   const vencimentoComExt7 =
-    ext14Aprovada && ext7Aprovada && vencimentoComExt14 ? adicionarDias(vencimentoComExt14, DIAS_EXTENSAO_7) : null;
+    ext14Aprovada && ext7Aprovada && vencimentoComExt14 ? adicionarDias(vencimentoComExt14, diasExtensao7) : null;
 
   const vencimento = vencimentoComExt7 ?? vencimentoComExt14 ?? vencimentoTrialInicial;
 
@@ -97,7 +120,7 @@ export function resolverResumoTrialKommo(cliente: Cliente, hoje: Date): ResumoTr
     : ext14Aprovada
       ? 'Primeira extensão'
       : 'Trial inicial';
-  const duracaoPeriodoAtual = ext7Aprovada ? DIAS_EXTENSAO_7 : ext14Aprovada ? DIAS_EXTENSAO_14 : DIAS_TRIAL_INICIAL;
+  const duracaoPeriodoAtual = ext7Aprovada ? diasExtensao7 : ext14Aprovada ? diasExtensao14 : diasInicial;
   const inicioPeriodoAtual = ext7Aprovada ? vencimentoComExt14! : ext14Aprovada ? vencimentoTrialInicial : inicio;
 
   const diaAtualPeriodo = diferencaEmDias(hoje, inicioPeriodoAtual) + 1;
@@ -109,18 +132,20 @@ export function resolverResumoTrialKommo(cliente: Cliente, hoje: Date): ResumoTr
     : ext14Aprovada
       ? {
           rotulo: '+7 dias',
-          dias: DIAS_EXTENSAO_7,
+          dias: diasExtensao7,
           solicitadaEm: cliente.extensao_7_solicitada_em,
           aprovadaEm: cliente.extensao_7_aprovada_em,
         }
       : {
           rotulo: '+14 dias',
-          dias: DIAS_EXTENSAO_14,
+          dias: diasExtensao14,
           solicitadaEm: cliente.extensao_14_solicitada_em,
           aprovadaEm: cliente.extensao_14_aprovada_em,
         };
 
   const solicitada = !!proximaExtensao?.solicitadaEm && !proximaExtensao.aprovadaEm;
+
+  const maiorAlerta = Math.max(...diasAlerta);
 
   let status: StatusTrial;
   if (!proximaExtensao && diasRestantes < 0) {
@@ -129,7 +154,7 @@ export function resolverResumoTrialKommo(cliente: Cliente, hoje: Date): ResumoTr
     status = 'extensao_solicitada';
   } else if (proximaExtensao && diasRestantes < 0) {
     status = 'extensao_pendente';
-  } else if (diasRestantes <= 5) {
+  } else if (diasRestantes <= maiorAlerta) {
     status = 'proximo_vencimento';
   } else if (ext14Aprovada) {
     status = 'estendido';
@@ -137,7 +162,7 @@ export function resolverResumoTrialKommo(cliente: Cliente, hoje: Date): ResumoTr
     status = 'ativo';
   }
 
-  const precisaAlerta = !solicitada && !!proximaExtensao && DIAS_ALERTA.some((d) => diasRestantes <= d);
+  const precisaAlerta = !solicitada && !!proximaExtensao && diasAlerta.some((d) => diasRestantes <= d);
 
   return {
     status,
@@ -145,7 +170,7 @@ export function resolverResumoTrialKommo(cliente: Cliente, hoje: Date): ResumoTr
     diaAtualPeriodo,
     duracaoPeriodoAtual,
     usoTotalDias,
-    usoTotalMaximo: DIAS_TRIAL_MAXIMO,
+    usoTotalMaximo: diasInicial + diasExtensao14 + diasExtensao7,
     diasRestantes,
     vencimento,
     proximaExtensao,

@@ -27,6 +27,7 @@ import {
 } from '../lib/dashboardGerencial';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import { CICLOS_OPERACIONAIS } from '../lib/atividadesCronograma';
+import { construirMapaConfiguracoes } from '../lib/configuracaoImplementacao';
 import { construirResumoClientes, SAUDE_LABELS, type SaudeCliente } from '../lib/operacaoResumo';
 import { funilValidado } from '../lib/statusFluxo';
 import { supabase } from '../lib/supabaseClient';
@@ -37,11 +38,13 @@ import type {
   CheckpointAdocao,
   Cliente,
   ClienteOcorrencia,
+  ConfiguracaoImplementacao,
   Consultor,
   CriterioEntrega,
   CriterioEntregaStatus,
   FunilVersao,
   ImplementacaoCrm,
+  ImplementacaoSettingsSnapshot,
   ImplementacaoStatusHistorico,
   Mapeamento,
   Reuniao,
@@ -110,6 +113,8 @@ export function GestaoDashboard() {
   const [criteriosStatus, setCriteriosStatus] = useState<CriterioEntregaStatus[]>([]);
   const [checkpoints, setCheckpoints] = useState<CheckpointAdocao[]>([]);
   const [funilVersoes, setFunilVersoes] = useState<FunilVersao[]>([]);
+  const [configGlobal, setConfigGlobal] = useState<ConfiguracaoImplementacao | null>(null);
+  const [snapshots, setSnapshots] = useState<ImplementacaoSettingsSnapshot[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +146,8 @@ export function GestaoDashboard() {
         { data: criteriosStatusData },
         { data: checkpointsData },
         { data: funilVersoesData },
+        { data: configGlobalData },
+        { data: snapshotsData },
       ] = await Promise.all([
         supabase.from('clientes').select('*'),
         supabase.from('mapeamentos').select('*'),
@@ -156,6 +163,8 @@ export function GestaoDashboard() {
         supabase.from('criterios_entrega_status').select('*'),
         supabase.from('checkpoints_adocao').select('*'),
         supabase.from('funil_versoes').select('*'),
+        supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
+        supabase.from('implementacao_settings_snapshot').select('*'),
       ]);
 
       if (cancelled) return;
@@ -180,6 +189,8 @@ export function GestaoDashboard() {
       setCriteriosStatus(criteriosStatusData ?? []);
       setCheckpoints(checkpointsData ?? []);
       setFunilVersoes(funilVersoesData ?? []);
+      setConfigGlobal(configGlobalData ?? null);
+      setSnapshots(snapshotsData ?? []);
       setLoading(false);
     }
 
@@ -188,6 +199,11 @@ export function GestaoDashboard() {
       cancelled = true;
     };
   }, [user]);
+
+  const configuracoesPorCliente = useMemo(
+    () => construirMapaConfiguracoes(clientes.map((c) => c.id), snapshots, configGlobal),
+    [clientes, snapshots, configGlobal],
+  );
 
   const resumos = useMemo(
     () =>
@@ -201,8 +217,9 @@ export function GestaoDashboard() {
         consultores,
         reunioes,
         hoje,
+        configuracoesPorCliente,
       }),
-    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, reunioes, hoje],
+    [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, reunioes, hoje, configuracoesPorCliente],
   );
 
   const resumosFiltrados = useMemo(
@@ -256,8 +273,9 @@ export function GestaoDashboard() {
         reunioes,
         hoje,
         historico,
+        configuracoesPorCliente,
       }),
-    [implementacoesFiltradas, clientesPorId, atividades, statusRows, reunioes, hoje, historico],
+    [implementacoesFiltradas, clientesPorId, atividades, statusRows, reunioes, hoje, historico, configuracoesPorCliente],
   );
 
   const causas = useMemo(() => construirCausasAtraso(ocorrenciasFiltradas), [ocorrenciasFiltradas]);
@@ -283,8 +301,9 @@ export function GestaoDashboard() {
         reunioes: reunioes.filter((r) => clientesFiltradosIds.has(r.cliente_id)),
         remarcacoes,
         hoje,
+        configuracoesPorCliente,
       }),
-    [clientesFiltrados, reunioes, clientesFiltradosIds, remarcacoes, hoje],
+    [clientesFiltrados, reunioes, clientesFiltradosIds, remarcacoes, hoje, configuracoesPorCliente],
   );
 
   const funilVendas = useMemo(
@@ -502,7 +521,7 @@ export function GestaoDashboard() {
             valor={indicadores.tempoMedioImplementacaoDias != null ? `${indicadores.tempoMedioImplementacaoDias}d` : '—'}
           />
           <CardIndicador
-            titulo="Concluído em até 40 dias"
+            titulo="Concluído dentro do prazo configurado"
             valor={indicadores.percentualConcluidoEm40Dias != null ? `${indicadores.percentualConcluidoEm40Dias}%` : '—'}
           />
           <CardIndicador
@@ -818,10 +837,10 @@ export function GestaoDashboard() {
           />
           <CardIndicador titulo="Implementações concluídas" valor={entrega.implementacoesConcluidas} tone="success" />
           <CardIndicador
-            titulo="Implementações acima de 40 dias"
+            titulo="Implementações acima do prazo configurado"
             valor={entrega.implementacoesAcimaDe40Dias.valor}
             tone="danger"
-            onClick={() => abrirPainel('Implementações acima de 40 dias', entrega.implementacoesAcimaDe40Dias.clientes)}
+            onClick={() => abrirPainel('Implementações acima do prazo configurado', entrega.implementacoesAcimaDe40Dias.clientes)}
           />
         </div>
       </section>

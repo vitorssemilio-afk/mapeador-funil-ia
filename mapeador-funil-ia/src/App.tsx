@@ -8,6 +8,7 @@ import { CentralNotificacoes } from './pages/CentralNotificacoes';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { CheckpointAdocao } from './pages/CheckpointAdocao';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
+import { Configuracoes } from './pages/Configuracoes';
 import { ConfiguracoesPipefy } from './pages/ConfiguracoesPipefy';
 import { Consultores } from './pages/Consultores';
 import { Cronograma } from './pages/Cronograma';
@@ -74,6 +75,7 @@ function App() {
               <Route path="/consultores" element={<Consultores />} />
               <Route path="/observabilidade-ia" element={<ObservabilidadeIA />} />
               <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
+              <Route path="/configuracoes" element={<Configuracoes />} />
               <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
               <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
             </Route>

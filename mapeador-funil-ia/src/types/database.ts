@@ -652,6 +652,56 @@ export type ConfiguracaoPipefy = {
   updated_at: string;
 };
 
+export type CicloConfiguravel = {
+  numero: number;
+  nome: string;
+  dia_inicio: number;
+  dia_fim: number;
+};
+
+// Área de Configurações (Fase 1) — ver src/lib/configuracaoImplementacao.ts
+// pros valores default (idênticos ao que hoje está hardcoded) e pra regra
+// de qual configuração vale pra cada cliente (snapshot vs global).
+export type ConfiguracaoImplementacao = {
+  id: true;
+  duracao_total_dias: number;
+  ciclos: CicloConfiguravel[];
+  prazo_treinamento_dia: number;
+  dia_recomendado_formulario_pos_venda: number;
+  trial_inicial_dias: number;
+  trial_extensao_14_dias: number;
+  trial_extensao_7_dias: number;
+  trial_alertas_dias: number[];
+  atualizado_por_email: string | null;
+  updated_at: string;
+};
+
+// Mesmos campos de regra que ConfiguracaoImplementacao, capturados uma
+// única vez no Kickoff — nunca mais mudam depois disso, mesmo que a
+// configuração global mude.
+export type ImplementacaoSettingsSnapshot = {
+  id: string;
+  cliente_id: string;
+  duracao_total_dias: number;
+  ciclos: CicloConfiguravel[];
+  prazo_treinamento_dia: number;
+  dia_recomendado_formulario_pos_venda: number;
+  trial_inicial_dias: number;
+  trial_extensao_14_dias: number;
+  trial_extensao_7_dias: number;
+  trial_alertas_dias: number[];
+  capturado_em: string;
+};
+
+export type ConfiguracaoHistoricoItem = {
+  id: string;
+  campo: string;
+  valor_anterior: unknown;
+  valor_novo: unknown;
+  alterado_por_email: string | null;
+  created_at: string;
+};
+
 export type ChecklistGrupoImplementacao = {
   id: string;
   chave: string;
@@ -1039,6 +1089,24 @@ export type Database = {
         Update: Partial<ConfiguracaoPipefy>;
         Relationships: [];
       };
+      configuracoes_implementacao: {
+        Row: ConfiguracaoImplementacao;
+        Insert: Partial<ConfiguracaoImplementacao>;
+        Update: Partial<ConfiguracaoImplementacao>;
+        Relationships: [];
+      };
+      implementacao_settings_snapshot: {
+        Row: ImplementacaoSettingsSnapshot;
+        Insert: Partial<ImplementacaoSettingsSnapshot> & Pick<ImplementacaoSettingsSnapshot, 'cliente_id'>;
+        Update: Partial<ImplementacaoSettingsSnapshot>;
+        Relationships: [];
+      };
+      configuracoes_historico: {
+        Row: ConfiguracaoHistoricoItem;
+        Insert: Partial<ConfiguracaoHistoricoItem> & Pick<ConfiguracaoHistoricoItem, 'campo'>;
+        Update: Partial<ConfiguracaoHistoricoItem>;
+        Relationships: [];
+      };
     };
     Views: {
       mapeamentos_respostas_flat: {
@@ -1158,6 +1226,10 @@ export type Database = {
           p_justificativa: string;
         };
         Returns: undefined;
+      };
+      atualizar_configuracao_implementacao: {
+        Args: { p_patch: Record<string, unknown> };
+        Returns: ConfiguracaoImplementacao;
       };
       transferir_consultor_responsavel_implementacao: {
         Args: {

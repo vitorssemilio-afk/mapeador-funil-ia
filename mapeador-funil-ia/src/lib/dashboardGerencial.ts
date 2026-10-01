@@ -13,6 +13,7 @@ import {
   resolverAtividade,
   type AtividadeResolvida,
 } from './atividadesCronograma';
+import type { ConfiguracaoResolvida } from './configuracaoImplementacao';
 import { calcularMetricas } from './marcosCliente';
 import { CATEGORIA_OCORRENCIA_LABELS } from './ocorrencias';
 import {
@@ -171,9 +172,11 @@ export function construirIndicadoresPrincipais(
     .filter((d): d is number => d != null);
 
   const concluidasComKickoff = concluidas.filter((r) => r.cliente.kickoff_realizado_em && r.cliente.implementacao_concluida_em);
+  // Compara contra a duração configurada PRA CADA cliente (snapshot do
+  // Kickoff dele), não um "40" fixo — ver src/lib/configuracaoImplementacao.ts.
   const concluidasEm40 = concluidasComKickoff.filter((r) => {
     const dias = diasEntre(r.cliente.kickoff_realizado_em, r.cliente.implementacao_concluida_em);
-    return dias != null && dias <= 40;
+    return dias != null && dias <= r.duracaoTotalDias;
   });
 
   const comTrial = resumos.filter((r) => r.trial && r.trial.status !== 'encerrado');
@@ -291,8 +294,22 @@ export function construirDesempenhoCiclos(params: {
   reunioes: Reuniao[];
   hoje: Date;
   historico: Parameters<typeof resolverAtividade>[0]['historico'];
+  // Área de Configurações: ciclos vigentes por cliente — default
+  // CICLOS_OPERACIONAIS. O agrupamento do relatório continua pelos 4 nomes
+  // estáveis (não editáveis nesta fase); só os dias-limite usados pra
+  // resolver cada atividade vêm da config de cada cliente.
+  configuracoesPorCliente?: Map<string, ConfiguracaoResolvida>;
 }): DesempenhoCiclo[] {
-  const { implementacoes, clientesPorId, atividades, statusRows, reunioes, hoje, historico: implementacaoStatusHistorico } = params;
+  const {
+    implementacoes,
+    clientesPorId,
+    atividades,
+    statusRows,
+    reunioes,
+    hoje,
+    historico: implementacaoStatusHistorico,
+    configuracoesPorCliente,
+  } = params;
 
   return CICLOS_OPERACIONAIS.map((ciclo, idx) => {
     const atividadesDoCiclo = atividades.filter((a) => a.ciclo === ciclo.nome);
@@ -307,6 +324,13 @@ export function construirDesempenhoCiclos(params: {
       const cliente = implementacao.cliente_id ? (clientesPorId.get(implementacao.cliente_id) ?? null) : null;
       if (!cliente?.kickoff_realizado_em) continue;
 
+      const config = (implementacao.cliente_id && configuracoesPorCliente?.get(implementacao.cliente_id)) || null;
+      const ciclosDoCliente = config?.ciclos ?? CICLOS_OPERACIONAIS.map((c, i) => ({ numero: i + 1, ...c }));
+      // Mesmo ciclo (por nome) na config deste cliente, pra pegar o
+      // diaInicio certo dele — nunca o do ciclo "padrão" se o snapshot for
+      // diferente.
+      const diaInicioDoCliente = ciclosDoCliente.find((c) => c.nome === ciclo.nome)?.diaInicio ?? ciclo.diaInicio;
+
       const atividadesVisiveis = atividadesDoCiclo.filter(
         (a) => a.implementacao_id === null || a.implementacao_id === implementacao.id,
       );
@@ -319,12 +343,13 @@ export function construirDesempenhoCiclos(params: {
           cliente,
           reunioes,
           hoje,
+          ciclos: ciclosDoCliente,
         });
 
         if (resolvida.dataReal) {
           concluidasTotal += 1;
           if (!resolvida.foraDaJanelaDoCiclo) concluidasNoPrazo += 1;
-          if (resolvida.diaDesdeKickoff != null) diasConclusao.push(resolvida.diaDesdeKickoff - ciclo.diaInicio + 1);
+          if (resolvida.diaDesdeKickoff != null) diasConclusao.push(resolvida.diaDesdeKickoff - diaInicioDoCliente + 1);
         } else if (resolvida.status === 'atrasado') {
           emAtraso += 1;
           contagemAtrasadas.set(atividade.nome, (contagemAtrasadas.get(atividade.nome) ?? 0) + 1);
@@ -519,8 +544,9 @@ export function construirResumoReunioes(params: {
   reunioes: Reuniao[];
   remarcacoes: ReuniaoRemarcacao[];
   hoje: Date;
+  configuracoesPorCliente?: Map<string, ConfiguracaoResolvida>;
 }): ResumoReunioesGestao {
-  const { clientes, reunioes, remarcacoes, hoje } = params;
+  const { clientes, reunioes, remarcacoes, hoje, configuracoesPorCliente } = params;
   const clientesPorId = new Map(clientes.map((c) => [c.id, c]));
 
   const treinamentosRealizados = reunioes.filter((r) => r.tipo === 'treinamento' && r.status === 'realizada' && r.data_hora);
@@ -531,7 +557,8 @@ export function construirResumoReunioes(params: {
     if (!cliente?.kickoff_realizado_em) continue;
     const dias = diasEntre(cliente.kickoff_realizado_em, r.data_hora);
     if (dias == null) continue;
-    if (dias <= 10) treinamentosNoPrazo += 1;
+    const prazoTreinamento = configuracoesPorCliente?.get(cliente.id)?.prazoTreinamentoDia ?? 10;
+    if (dias <= prazoTreinamento) treinamentosNoPrazo += 1;
     else treinamentosForaDoPrazo += 1;
   }
 
@@ -547,6 +574,7 @@ export function construirResumoReunioes(params: {
         tipo,
         reunioesDoTipo: reunioes.filter((r) => r.cliente_id === cliente.id && r.tipo === tipo),
         kickoffRealizadoEm: cliente.kickoff_realizado_em,
+        ciclos: configuracoesPorCliente?.get(cliente.id)?.ciclos,
         hoje,
       });
       if (alerta) algumaPendente = true;
@@ -689,7 +717,7 @@ export function construirResumoEntrega(params: {
       r.implementacao.status !== 'concluida' &&
       r.implementacao.status !== 'cancelada' &&
       r.diaCiclo &&
-      r.diaCiclo.dia > 40,
+      r.diaCiclo.dia > r.duracaoTotalDias,
   );
 
   return {

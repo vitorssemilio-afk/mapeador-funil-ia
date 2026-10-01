@@ -77,6 +77,9 @@ export function Layout() {
             <NavLink to="/observabilidade-ia" className={navLinkClass}>
               Observabilidade de IA
             </NavLink>
+            <NavLink to="/configuracoes" className={navLinkClass}>
+              Configurações
+            </NavLink>
           </nav>
         </div>
         <div className="topbar-user">
