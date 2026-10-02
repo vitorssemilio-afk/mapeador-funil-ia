@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabaseClient';
 import type { AtividadeCronograma } from '../types/database';
 
@@ -7,6 +9,8 @@ import type { AtividadeCronograma } from '../types/database';
 // partir do funil" na tela de cada implementação) não aparecem aqui, só o
 // que é compartilhado entre todo mundo.
 export function ImplementacaoChecklistAdmin() {
+  const confirmar = useConfirm();
+  const { mostrarToast } = useToast();
   const [atividades, setAtividades] = useState<AtividadeCronograma[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -102,13 +106,13 @@ export function ImplementacaoChecklistAdmin() {
 
   async function handleExcluirCiclo(ciclo: string) {
     const qtd = atividadesDoCiclo(ciclo).length;
-    if (
-      !window.confirm(
-        `Excluir o ciclo "${ciclo}"? Isso também apaga as ${qtd} atividade(s) do template dentro dele.`,
-      )
-    ) {
-      return;
-    }
+    const confirmado = await confirmar({
+      titulo: `Excluir o ciclo "${ciclo}"?`,
+      descricao: `Isso também apaga as ${qtd} atividade(s) do template dentro dele. Esta ação não pode ser desfeita.`,
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     const { error: deleteError } = await supabase
       .from('atividades_cronograma')
@@ -116,7 +120,10 @@ export function ImplementacaoChecklistAdmin() {
       .eq('ciclo', ciclo)
       .is('implementacao_id', null);
     if (deleteError) setError(deleteError.message);
-    else carregar();
+    else {
+      mostrarToast('Ciclo excluído.');
+      carregar();
+    }
   }
 
   function abrirNovaAtividade(ciclo: string) {
@@ -203,18 +210,27 @@ export function ImplementacaoChecklistAdmin() {
   }
 
   async function handleExcluirAtividade(atividade: AtividadeCronograma) {
-    if (!window.confirm(`Excluir a atividade "${atividade.nome}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir a atividade "${atividade.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     const { error: deleteError } = await supabase.from('atividades_cronograma').delete().eq('id', atividade.id);
     if (deleteError) setError(deleteError.message);
-    else carregar();
+    else {
+      mostrarToast('Atividade excluída.');
+      carregar();
+    }
   }
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Cronograma de Implementação</h1>
+          <h1>Template do Cronograma</h1>
           <p className="field-hint">
             Template global de atividades do cronograma (dependências, prazos e responsáveis
             padrão). Alterar aqui vale pra próxima vez que alguém abrir o cronograma de uma
@@ -285,7 +301,7 @@ export function ImplementacaoChecklistAdmin() {
                 <button type="button" className="btn btn-secondary" onClick={() => handleRenomearCiclo(ciclo)}>
                   Renomear
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={() => handleExcluirCiclo(ciclo)}>
+                <button type="button" className="btn btn-danger" onClick={() => handleExcluirCiclo(ciclo)}>
                   Excluir ciclo
                 </button>
               </div>
@@ -340,7 +356,7 @@ export function ImplementacaoChecklistAdmin() {
                         >
                           Editar
                         </button>{' '}
-                        <button type="button" className="btn btn-ghost" onClick={() => handleExcluirAtividade(atividade)}>
+                        <button type="button" className="btn btn-danger" onClick={() => handleExcluirAtividade(atividade)}>
                           Excluir
                         </button>
                       </td>

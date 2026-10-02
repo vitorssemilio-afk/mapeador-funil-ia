@@ -19,6 +19,7 @@ function ThemeToggle() {
       className="theme-toggle"
       onClick={toggleTheme}
       title={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+      aria-label={theme === 'dark' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
     >
       {theme === 'dark' ? (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

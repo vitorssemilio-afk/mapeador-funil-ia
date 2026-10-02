@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabaseClient';
 import type { CampoPadrao, EntidadeCampo, TipoCampo } from '../types/database';
 
@@ -31,6 +33,8 @@ const FORM_VAZIO: FormState = {
 };
 
 export function CamposPadrao() {
+  const confirmar = useConfirm();
+  const { mostrarToast } = useToast();
   const [campos, setCampos] = useState<CampoPadrao[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,12 +116,21 @@ export function CamposPadrao() {
   }
 
   async function handleExcluir(campo: CampoPadrao) {
-    if (!window.confirm(`Excluir o campo "${campo.nome_campo}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir o campo "${campo.nome_campo}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     const { error: deleteError } = await supabase.from('campos_padrao').delete().eq('id', campo.id);
 
     if (deleteError) setError(deleteError.message);
-    else carregar();
+    else {
+      mostrarToast('Campo excluído.');
+      carregar();
+    }
   }
 
   return (
@@ -236,7 +249,7 @@ export function CamposPadrao() {
                     <button type="button" className="btn btn-secondary" onClick={() => abrirEdicao(campo)}>
                       Editar
                     </button>{' '}
-                    <button type="button" className="btn btn-ghost" onClick={() => handleExcluir(campo)}>
+                    <button type="button" className="btn btn-danger" onClick={() => handleExcluir(campo)}>
                       Excluir
                     </button>
                   </td>

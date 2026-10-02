@@ -9,6 +9,7 @@
 // 0073). Só afeta quem ainda não teve Kickoff e implementações futuras.
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { supabase } from '../lib/supabaseClient';
 import type {
   CicloConfiguravel,
@@ -183,6 +184,7 @@ function parseListaNumeros(valor: string): number[] {
 
 export function Configuracoes() {
   const { user } = useAuth();
+  const confirmar = useConfirm();
   const [souAdministrador, setSouAdministrador] = useState(false);
   const [aba, setAba] = useState<AbaConfiguracoes>('implementacao');
 
@@ -310,14 +312,13 @@ export function Configuracoes() {
       return;
     }
 
-    if (
-      !window.confirm(
-        'Esta alteração será aplicada apenas a novas implementações iniciadas após esta mudança. ' +
-          'Implementações já em andamento continuam com as regras vigentes no momento do Kickoff delas. Confirmar?',
-      )
-    ) {
-      return;
-    }
+    const confirmado = await confirmar({
+      titulo: 'Alterar as regras de implementação?',
+      descricao:
+        'Esta alteração será aplicada apenas a novas implementações iniciadas após esta mudança. Implementações já em andamento continuam com as regras vigentes no momento do Kickoff delas.',
+      confirmarLabel: 'Salvar alteração',
+    });
+    if (!confirmado) return;
 
     const atual = {
       duracao_total_dias: duracao,
@@ -389,14 +390,13 @@ export function Configuracoes() {
       return;
     }
 
-    if (
-      !window.confirm(
-        'Esta alteração será aplicada apenas a novas implementações iniciadas após esta mudança. ' +
-          'Clientes com Trial já iniciado continuam com as regras vigentes quando o Kickoff deles aconteceu. Confirmar?',
-      )
-    ) {
-      return;
-    }
+    const confirmadoTrial = await confirmar({
+      titulo: 'Alterar as regras de Trial?',
+      descricao:
+        'Esta alteração será aplicada apenas a novas implementações iniciadas após esta mudança. Clientes com Trial já iniciado continuam com as regras vigentes quando o Kickoff deles aconteceu.',
+      confirmarLabel: 'Salvar alteração',
+    });
+    if (!confirmadoTrial) return;
 
     const atual = {
       trial_inicial_dias: inicial,
@@ -533,15 +533,18 @@ export function Configuracoes() {
     // Textos do formulário público — não altera respostas já enviadas por
     // clientes, só o texto exibido pra quem ainda vai preencher.
     if (
-      (patch.texto_inicial_vendas !== undefined ||
-        patch.texto_inicial_pos_venda !== undefined ||
-        patch.mensagem_conclusao_vendas !== undefined ||
-        patch.mensagem_conclusao_pos_venda !== undefined) &&
-      !window.confirm(
-        'Alterar esses textos não modifica nem remove respostas já enviadas por clientes — vale só para quem ainda vai preencher o formulário a partir de agora. Confirmar?',
-      )
+      patch.texto_inicial_vendas !== undefined ||
+      patch.texto_inicial_pos_venda !== undefined ||
+      patch.mensagem_conclusao_vendas !== undefined ||
+      patch.mensagem_conclusao_pos_venda !== undefined
     ) {
-      return;
+      const confirmadoTextos = await confirmar({
+        titulo: 'Alterar os textos do formulário?',
+        descricao:
+          'Isso não modifica nem remove respostas já enviadas por clientes — vale só para quem ainda vai preencher o formulário a partir de agora.',
+        confirmarLabel: 'Salvar alteração',
+      });
+      if (!confirmadoTextos) return;
     }
 
     setSalvando(true);
@@ -608,13 +611,12 @@ export function Configuracoes() {
       return;
     }
 
-    if (
-      !window.confirm(
-        'Esta alteração muda quando os alertas de implementação, pendências e formulários são disparados a partir de agora. Confirmar?',
-      )
-    ) {
-      return;
-    }
+    const confirmadoAlertas = await confirmar({
+      titulo: 'Alterar os alertas automáticos?',
+      descricao: 'Esta alteração muda quando os alertas de implementação, pendências e formulários são disparados a partir de agora.',
+      confirmarLabel: 'Salvar alteração',
+    });
+    if (!confirmadoAlertas) return;
 
     const atual = {
       implementacao_alertas_dias: [...implementacaoDias].sort((a, b) => a - b),
@@ -1294,6 +1296,10 @@ export function Configuracoes() {
               disabled={!souAdministrador}
               onChange={(e) => setFormIA({ ...formIA, temperatura: e.target.value })}
             />
+            <span className="field-hint">
+              Controla o quanto a IA varia a resposta. Mais perto de 0 = respostas mais previsíveis e
+              consistentes entre gerações; mais perto de 1 = respostas mais variadas. Na dúvida, deixe em branco.
+            </span>
           </label>
           <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <input
@@ -1304,6 +1310,10 @@ export function Configuracoes() {
             />
             <span>Permitir que a IA faça perguntas de esclarecimento antes de gerar o funil</span>
           </label>
+          <p className="field-hint">
+            Desligado, a IA nunca para pra perguntar — ela gera o funil direto, assumindo o cenário mais provável
+            quando faltar alguma informação.
+          </p>
           <label className="field">
             <span>Etiqueta da versão do prompt (opcional, só informativo)</span>
             <input

@@ -3,19 +3,15 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ImplementacaoStatusBadge } from '../components/ImplementacaoStatusBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
 import { CICLOS_OPERACIONAIS, calcularDiaCiclo, IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
 import { resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
-import {
-  construirResumoClientes,
-  nomeConsultor,
-  prazoLabelDe,
-  SAUDE_LABELS,
-  type SaudeCliente,
-} from '../lib/operacaoResumo';
+import { construirResumoClientes, nomeConsultor, prazoLabelDe, SAUDE_LABELS, SAUDE_TONE } from '../lib/operacaoResumo';
 import { STATUS_REUNIAO_LABELS, STATUS_REUNIAO_TONE, TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import { resolverResumoTrialKommo, STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import {
@@ -268,6 +264,8 @@ export function ClienteDetalhe() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const confirmar = useConfirm();
+  const { mostrarToast } = useToast();
 
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [mapeamentoVendas, setMapeamentoVendas] = useState<Mapeamento | null>(null);
@@ -738,7 +736,13 @@ export function ClienteDetalhe() {
   }
 
   async function handleExcluirObservacao(observacaoId: string) {
-    if (!window.confirm('Excluir esta observação?')) return;
+    const confirmado = await confirmar({
+      titulo: 'Excluir esta observação?',
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindoObservacaoId(observacaoId);
     const { error: deleteError } = await supabase
@@ -752,6 +756,7 @@ export function ClienteDetalhe() {
       return;
     }
 
+    mostrarToast('Observação excluída.');
     setObservacoes((prev) => prev.filter((o) => o.id !== observacaoId));
   }
 
@@ -817,7 +822,13 @@ export function ClienteDetalhe() {
   }
 
   async function handleExcluirArquivo(arquivo: ClienteArquivo) {
-    if (!window.confirm(`Excluir o arquivo "${arquivo.nome_arquivo}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir o arquivo "${arquivo.nome_arquivo}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindoArquivoId(arquivo.id);
     const { error: storageError } = await supabase.storage
@@ -838,6 +849,7 @@ export function ClienteDetalhe() {
       return;
     }
 
+    mostrarToast('Arquivo excluído.');
     setArquivos((prev) => prev.filter((a) => a.id !== arquivo.id));
   }
 
@@ -934,7 +946,13 @@ export function ClienteDetalhe() {
   }
 
   async function handleExcluirContato(contato: ClienteContato) {
-    if (!window.confirm(`Excluir o contato "${contato.nome}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir o contato "${contato.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     setExcluindoContatoId(contato.id);
     const { error: deleteError } = await supabase.from('cliente_contatos').delete().eq('id', contato.id);
@@ -945,6 +963,7 @@ export function ClienteDetalhe() {
       return;
     }
 
+    mostrarToast('Contato excluído.');
     setContatos((prev) => prev.filter((c) => c.id !== contato.id));
   }
 
@@ -1273,14 +1292,6 @@ export function ClienteDetalhe() {
     return grupos.filter((g) => g.itens.length > 0);
   }, [arquivos]);
 
-  const SAUDE_TONE: Record<SaudeCliente, 'success' | 'warning' | 'danger' | 'info'> = {
-    normal: 'success',
-    atencao: 'warning',
-    critico: 'danger',
-    aguardando_cliente: 'info',
-    concluido: 'success',
-  };
-
   if (loading) return <div className="page-loading">Carregando…</div>;
   if (error && !cliente) return <p className="form-error">{error}</p>;
   if (!cliente || !form) return <p className="form-error">Cliente não encontrado.</p>;
@@ -1305,7 +1316,38 @@ export function ClienteDetalhe() {
 
       {resumo && (
         <section className="card resumo-revisao-card">
-          <div className="resumo-revisao-grid">
+          <div className="resumo-destaque-grid">
+            <div>
+              <span className="etapa-card-label">Saúde</span>
+              <p>
+                <span className={`status-badge status-tone-${SAUDE_TONE[resumo.saude]}`}>
+                  {SAUDE_LABELS[resumo.saude]}
+                </span>
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Dia atual · Ciclo</span>
+              <p className="resumo-destaque-valor">
+                {diaCiclo
+                  ? `Dia ${diaCiclo.dia}/${configuracao?.duracaoTotalDias ?? 40} · ${diaCiclo.ciclo?.nome ?? '—'}`
+                  : 'Kickoff ainda não realizado'}
+              </p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Próxima ação</span>
+              <p className="resumo-destaque-valor">{resumo.proximaAcao}</p>
+            </div>
+            <div>
+              <span className="etapa-card-label">Próxima reunião</span>
+              <p className="resumo-destaque-valor">
+                {proximaReuniao
+                  ? `${TIPO_REUNIAO_LABELS[proximaReuniao.tipo]} em ${formatarDataHora(proximaReuniao.data_hora!)}`
+                  : 'Nenhuma reunião agendada'}
+              </p>
+            </div>
+          </div>
+
+          <div className="resumo-revisao-grid resumo-revisao-grid-secundaria">
             <div>
               <span className="etapa-card-label">Consultor responsável</span>
               <p>{resumo.consultor ?? '—'}</p>
@@ -1319,24 +1361,8 @@ export function ClienteDetalhe() {
               <p>{resumo.faseAtual}</p>
             </div>
             <div>
-              <span className="etapa-card-label">Saúde da implementação</span>
-              <p>
-                <span className={`status-badge status-tone-${SAUDE_TONE[resumo.saude]}`}>
-                  {SAUDE_LABELS[resumo.saude]}
-                </span>
-              </p>
-            </div>
-            <div>
               <span className="etapa-card-label">Progresso</span>
               <p>{resumo.progresso != null ? `${resumo.progresso}%` : '—'}</p>
-            </div>
-            <div>
-              <span className="etapa-card-label">Dia atual / {configuracao?.duracaoTotalDias ?? 40}</span>
-              <p>{diaCiclo ? `Dia ${diaCiclo.dia}/${configuracao?.duracaoTotalDias ?? 40}` : 'Kickoff ainda não realizado'}</p>
-            </div>
-            <div>
-              <span className="etapa-card-label">Ciclo atual</span>
-              <p>{diaCiclo?.ciclo?.nome ?? '—'}</p>
             </div>
             <div>
               <span className="etapa-card-label">Status do Trial Kommo</span>
@@ -1351,20 +1377,8 @@ export function ClienteDetalhe() {
               </p>
             </div>
             <div>
-              <span className="etapa-card-label">Próxima ação</span>
-              <p>{resumo.proximaAcao}</p>
-            </div>
-            <div>
               <span className="etapa-card-label">Prazo geral da implementação</span>
               <p>{prazoLabelDe(resumo) ?? '—'}</p>
-            </div>
-            <div>
-              <span className="etapa-card-label">Próxima reunião</span>
-              <p>
-                {proximaReuniao
-                  ? `${TIPO_REUNIAO_LABELS[proximaReuniao.tipo]} em ${formatarDataHora(proximaReuniao.data_hora!)}`
-                  : 'Nenhuma reunião agendada'}
-              </p>
             </div>
             <div>
               <span className="etapa-card-label">Pendências do cliente</span>
@@ -1666,7 +1680,7 @@ export function ClienteDetalhe() {
       )}
 
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Informações do cliente</h2>
           {!editandoInfo && (
             <button
@@ -1781,7 +1795,7 @@ export function ClienteDetalhe() {
         <p className="field-hint">Pessoas envolvidas no projeto por parte do cliente — pode haver mais de uma.</p>
 
         {contatosOrdenados.length === 0 ? (
-          <p className="field-hint">Nenhum contato cadastrado ainda.</p>
+          <p className="field-hint">Nenhum contato cadastrado ainda. Adicione o primeiro contato abaixo.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -1819,7 +1833,7 @@ export function ClienteDetalhe() {
                       </button>{' '}
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="btn btn-danger"
                         onClick={() => handleExcluirContato(contato)}
                         disabled={excluindoContatoId === contato.id}
                       >
@@ -1922,7 +1936,7 @@ export function ClienteDetalhe() {
           registradas neste cliente — não editável diretamente aqui.
         </p>
         {historicoTimeline.length === 0 ? (
-          <p className="field-hint">Nenhum evento registrado ainda.</p>
+          <p className="field-hint">Nenhum evento registrado ainda. O histórico aparece aqui conforme a implementação avança.</p>
         ) : (
           <ol className="timeline-marcos">
             {historicoTimeline.map((item, index) => (
@@ -1941,7 +1955,7 @@ export function ClienteDetalhe() {
       </section>
 
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Ocorrências</h2>
           {!formOcorrencia && (
             <button type="button" className="btn btn-secondary btn-auto" onClick={abrirNovaOcorrencia}>
@@ -2072,7 +2086,7 @@ export function ClienteDetalhe() {
         )}
 
         {ocorrenciasOrdenadas.length === 0 ? (
-          <p className="field-hint">Nenhuma ocorrência registrada ainda.</p>
+          <p className="field-hint">Nenhuma ocorrência registrada ainda. Use "Registrar ocorrência" acima quando algo impactar o cronograma.</p>
         ) : (
           <ul className="observacoes-lista">
             {ocorrenciasOrdenadas.map((o) => (
@@ -2113,7 +2127,7 @@ export function ClienteDetalhe() {
       </section>
 
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Marcos e linha do tempo</h2>
           {!editandoMarcos && (
             <button
@@ -2338,7 +2352,7 @@ export function ClienteDetalhe() {
 
       {aba === 'reunioes' && (
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Reuniões</h2>
           {implementacao && (
             <Link to={`/implementacoes/${implementacao.id}`} className="btn btn-secondary btn-auto">
@@ -2351,7 +2365,7 @@ export function ClienteDetalhe() {
           implementação.
         </p>
         {reunioes.length === 0 ? (
-          <p className="field-hint">Nenhuma reunião registrada ainda.</p>
+          <p className="field-hint">Nenhuma reunião registrada ainda. Use "Gerenciar reuniões" acima para agendar a primeira.</p>
         ) : (
           <>
           <div className="table-wrap">
@@ -2440,7 +2454,7 @@ export function ClienteDetalhe() {
       <h2>Mapeamento</h2>
       <h3>Vendas</h3>
       <section className="card form-card">
-        <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+        <div className="page-header-actions page-header-actions-split">
           <h2 style={{ marginBottom: 0 }}>Mapeamento de vendas</h2>
           {mapeamentoVendas && (
             <StatusBadge
@@ -2480,7 +2494,7 @@ export function ClienteDetalhe() {
       <h3>Pós-venda</h3>
       {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
-          <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <div className="page-header-actions page-header-actions-split">
             <h2 style={{ marginBottom: 0 }}>Mapeamento de pós-venda</h2>
             {mapeamentoPosVenda && (
               <StatusBadge
@@ -2524,7 +2538,7 @@ export function ClienteDetalhe() {
       <>
       {!!mapeamentoVendas && funilValidado(mapeamentoVendas.status) && (
         <section className="card form-card">
-          <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+          <div className="page-header-actions page-header-actions-split">
             <h2 style={{ marginBottom: 0 }}>Implementação de CRM</h2>
             {implementacao && <ImplementacaoStatusBadge status={implementacao.status} />}
           </div>
@@ -2592,7 +2606,7 @@ export function ClienteDetalhe() {
           }
           return (
             <section className="card form-card">
-              <div className="page-header-actions" style={{ justifyContent: 'space-between', width: '100%' }}>
+              <div className="page-header-actions page-header-actions-split">
                 <h2 style={{ marginBottom: 0 }}>Trial Kommo</h2>
                 <span className={`status-badge status-tone-${STATUS_TRIAL_TONE[resumoTrial.status]}`}>
                   {STATUS_TRIAL_LABELS[resumoTrial.status]}
@@ -2728,7 +2742,7 @@ export function ClienteDetalhe() {
         </label>
 
         {arquivos.length === 0 ? (
-          <p className="field-hint">Nenhum arquivo anexado ainda.</p>
+          <p className="field-hint">Nenhum arquivo anexado ainda. Use "Adicionar arquivo" acima.</p>
         ) : (
           arquivosPorCategoria.map((grupo) => (
             <div key={grupo.nome}>
@@ -2754,7 +2768,7 @@ export function ClienteDetalhe() {
                         </button>{' '}
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className="btn btn-danger"
                           onClick={() => handleExcluirArquivo(a)}
                           disabled={excluindoArquivoId === a.id}
                         >
@@ -2801,7 +2815,7 @@ export function ClienteDetalhe() {
         </form>
 
         {observacoes.length === 0 ? (
-          <p className="field-hint">Nenhuma observação registrada ainda.</p>
+          <p className="field-hint">Nenhuma observação registrada ainda. Use o campo acima para a primeira.</p>
         ) : (
           <ul className="observacoes-lista">
             {observacoes.map((o) => (
@@ -2813,7 +2827,7 @@ export function ClienteDetalhe() {
                   </span>
                   <button
                     type="button"
-                    className="btn btn-ghost"
+                    className="btn btn-danger"
                     onClick={() => handleExcluirObservacao(o.id)}
                     disabled={excluindoObservacaoId === o.id}
                   >

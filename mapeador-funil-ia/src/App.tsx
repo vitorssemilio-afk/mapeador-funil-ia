@@ -2,7 +2,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider } from './contexts/AuthContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ToastProvider } from './contexts/ToastContext';
 import { Agenda } from './pages/Agenda';
 import { CentralNotificacoes } from './pages/CentralNotificacoes';
 import { CamposPadrao } from './pages/CamposPadrao';
@@ -33,56 +35,60 @@ function App() {
     <BrowserRouter>
       <ThemeProvider>
         <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/f/:codigo" element={<FormularioPublico />} />
-            <Route path="/formulario/:id" element={<FormularioPublico />} />
-            <Route path="/checkpoint/:codigo" element={<CheckpointAdocao />} />
-            <Route
-              path="/mapeamento/:id/relatorio"
-              element={
-                <ProtectedRoute>
-                  <RelatorioFunil />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/mapeamento/:id/respostas"
-              element={
-                <ProtectedRoute>
-                  <RespostasFormulario />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              element={
-                <ProtectedRoute>
-                  <Layout />
-                </ProtectedRoute>
-              }
-            >
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/gestao" element={<GestaoDashboard />} />
-              <Route path="/agenda" element={<Agenda />} />
-              <Route path="/notificacoes" element={<CentralNotificacoes />} />
-              <Route path="/cronograma" element={<Cronograma />} />
-              <Route path="/clientes/novo" element={<NovoCliente />} />
-              <Route path="/clientes/:id" element={<ClienteDetalhe />} />
-              <Route path="/mapeamento/:id" element={<Mapeamento />} />
-              <Route path="/campos-padrao" element={<CamposPadrao />} />
-              <Route path="/relatorio-respostas" element={<RelatorioRespostas />} />
-              <Route path="/formulario" element={<FormularioAdmin />} />
-              <Route path="/implementacoes" element={<ImplementacoesCrm />} />
-              <Route path="/consultores" element={<Consultores />} />
-              <Route path="/observabilidade-ia" element={<ObservabilidadeIA />} />
-              <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
-              <Route path="/configuracoes" element={<Configuracoes />} />
-              <Route path="/busca" element={<ResultadosBusca />} />
-              <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
-              <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <ToastProvider>
+            <ConfirmProvider>
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                <Route path="/f/:codigo" element={<FormularioPublico />} />
+                <Route path="/formulario/:id" element={<FormularioPublico />} />
+                <Route path="/checkpoint/:codigo" element={<CheckpointAdocao />} />
+                <Route
+                  path="/mapeamento/:id/relatorio"
+                  element={
+                    <ProtectedRoute>
+                      <RelatorioFunil />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/mapeamento/:id/respostas"
+                  element={
+                    <ProtectedRoute>
+                      <RespostasFormulario />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/gestao" element={<GestaoDashboard />} />
+                  <Route path="/agenda" element={<Agenda />} />
+                  <Route path="/notificacoes" element={<CentralNotificacoes />} />
+                  <Route path="/cronograma" element={<Cronograma />} />
+                  <Route path="/clientes/novo" element={<NovoCliente />} />
+                  <Route path="/clientes/:id" element={<ClienteDetalhe />} />
+                  <Route path="/mapeamento/:id" element={<Mapeamento />} />
+                  <Route path="/campos-padrao" element={<CamposPadrao />} />
+                  <Route path="/relatorio-respostas" element={<RelatorioRespostas />} />
+                  <Route path="/formulario" element={<FormularioAdmin />} />
+                  <Route path="/implementacoes" element={<ImplementacoesCrm />} />
+                  <Route path="/consultores" element={<Consultores />} />
+                  <Route path="/observabilidade-ia" element={<ObservabilidadeIA />} />
+                  <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
+                  <Route path="/configuracoes" element={<Configuracoes />} />
+                  <Route path="/busca" element={<ResultadosBusca />} />
+                  <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
+                  <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </ConfirmProvider>
+          </ToastProvider>
         </AuthProvider>
       </ThemeProvider>
     </BrowserRouter>

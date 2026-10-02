@@ -5,6 +5,7 @@ import {
   construirAgendaOperacional,
   BUCKET_AGENDA_LABELS,
   TIPO_ITEM_AGENDA_LABELS,
+  TIPO_ITEM_AGENDA_TONE,
   type BucketAgenda,
   type ItemAgendaOperacional,
 } from '../lib/agendaOperacional';
@@ -272,7 +273,11 @@ export function Agenda() {
                         <td data-label="Cliente">
                           <Link to={`/clientes/${item.clienteId}`}>{item.clienteNome}</Link>
                         </td>
-                        <td data-label="Tipo">{TIPO_ITEM_AGENDA_LABELS[item.tipo]}</td>
+                        <td data-label="Tipo">
+                          <span className={`status-badge status-tone-${TIPO_ITEM_AGENDA_TONE[item.tipo]}`}>
+                            {TIPO_ITEM_AGENDA_LABELS[item.tipo]}
+                          </span>
+                        </td>
                         <td data-label="Item">
                           {item.titulo}
                           {item.implementacaoId && (

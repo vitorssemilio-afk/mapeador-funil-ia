@@ -160,7 +160,7 @@ a {
   min-width: 26px;
   height: 26px;
   padding: 0 5px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: var(--color-accent);
   color: #fff;
   font-weight: 700;
@@ -273,6 +273,32 @@ img.brand-mark {
   font-size: 14px;
 }
 
+/* ── Skeleton (carregamento) — utilitário pronto pra uso pontual onde um
+   bloco "Carregando…" piscando é pior que manter o layout parado. Ainda
+   não trocado em todas as telas (fica pra quando cada tela for revisada
+   individualmente), só a base está pronta aqui. ── */
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-raised) 25%,
+    var(--color-border) 50%,
+    var(--color-surface-raised) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
 /* ── Buttons ── */
 .btn {
   display: inline-flex;
@@ -323,8 +349,7 @@ img.brand-mark {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #232329;
-  border-color: rgba(255, 255, 255, 0.28);
+  filter: brightness(0.92);
 }
 
 .btn-ghost {
@@ -336,6 +361,17 @@ img.brand-mark {
 .btn-ghost:hover {
   background: var(--color-surface-raised);
   color: var(--color-text);
+}
+
+.btn-danger {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border-color: transparent;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--color-danger);
+  color: #fff;
 }
 
 .btn-link {
@@ -1174,7 +1210,7 @@ img.brand-mark {
   max-width: 400px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 18px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow-card-hover);
   padding: 40px 36px;
 }
@@ -1182,7 +1218,7 @@ img.brand-mark {
 .auth-logo {
   width: 42px;
   height: 42px;
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
   background: var(--color-accent);
   color: #fff;
   display: flex;
@@ -1340,6 +1376,7 @@ img.auth-logo {
   font-weight: 600;
   padding: 3px 11px;
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .status-badge::before {
@@ -1368,6 +1405,11 @@ img.auth-logo {
 .status-tone-danger {
   background: var(--color-danger-soft);
   color: var(--color-danger);
+}
+
+.status-tone-neutral {
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
 }
 
 /* ── Stat cards (dashboard) ── */
@@ -1558,6 +1600,11 @@ img.auth-logo {
   flex-wrap: wrap;
 }
 
+.page-header-actions-split {
+  justify-content: space-between;
+  width: 100%;
+}
+
 /* ── Processando ── */
 .processando-card {
   display: flex;
@@ -1605,7 +1652,7 @@ img.auth-logo {
   flex-wrap: wrap;
   gap: 10px;
   padding: 10px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-warning-soft);
 }
 
@@ -1818,6 +1865,28 @@ img.auth-logo {
 .resumo-revisao-grid p {
   margin: 0;
   font-size: 14.5px;
+}
+
+/* ── Hierarquia no topo da ficha do cliente: os 4 sinais que mais
+   importam (saúde, dia/ciclo, próxima ação, próxima reunião) em destaque
+   acima do resto — ver seção 17 do polimento visual. ── */
+.resumo-destaque-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  padding-bottom: 16px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.resumo-destaque-valor {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.resumo-revisao-grid-secundaria p {
+  color: var(--color-text-muted);
 }
 
 .modo-visualizacao-toggle {
@@ -2302,50 +2371,6 @@ img.auth-logo {
   cursor: pointer;
 }
 
-.ops-saude-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 3px 9px;
-  border-radius: 999px;
-  white-space: nowrap;
-}
-
-.ops-saude-badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.ops-saude-normal {
-  background: var(--color-surface-raised);
-  color: var(--color-text-muted);
-}
-
-.ops-saude-atencao {
-  background: var(--color-warning-soft);
-  color: var(--color-warning);
-}
-
-.ops-saude-critico {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-}
-
-.ops-saude-aguardando_cliente {
-  background: var(--color-info-soft);
-  color: var(--color-info);
-}
-
-.ops-saude-concluido {
-  background: var(--color-success-soft);
-  color: var(--color-success);
-}
-
 .ops-progress {
   display: inline-flex;
   align-items: center;
@@ -2398,9 +2423,10 @@ img.auth-logo {
 .timeline-marcos li {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
   font-size: 13px;
 }
@@ -2584,6 +2610,10 @@ img.auth-logo {
 
 .notification-tone-danger {
   color: var(--color-danger);
+}
+
+.notification-tone-success {
+  color: var(--color-success);
 }
 
 .notification-item-corpo {
@@ -2957,4 +2987,91 @@ img.auth-logo {
   .resultados-busca-filtros {
     position: static;
   }
+}
+
+/* ── Toast (feedback de ação) ── */
+.toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 200;
+  max-width: calc(100vw - 32px);
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-card-hover);
+  font-size: 14px;
+  color: var(--color-text);
+  min-width: 240px;
+  max-width: 420px;
+  animation: toast-in 0.15s ease;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.toast-success {
+  border-color: var(--color-success);
+}
+
+.toast-error {
+  border-color: var(--color-danger);
+}
+
+.toast-info {
+  border-color: var(--color-info);
+}
+
+.toast span {
+  flex: 1;
+}
+
+.toast-fechar {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.toast-fechar:hover {
+  color: var(--color-text);
+}
+
+@media (max-width: 640px) {
+  .toast-stack {
+    left: 16px;
+    right: 16px;
+  }
+
+  .toast {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+}
+
+/* ── Confirm dialog padrão (substitui window.confirm) ── */
+.confirm-dialog {
+  max-width: 420px;
 }

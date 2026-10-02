@@ -60,6 +60,18 @@ export const SAUDE_LABELS: Record<SaudeCliente, string> = {
   concluido: 'Concluído',
 };
 
+// Mesmo vocabulário de tom usado em PRIORIDADE_TONE (src/lib/notificacoes.ts)
+// — "crítico" é sempre a cor de perigo (--color-danger), nunca a cor de
+// marca (--color-accent), pra não misturar "estado grave" com "ação
+// principal" em telas diferentes.
+export const SAUDE_TONE: Record<SaudeCliente, 'neutral' | 'warning' | 'danger' | 'info' | 'success'> = {
+  normal: 'neutral',
+  atencao: 'warning',
+  critico: 'danger',
+  aguardando_cliente: 'info',
+  concluido: 'success',
+};
+
 export type ClienteResumo = {
   cliente: Cliente;
   vendas: Mapeamento | null;

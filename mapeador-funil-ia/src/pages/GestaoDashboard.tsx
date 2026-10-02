@@ -556,6 +556,33 @@ export function GestaoDashboard() {
         </div>
       </section>
 
+      {/* 3b. Saúde da implementação — mesma fonte oficial de Home/Dashboard.
+         Fica logo após os indicadores principais (seção 19 do polimento
+         visual: saúde da carteira precisa estar no primeiro viewport, não
+         depois de 10 outras seções). */}
+      <section className="card">
+        <h2>Saúde da implementação</h2>
+        <div className="stats-grid">
+          {saude.map((s) => (
+            <CardIndicador
+              key={s.saude}
+              titulo={SAUDE_LABELS[s.saude]}
+              valor={s.valor}
+              tone={
+                s.saude === 'critico'
+                  ? 'danger'
+                  : s.saude === 'atencao'
+                    ? 'warning'
+                    : s.saude === 'aguardando_cliente'
+                      ? 'info'
+                      : 'success'
+              }
+              onClick={() => abrirPainel(SAUDE_LABELS[s.saude], s.clientes)}
+            />
+          ))}
+        </div>
+      </section>
+
       {/* 4. Tempos do processo */}
       <section className="card">
         <h2>Tempos do processo</h2>
@@ -898,22 +925,6 @@ export function GestaoDashboard() {
             <p>Nenhum Checkpoint de adoção respondido ainda neste filtro.</p>
           </div>
         )}
-      </section>
-
-      {/* 14. Saúde da implementação — mesma fonte oficial de Home/Dashboard. */}
-      <section className="card">
-        <h2>Saúde da implementação</h2>
-        <div className="stats-grid">
-          {saude.map((s) => (
-            <CardIndicador
-              key={s.saude}
-              titulo={SAUDE_LABELS[s.saude]}
-              valor={s.valor}
-              tone={s.saude === 'critico' ? 'danger' : s.saude === 'atencao' ? 'warning' : s.saude === 'normal' ? 'success' : 'info'}
-              onClick={() => abrirPainel(SAUDE_LABELS[s.saude], s.clientes)}
-            />
-          ))}
-        </div>
       </section>
     </div>
   );

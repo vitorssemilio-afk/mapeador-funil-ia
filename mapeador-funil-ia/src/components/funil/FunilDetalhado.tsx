@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { mesclarCamposPorEntidade, textoParaValorEtapa } from '../../data/etapaCampos';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import { supabase } from '../../lib/supabaseClient';
 import type { EtapaFunil, FunilGerado } from '../../types/database';
 import { EtapaCard } from './EtapaCard';
@@ -63,6 +64,7 @@ export function FunilDetalhado({
   criandoNovaVersao = false,
   modo = 'tecnica',
 }: Props) {
+  const confirmar = useConfirm();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [expandidos, setExpandidos] = useState<Set<number>>(new Set([0]));
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -147,10 +149,16 @@ export function FunilDetalhado({
     commit(novasEtapas);
   }
 
-  function handleRemoverEtapa(etapaIndex: number) {
+  async function handleRemoverEtapa(etapaIndex: number) {
     if (funil.etapas.length <= 1) return;
     const nome = funil.etapas[etapaIndex].nome || `Etapa ${etapaIndex + 1}`;
-    if (!window.confirm(`Remover a etapa "${nome}"? Essa ação não pode ser desfeita.`)) return;
+    const confirmado = await confirmar({
+      titulo: `Remover a etapa "${nome}"?`,
+      descricao: 'Essa ação não pode ser desfeita.',
+      confirmarLabel: 'Remover',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
     commit(funil.etapas.filter((_, i) => i !== etapaIndex));
   }
 

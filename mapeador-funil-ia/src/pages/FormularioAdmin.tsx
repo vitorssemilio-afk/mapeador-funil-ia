@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 import { supabase } from '../lib/supabaseClient';
 import type {
   BlocoFormularioRow,
@@ -103,6 +105,8 @@ function formatOpcoesTexto(opcoes: OpcaoPergunta[] | null): string {
 }
 
 export function FormularioAdmin() {
+  const confirmar = useConfirm();
+  const { mostrarToast } = useToast();
   const [blocos, setBlocos] = useState<BlocoFormularioRow[]>([]);
   const [perguntas, setPerguntas] = useState<PerguntaFormularioRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -204,15 +208,23 @@ export function FormularioAdmin() {
 
   async function handleExcluirBloco(bloco: BlocoFormularioRow) {
     const qtdPerguntas = perguntasDoBloco(bloco.id).length;
-    const aviso =
-      qtdPerguntas > 0
-        ? `Excluir o bloco "${bloco.titulo}"? Isso também apaga as ${qtdPerguntas} pergunta(s) dentro dele.`
-        : `Excluir o bloco "${bloco.titulo}"?`;
-    if (!window.confirm(aviso)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir o bloco "${bloco.titulo}"?`,
+      descricao:
+        qtdPerguntas > 0
+          ? `Isso também apaga as ${qtdPerguntas} pergunta(s) dentro dele. Esta ação não pode ser desfeita.`
+          : 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     const { error: deleteError } = await supabase.from('blocos_formulario').delete().eq('id', bloco.id);
     if (deleteError) setError(deleteError.message);
-    else carregar();
+    else {
+      mostrarToast('Bloco excluído.');
+      carregar();
+    }
   }
 
   function abrirNovaPergunta(blocoId: string) {
@@ -336,7 +348,13 @@ export function FormularioAdmin() {
   }
 
   async function handleExcluirPergunta(pergunta: PerguntaFormularioRow) {
-    if (!window.confirm(`Excluir a pergunta "${pergunta.label}"?`)) return;
+    const confirmado = await confirmar({
+      titulo: `Excluir a pergunta "${pergunta.label}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
 
     const { error: deleteError } = await supabase
       .from('perguntas_formulario')
@@ -344,7 +362,10 @@ export function FormularioAdmin() {
       .eq('id', pergunta.id);
 
     if (deleteError) setError(deleteError.message);
-    else carregar();
+    else {
+      mostrarToast('Pergunta excluída.');
+      carregar();
+    }
   }
 
   const blocosOrdenados = [...blocosDoTipo].sort((a, b) => a.ordem - b.ordem);
@@ -456,7 +477,7 @@ export function FormularioAdmin() {
                 <button type="button" className="btn btn-secondary" onClick={() => handleRenomearBloco(bloco)}>
                   Renomear
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={() => handleExcluirBloco(bloco)}>
+                <button type="button" className="btn btn-danger" onClick={() => handleExcluirBloco(bloco)}>
                   Excluir bloco
                 </button>
               </div>
@@ -510,7 +531,7 @@ export function FormularioAdmin() {
                         </button>{' '}
                         <button
                           type="button"
-                          className="btn btn-ghost"
+                          className="btn btn-danger"
                           onClick={() => handleExcluirPergunta(pergunta)}
                         >
                           Excluir
