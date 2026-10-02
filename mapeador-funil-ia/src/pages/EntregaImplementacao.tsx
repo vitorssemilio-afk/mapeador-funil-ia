@@ -18,8 +18,11 @@ import {
   calcularChecklistEntrega,
   construirSnapshotConsolidadoImplementacao,
   construirSnapshotDocumentoFunil,
+  construirSnapshotRelatorioAdocao,
+  resolverStatusPreparoEntrega,
   STATUS_ACEITE_LABELS,
   STATUS_ACEITE_TONE,
+  STATUS_PREPARO_ENTREGA_LABELS,
   STATUS_RELATORIO_LABELS,
   STATUS_RELATORIO_TONE,
   TIPO_RELATORIO_LABELS,
@@ -30,6 +33,7 @@ import { supabase } from '../lib/supabaseClient';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
+  CheckpointAdocao,
   Cliente,
   ClienteOcorrencia,
   ConfiguracaoImplementacao,
@@ -60,7 +64,13 @@ const ABAS: { valor: Aba; label: string }[] = [
   { valor: 'historico', label: 'Histórico' },
 ];
 
-const TIPOS_DOCUMENTO: TipoRelatorioImplementacao[] = ['implementacao', 'funil_vendas', 'funil_pos_venda', 'entrega_final'];
+const TIPOS_DOCUMENTO: TipoRelatorioImplementacao[] = [
+  'implementacao',
+  'funil_vendas',
+  'funil_pos_venda',
+  'entrega_final',
+  'adocao',
+];
 
 type HistoricoEvento = {
   id: string;
@@ -103,11 +113,17 @@ export function EntregaImplementacao() {
   const [relatorios, setRelatorios] = useState<RelatorioImplementacao[]>([]);
   const [aceite, setAceite] = useState<EntregaAceite | null>(null);
   const [ressalvas, setRessalvas] = useState<EntregaRessalva[]>([]);
+  const [checkpointAdocao, setCheckpointAdocao] = useState<CheckpointAdocao | null>(null);
 
   const [gerandoTipo, setGerandoTipo] = useState<TipoRelatorioImplementacao | null>(null);
   const [formVisao, setFormVisao] = useState<VisaoRelatorio>('executiva');
   const [formResumoExecutivo, setFormResumoExecutivo] = useState('');
-  const [formProximosPassos, setFormProximosPassos] = useState('');
+  // Seção 21 (Fase 2): próximos passos vira uma lista de itens curtos, não
+  // um parágrafo só — cada item é só um texto livre registrado aqui; virar
+  // uma pendência/tarefa de verdade continua exigindo uma ação própria do
+  // consultor em outro lugar do sistema, nunca automático.
+  const [formProximosPassos, setFormProximosPassos] = useState<string[]>([]);
+  const [novoProximoPasso, setNovoProximoPasso] = useState('');
   const [motivoNovaVersao, setMotivoNovaVersao] = useState('');
   const [gerando, setGerando] = useState(false);
 
@@ -159,6 +175,7 @@ export function EntregaImplementacao() {
       { data: configGlobalData },
       { data: relatoriosData },
       { data: aceiteData },
+      { data: checkpointAdocaoData },
     ] = await Promise.all([
       implData.cliente_id
         ? supabase.from('clientes').select('*').eq('id', implData.cliente_id).maybeSingle()
@@ -185,6 +202,7 @@ export function EntregaImplementacao() {
         .order('tipo', { ascending: true })
         .order('versao', { ascending: false }),
       supabase.from('entregas_aceite').select('*').eq('implementacao_id', implementacaoId).maybeSingle(),
+      supabase.from('checkpoints_adocao').select('*').eq('implementacao_id', implementacaoId).maybeSingle(),
     ]);
 
     setCliente(clienteData ?? null);
@@ -197,6 +215,7 @@ export function EntregaImplementacao() {
     setConfigGlobal(configGlobalData ?? null);
     setRelatorios(relatoriosData ?? []);
     setAceite(aceiteData ?? null);
+    setCheckpointAdocao(checkpointAdocaoData ?? null);
 
     if (clienteData) {
       const [{ data: snapshotData }, { data: reunioesData }, { data: ocorrenciasData }] = await Promise.all([
@@ -336,6 +355,8 @@ export function EntregaImplementacao() {
     [versaoFunilVendasAprovada, cliente, reunioes, resumoCriterios, relatorios],
   );
 
+  const statusPreparoEntrega = useMemo(() => resolverStatusPreparoEntrega(reunioes), [reunioes]);
+
   async function registrarHistorico(acao: string, entidadeId: string | null, detalhes: Record<string, unknown> = {}) {
     if (!implementacao) return;
     await supabase.rpc('registrar_auditoria', {
@@ -352,9 +373,21 @@ export function EntregaImplementacao() {
     setGerandoTipo(tipo);
     setFormVisao('executiva');
     setFormResumoExecutivo('');
-    setFormProximosPassos('');
+    setFormProximosPassos([]);
+    setNovoProximoPasso('');
     const jaExiste = relatorios.some((r) => r.tipo === tipo);
     setMotivoNovaVersao(jaExiste ? '' : '');
+  }
+
+  function handleAdicionarProximoPasso() {
+    const texto = novoProximoPasso.trim();
+    if (!texto) return;
+    setFormProximosPassos((prev) => [...prev, texto]);
+    setNovoProximoPasso('');
+  }
+
+  function handleRemoverProximoPasso(indice: number) {
+    setFormProximosPassos((prev) => prev.filter((_, i) => i !== indice));
   }
 
   function fecharGeracao() {
@@ -391,7 +424,7 @@ export function EntregaImplementacao() {
         criterios,
         criteriosStatus,
       });
-      textoEditavel = { resumoExecutivo: formResumoExecutivo.trim(), proximosPassos: formProximosPassos.trim() };
+      textoEditavel = { resumoExecutivo: formResumoExecutivo.trim(), proximosPassos: formProximosPassos };
       titulo = `${TIPO_RELATORIO_LABELS[gerandoTipo]} — ${implementacao.nome_cliente}`;
     } else if (gerandoTipo === 'funil_vendas' || gerandoTipo === 'funil_pos_venda') {
       const versaoAprovada = gerandoTipo === 'funil_vendas' ? versaoFunilVendasAprovada : versaoFunilPosVendaAprovada;
@@ -408,6 +441,14 @@ export function EntregaImplementacao() {
       });
       visao = formVisao;
       titulo = `${TIPO_RELATORIO_LABELS[gerandoTipo]} — ${implementacao.nome_cliente} (${VISAO_RELATORIO_LABELS[formVisao]})`;
+    } else if (gerandoTipo === 'adocao') {
+      if (!checkpointAdocao) {
+        setGerando(false);
+        setError('Esta implementação ainda não tem o Checkpoint de 30 dias respondido.');
+        return;
+      }
+      conteudoSnapshot = construirSnapshotRelatorioAdocao(checkpointAdocao);
+      titulo = `${TIPO_RELATORIO_LABELS[gerandoTipo]} — ${implementacao.nome_cliente}`;
     }
 
     const { data, error: insertError } = await supabase
@@ -656,6 +697,9 @@ export function EntregaImplementacao() {
               {STATUS_ACEITE_LABELS[aceite?.status ?? 'aguardando_aceite']}
             </span>
           </p>
+          <p className="field-hint">
+            Reunião final: <strong>{STATUS_PREPARO_ENTREGA_LABELS[statusPreparoEntrega]}</strong>
+          </p>
         </section>
       )}
 
@@ -689,7 +733,11 @@ export function EntregaImplementacao() {
           <section className="card">
             <h2>Gerar documento</h2>
             <div className="page-header-actions">
-              {TIPOS_DOCUMENTO.filter((tipo) => tipo !== 'funil_pos_venda' || !!mapeamentoPosVendaId).map((tipo) => (
+              {TIPOS_DOCUMENTO.filter((tipo) => {
+                if (tipo === 'funil_pos_venda') return !!mapeamentoPosVendaId;
+                if (tipo === 'adocao') return !!checkpointAdocao;
+                return true;
+              }).map((tipo) => (
                 <button key={tipo} type="button" className="btn btn-secondary btn-auto" onClick={() => abrirGeracao(tipo)}>
                   Gerar {TIPO_RELATORIO_LABELS[tipo]}
                 </button>
@@ -730,13 +778,49 @@ export function EntregaImplementacao() {
                     </label>
                     <label className="field">
                       <span>Próximos passos recomendados (texto editável)</span>
-                      <textarea
-                        rows={3}
-                        value={formProximosPassos}
-                        onChange={(e) => setFormProximosPassos(e.target.value)}
-                      />
+                      <span className="field-hint">
+                        Cada item é uma recomendação — ex: acompanhamento de adoção, ajustes futuros, novas
+                        automações. Registrar aqui não cria uma tarefa automaticamente.
+                      </span>
                     </label>
+                    {formProximosPassos.length > 0 && (
+                      <ul className="observacoes-lista">
+                        {formProximosPassos.map((passo, i) => (
+                          <li key={i} className="observacao-item">
+                            <div className="observacao-item-header">
+                              <span>{passo}</span>
+                              <button type="button" className="btn btn-danger btn-auto" onClick={() => handleRemoverProximoPasso(i)}>
+                                Remover
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <div className="form-grid">
+                      <input
+                        type="text"
+                        value={novoProximoPasso}
+                        onChange={(e) => setNovoProximoPasso(e.target.value)}
+                        placeholder="Ex: Acompanhamento de adoção em 30 dias"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAdicionarProximoPasso();
+                          }
+                        }}
+                      />
+                      <button type="button" className="btn btn-secondary btn-auto" onClick={handleAdicionarProximoPasso}>
+                        + Adicionar
+                      </button>
+                    </div>
                   </>
+                )}
+
+                {gerandoTipo === 'adocao' && !checkpointAdocao && (
+                  <p className="form-error">
+                    Esta implementação ainda não tem o Checkpoint de 30 dias respondido.
+                  </p>
                 )}
 
                 {relatorios.some((r) => r.tipo === gerandoTipo) && (

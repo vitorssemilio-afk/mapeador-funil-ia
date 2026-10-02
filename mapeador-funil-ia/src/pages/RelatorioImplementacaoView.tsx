@@ -5,12 +5,17 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  STATUS_DIAGNOSTICO_LABELS,
+  STATUS_DIAGNOSTICO_TONE,
+} from '../lib/diagnosticoAdocao';
+import {
   STATUS_RELATORIO_LABELS,
   STATUS_RELATORIO_TONE,
   TIPO_RELATORIO_LABELS,
   VISAO_RELATORIO_LABELS,
   type SnapshotConsolidadoImplementacao,
   type SnapshotDocumentoFunil,
+  type SnapshotRelatorioAdocao,
 } from '../lib/relatoriosEntrega';
 import { supabase } from '../lib/supabaseClient';
 import type { ConfiguracaoOperacao, RelatorioImplementacao } from '../types/database';
@@ -53,7 +58,14 @@ function RelatorioConsolidadoDoc({
   relatorio: RelatorioImplementacao;
   snapshot: SnapshotConsolidadoImplementacao;
 }) {
-  const textoEditavel = relatorio.texto_editavel as { resumoExecutivo?: string; proximosPassos?: string };
+  const textoEditavel = relatorio.texto_editavel as { resumoExecutivo?: string; proximosPassos?: string | string[] };
+  // Compatibilidade com relatórios gerados na Fase 1 (próximos passos era um
+  // texto corrido) — a Fase 2 passou a guardar uma lista de itens (seção 21).
+  const proximosPassos = Array.isArray(textoEditavel.proximosPassos)
+    ? textoEditavel.proximosPassos
+    : textoEditavel.proximosPassos
+      ? [textoEditavel.proximosPassos]
+      : [];
 
   return (
     <>
@@ -177,9 +189,60 @@ function RelatorioConsolidadoDoc({
 
       <Secao titulo="Próximos passos recomendados">
         {textoEditavel.proximosPassos ? (
-          <p className="doc-paragrafo">{textoEditavel.proximosPassos}</p>
+          <ListaOuVazio itens={proximosPassos} vazio="" />
         ) : (
           <p className="doc-vazio">Nenhum próximo passo registrado.</p>
+        )}
+      </Secao>
+    </>
+  );
+}
+
+function RelatorioAdocaoDoc({ snapshot }: { snapshot: SnapshotRelatorioAdocao }) {
+  return (
+    <>
+      <Secao titulo="Diagnóstico">
+        <p>
+          <span className={`status-badge status-tone-${STATUS_DIAGNOSTICO_TONE[snapshot.status]}`}>
+            {STATUS_DIAGNOSTICO_LABELS[snapshot.status]}
+          </span>{' '}
+          · Checkpoint respondido em {formatarDataHora(snapshot.respondidoEmIso)}
+        </p>
+        <h3>Sinais observados</h3>
+        <ListaOuVazio itens={snapshot.sinais} vazio="Nenhum sinal registrado." />
+        <h3>Recomendações</h3>
+        <ListaOuVazio itens={snapshot.recomendacoes} vazio="Nenhuma recomendação registrada." />
+      </Secao>
+
+      <Secao titulo="Respostas do checkpoint">
+        <table className="doc-tabela">
+          <tbody>
+            <tr>
+              <th>Percentual do processo no Kommo</th>
+              <td>{snapshot.percentualProcessoKommo ?? '—'}</td>
+            </tr>
+            <tr>
+              <th>Autonomia da equipe</th>
+              <td>{snapshot.autonomiaEquipe ?? '—'}</td>
+            </tr>
+            <tr>
+              <th>Uso de relatórios para decisão</th>
+              <td>{snapshot.usoRelatoriosDecisao ?? '—'}</td>
+            </tr>
+            <tr>
+              <th>Atividades fora do Kommo</th>
+              <td>
+                {snapshot.atividadesForaKommo ?? '—'}
+                {snapshot.quaisAtividadesForaKommo ? ` — ${snapshot.quaisAtividadesForaKommo}` : ''}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        {snapshot.principalDificuldade && (
+          <>
+            <h3>Principal dificuldade relatada</h3>
+            <p className="doc-paragrafo">{snapshot.principalDificuldade}</p>
+          </>
         )}
       </Secao>
     </>
@@ -329,6 +392,8 @@ export function RelatorioImplementacaoView() {
 
         {ehFunil ? (
           <DocumentoFunilDoc relatorio={relatorio} snapshot={relatorio.conteudo_snapshot as unknown as SnapshotDocumentoFunil} />
+        ) : relatorio.tipo === 'adocao' ? (
+          <RelatorioAdocaoDoc snapshot={relatorio.conteudo_snapshot as unknown as SnapshotRelatorioAdocao} />
         ) : (
           <RelatorioConsolidadoDoc
             relatorio={relatorio}

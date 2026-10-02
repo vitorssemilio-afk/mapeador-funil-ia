@@ -6,9 +6,17 @@
 // diagnosticoAdocao.ts) — esta lib só organiza o que elas já calcularam.
 import type { AtividadeResolvida } from './atividadesCronograma';
 import { formatCampoEtapaLabel } from '../data/etapaCampos';
+import {
+  ATIVIDADES_FORA_KOMMO_LABELS,
+  AUTONOMIA_EQUIPE_LABELS,
+  PERCENTUAL_PROCESSO_LABELS,
+  resolverDiagnosticoAdocao,
+  USO_RELATORIOS_DECISAO_LABELS,
+} from './diagnosticoAdocao';
 import { nomeConsultor } from './operacaoResumo';
 import { TIPOS_REUNIAO_OBRIGATORIOS, TIPO_REUNIAO_LABELS } from './reunioes';
 import type {
+  CheckpointAdocao,
   Cliente,
   ClienteOcorrencia,
   Consultor,
@@ -308,4 +316,63 @@ export function calcularChecklistEntrega(input: {
 
 export function tiposReuniaoObrigatoriasRealizadas(reunioes: Reuniao[]): boolean {
   return TIPOS_REUNIAO_OBRIGATORIOS.every((tipo) => reunioes.some((r) => r.tipo === tipo && r.status === 'realizada'));
+}
+
+// ============================================================
+// Relatório de Adoção (Fase 2, seção 22) — só existe quando já houve
+// resposta ao Checkpoint de 30 dias. O diagnóstico (saudável/atenção/
+// crítico) vem inteiro de resolverDiagnosticoAdocao — a mesma regra oficial
+// já usada na tela da implementação, nunca recalculada aqui.
+// ============================================================
+export type SnapshotRelatorioAdocao = {
+  respondidoEmIso: string;
+  status: 'saudavel' | 'atencao' | 'critico';
+  sinais: string[];
+  recomendacoes: string[];
+  percentualProcessoKommo: string | null;
+  autonomiaEquipe: string | null;
+  usoRelatoriosDecisao: string | null;
+  atividadesForaKommo: string | null;
+  quaisAtividadesForaKommo: string | null;
+  principalDificuldade: string | null;
+};
+
+export function construirSnapshotRelatorioAdocao(checkpoint: CheckpointAdocao): SnapshotRelatorioAdocao {
+  const diagnostico = resolverDiagnosticoAdocao(checkpoint);
+  return {
+    respondidoEmIso: checkpoint.respondido_em,
+    status: diagnostico.status,
+    sinais: diagnostico.sinais,
+    recomendacoes: diagnostico.recomendacoes,
+    percentualProcessoKommo: checkpoint.percentual_processo_kommo
+      ? PERCENTUAL_PROCESSO_LABELS[checkpoint.percentual_processo_kommo]
+      : null,
+    autonomiaEquipe: checkpoint.autonomia_equipe ? AUTONOMIA_EQUIPE_LABELS[checkpoint.autonomia_equipe] : null,
+    usoRelatoriosDecisao: checkpoint.uso_relatorios_decisao
+      ? USO_RELATORIOS_DECISAO_LABELS[checkpoint.uso_relatorios_decisao]
+      : null,
+    atividadesForaKommo: checkpoint.atividades_fora_kommo
+      ? ATIVIDADES_FORA_KOMMO_LABELS[checkpoint.atividades_fora_kommo]
+      : null,
+    quaisAtividadesForaKommo: checkpoint.quais_atividades_fora_kommo,
+    principalDificuldade: checkpoint.principal_dificuldade,
+  };
+}
+
+// ============================================================
+// Vínculo com a reunião final (Fase 2, seção 28) — rótulo derivado do
+// status já existente da reunião tipo 'reuniao_final', sem nenhum campo
+// novo: antes dela acontecer, a entrega está "em preparação"; depois,
+// "apresentada".
+// ============================================================
+export type StatusPreparoEntrega = 'preparando_entrega' | 'entrega_apresentada';
+
+export const STATUS_PREPARO_ENTREGA_LABELS: Record<StatusPreparoEntrega, string> = {
+  preparando_entrega: 'Preparando entrega',
+  entrega_apresentada: 'Entrega apresentada',
+};
+
+export function resolverStatusPreparoEntrega(reunioes: Reuniao[]): StatusPreparoEntrega {
+  const reuniaoFinalRealizada = reunioes.some((r) => r.tipo === 'reuniao_final' && r.status === 'realizada');
+  return reuniaoFinalRealizada ? 'entrega_apresentada' : 'preparando_entrega';
 }

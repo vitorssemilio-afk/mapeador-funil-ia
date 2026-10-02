@@ -3,7 +3,68 @@
 // campos crus, pra nunca ter duas fontes de verdade que podem divergir se a
 // regra mudar. Só mede adoção pós-entrega — nunca conta como critério de
 // qualidade técnica da implementação (ver src/lib/criteriosEntrega.ts).
-import type { CheckpointAdocao } from '../types/database';
+import type {
+  AtividadesForaKommoCheckpoint,
+  AutonomiaEquipeCheckpoint,
+  CheckpointAdocao,
+  FrequenciaUsoCheckpoint,
+  IntencaoManutencaoCheckpoint,
+  PercentualProcessoKommo,
+  UsoDiarioCheckpoint,
+  UsoRelatoriosDecisaoCheckpoint,
+} from '../types/database';
+
+// Labels dos campos crus do Checkpoint de Adoção — compartilhados entre a
+// tela da implementação e o Relatório de Adoção (módulo de Relatórios e
+// Entrega, Fase 2) pra nunca divergir o texto exibido em um lugar e no
+// outro.
+export const USO_DIARIO_LABELS: Record<UsoDiarioCheckpoint, string> = {
+  so_kommo: 'Só Kommo',
+  kommo_mais_planilha: 'Kommo + planilha ainda',
+  voltou_planilha: 'Voltaram pra planilha',
+};
+
+export const FREQUENCIA_USO_LABELS: Record<FrequenciaUsoCheckpoint, string> = {
+  diariamente: 'Diariamente',
+  semanalmente: 'Semanalmente',
+  raramente: 'Raramente',
+  nao_uso: 'Não uso',
+};
+
+export const INTENCAO_MANUTENCAO_LABELS: Record<IntencaoManutencaoCheckpoint, string> = {
+  sim: 'Sim',
+  talvez: 'Talvez',
+  nao: 'Não',
+};
+
+export const PERCENTUAL_PROCESSO_LABELS: Record<PercentualProcessoKommo, string> = {
+  praticamente_tudo: 'Praticamente tudo',
+  maior_parte: 'A maior parte',
+  cerca_metade: 'Cerca da metade',
+  pouco: 'Pouco',
+  quase_nada: 'Quase nada',
+};
+
+export const AUTONOMIA_EQUIPE_LABELS: Record<AutonomiaEquipeCheckpoint, string> = {
+  sim_totalmente: 'Sim, totalmente',
+  maior_parte_vezes: 'Na maior parte das vezes',
+  precisamos_ajuda_frequente: 'Ainda precisamos de ajuda com frequência',
+  nao_conseguimos_sem_ajuda: 'Não conseguimos operar sem ajuda',
+};
+
+export const USO_RELATORIOS_DECISAO_LABELS: Record<UsoRelatoriosDecisaoCheckpoint, string> = {
+  sim_mais_uma_vez: 'Sim, mais de uma vez',
+  sim_uma_vez: 'Sim, uma vez',
+  ainda_nao: 'Ainda não',
+  nao_sei_utilizar: 'Não sei utilizar os relatórios',
+};
+
+export const ATIVIDADES_FORA_KOMMO_LABELS: Record<AtividadesForaKommoCheckpoint, string> = {
+  nao_tudo_no_kommo: 'Não, praticamente tudo está no Kommo',
+  sim_algumas: 'Sim, algumas atividades',
+  sim_varias: 'Sim, várias atividades',
+  voltou_processo_antigo: 'A equipe praticamente voltou ao processo antigo',
+};
 
 export type StatusDiagnosticoAdocao = 'saudavel' | 'atencao' | 'critico';
 
