@@ -2185,6 +2185,9 @@ export function ImplementacaoDetalhe() {
           </p>
         </div>
         <div className="page-header-actions">
+          <Link to={`/implementacoes/${implementacao.id}/entrega`} className="btn btn-secondary">
+            Relatórios e Entrega
+          </Link>
           <button type="button" className="btn btn-danger" onClick={handleExcluirImplementacao} disabled={excluindo}>
             {excluindo ? 'Excluindo…' : 'Excluir implementação'}
           </button>

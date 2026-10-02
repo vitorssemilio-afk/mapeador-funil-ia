@@ -15,6 +15,7 @@ import { ConfiguracoesPipefy } from './pages/ConfiguracoesPipefy';
 import { Consultores } from './pages/Consultores';
 import { Cronograma } from './pages/Cronograma';
 import { Dashboard } from './pages/Dashboard';
+import { EntregaImplementacao } from './pages/EntregaImplementacao';
 import { FormularioAdmin } from './pages/FormularioAdmin';
 import { FormularioPublico } from './pages/FormularioPublico';
 import { GestaoDashboard } from './pages/GestaoDashboard';
@@ -26,6 +27,7 @@ import { Mapeamento } from './pages/Mapeamento';
 import { NovoCliente } from './pages/NovoCliente';
 import { ObservabilidadeIA } from './pages/ObservabilidadeIA';
 import { RelatorioFunil } from './pages/RelatorioFunil';
+import { RelatorioImplementacaoView } from './pages/RelatorioImplementacaoView';
 import { RelatorioRespostas } from './pages/RelatorioRespostas';
 import { ResultadosBusca } from './pages/ResultadosBusca';
 import { RespostasFormulario } from './pages/RespostasFormulario';
@@ -61,6 +63,14 @@ function App() {
                   }
                 />
                 <Route
+                  path="/implementacoes/:id/relatorios/:relatorioId"
+                  element={
+                    <ProtectedRoute>
+                      <RelatorioImplementacaoView />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
                   element={
                     <ProtectedRoute>
                       <Layout />
@@ -88,6 +98,7 @@ function App() {
                   <Route path="/templates/:id" element={<TemplateDetalhe />} />
                   <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
                   <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
+                  <Route path="/implementacoes/:id/entrega" element={<EntregaImplementacao />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
