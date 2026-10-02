@@ -78,6 +78,9 @@ export function Layout() {
             <NavLink to="/implementacoes" className={navLinkClass}>
               Implementações
             </NavLink>
+            <NavLink to="/templates" className={navLinkClass}>
+              Templates
+            </NavLink>
             <NavLink to="/consultores" className={navLinkClass}>
               Consultores
             </NavLink>

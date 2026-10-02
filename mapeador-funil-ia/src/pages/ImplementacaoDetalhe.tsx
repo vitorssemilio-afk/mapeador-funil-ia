@@ -38,6 +38,7 @@ import {
   type ValidacaoFunilKickoff,
 } from '../lib/funilVersoes';
 import { nomeConsultor } from '../lib/operacaoResumo';
+import { TIPO_CRITERIO_TEMPLATE_LABELS } from '../lib/templatesImplementacao';
 import {
   alertaReuniaoObrigatoria,
   STATUS_REUNIAO_LABELS,
@@ -73,7 +74,9 @@ import type {
   FunilGerado,
   FunilKommoCriacao,
   FunilVersao,
+  ImplementacaoCriterioTemplate,
   ImplementacaoCrm,
+  ImplementacaoReuniaoEsperada,
   ImplementacaoSettingsSnapshot,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
@@ -93,7 +96,7 @@ import type {
   UsoRelatoriosDecisaoCheckpoint,
 } from '../types/database';
 
-type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes';
+type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes' | 'template';
 const ABAS_IMPLEMENTACAO: Aba[] = [
   'geral',
   'checklist',
@@ -102,6 +105,7 @@ const ABAS_IMPLEMENTACAO: Aba[] = [
   'credenciais',
   'checkpoint',
   'reunioes',
+  'template',
 ];
 
 // Ordem fixa de exibição — os 5 tipos "estruturados" (um card cada, sempre
@@ -379,6 +383,8 @@ export function ImplementacaoDetalhe() {
   const [historicoConsultor, setHistoricoConsultor] = useState<ImplementacaoConsultorHistorico[]>([]);
   const [criterios, setCriterios] = useState<CriterioEntrega[]>([]);
   const [criteriosStatus, setCriteriosStatus] = useState<CriterioEntregaStatus[]>([]);
+  const [reunioesEsperadas, setReunioesEsperadas] = useState<ImplementacaoReuniaoEsperada[]>([]);
+  const [criteriosTemplate, setCriteriosTemplate] = useState<ImplementacaoCriterioTemplate[]>([]);
   const [editandoCriterioId, setEditandoCriterioId] = useState<string | null>(null);
   const [formCriterio, setFormCriterio] = useState<{
     status: StatusCriterioEntrega;
@@ -609,6 +615,8 @@ export function ImplementacaoDetalhe() {
       { data: criteriosStatusData },
       { data: checkpointAcompanhamentosData },
       { data: configGlobalData },
+      { data: reunioesEsperadasData },
+      { data: criteriosTemplateData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -644,6 +652,16 @@ export function ImplementacaoDetalhe() {
         .eq('implementacao_id', implementacaoId)
         .order('created_at', { ascending: false }),
       supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
+      supabase
+        .from('implementacao_reunioes_esperadas')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('ordem', { ascending: true }),
+      supabase
+        .from('implementacao_criterios_template')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('ordem', { ascending: true }),
     ]);
 
     setPipefyConfig(pipefyData ?? null);
@@ -653,6 +671,8 @@ export function ImplementacaoDetalhe() {
     setCriteriosStatus(criteriosStatusData ?? []);
     setCheckpointAcompanhamentos(checkpointAcompanhamentosData ?? []);
     setConfigGlobal(configGlobalData ?? null);
+    setReunioesEsperadas(reunioesEsperadasData ?? []);
+    setCriteriosTemplate(criteriosTemplateData ?? []);
 
     if (implError) {
       setError(implError.message);
@@ -1835,6 +1855,101 @@ export function ImplementacaoDetalhe() {
     }
   }
 
+  // ============================================================
+  // Template aplicado — reuniões esperadas e critérios clonados (módulo
+  // de Templates de Implementação). O consultor pode adaptar livremente:
+  // marcar "não se aplica" (com justificativa) em vez de só excluir,
+  // pra manter histórico de que a decisão foi avaliada — ver seção 24/23
+  // do pedido do módulo de Templates.
+  // ============================================================
+  async function handleMarcarReuniaoEsperadaNaoAplicavel(reuniao: ImplementacaoReuniaoEsperada) {
+    if (!implementacao) return;
+
+    if (reuniao.nao_aplicavel) {
+      const { error: updateError } = await supabase
+        .from('implementacao_reunioes_esperadas')
+        .update({ nao_aplicavel: false, nao_aplicavel_justificativa: null })
+        .eq('id', reuniao.id);
+      if (updateError) setError(updateError.message);
+      else carregar(implementacao.id);
+      return;
+    }
+
+    const justificativa = window.prompt(
+      `Por que "${TIPO_REUNIAO_LABELS[reuniao.tipo]}" não se aplica a este cliente? (opcional)`,
+    );
+    if (justificativa === null) return;
+
+    const { error: updateError } = await supabase
+      .from('implementacao_reunioes_esperadas')
+      .update({ nao_aplicavel: true, nao_aplicavel_justificativa: justificativa.trim() || null })
+      .eq('id', reuniao.id);
+    if (updateError) setError(updateError.message);
+    else {
+      mostrarToast('Marcado como não aplicável.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleExcluirReuniaoEsperada(reuniao: ImplementacaoReuniaoEsperada) {
+    if (!implementacao) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Remover "${TIPO_REUNIAO_LABELS[reuniao.tipo]}" desta implementação?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Remover',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('implementacao_reunioes_esperadas').delete().eq('id', reuniao.id);
+    if (deleteError) setError(deleteError.message);
+    else {
+      mostrarToast('Reunião esperada removida.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleAtualizarStatusCriterioTemplate(criterio: ImplementacaoCriterioTemplate, novoStatus: StatusCriterioEntrega) {
+    if (!implementacao) return;
+
+    if (novoStatus === 'nao_se_aplica') {
+      const justificativa = window.prompt(`Por que "${criterio.titulo}" não se aplica a este cliente? (opcional)`);
+      if (justificativa === null) return;
+      const { error: updateError } = await supabase
+        .from('implementacao_criterios_template')
+        .update({ status: novoStatus, justificativa_nao_aplica: justificativa.trim() || null })
+        .eq('id', criterio.id);
+      if (updateError) setError(updateError.message);
+      else carregar(implementacao.id);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from('implementacao_criterios_template')
+      .update({ status: novoStatus, justificativa_nao_aplica: null })
+      .eq('id', criterio.id);
+    if (updateError) setError(updateError.message);
+    else carregar(implementacao.id);
+  }
+
+  async function handleExcluirCriterioTemplate(criterio: ImplementacaoCriterioTemplate) {
+    if (!implementacao) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Excluir o critério "${criterio.titulo}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('implementacao_criterios_template').delete().eq('id', criterio.id);
+    if (deleteError) setError(deleteError.message);
+    else {
+      mostrarToast('Critério excluído.');
+      carregar(implementacao.id);
+    }
+  }
+
   function abrirFormCredencialKommo() {
     setFormCredencialKommo({
       subdominio: credencialKommoMeta?.subdominio ?? '',
@@ -2305,6 +2420,13 @@ export function ImplementacaoDetalhe() {
           Reuniões
           {alertasReunioes.length > 0 && <span className="badge-danger">{alertasReunioes.length}</span>}
         </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'template' ? ' active' : ''}`}
+          onClick={() => setAba('template')}
+        >
+          Template
+        </button>
       </div>
 
       {aba === 'geral' && (
@@ -2763,6 +2885,9 @@ export function ImplementacaoDetalhe() {
                               {atividade.nome}
                               {templateAtividade?.implementacao_id && (
                                 <span className="derivado-badge"> · gerado do funil</span>
+                              )}
+                              {templateAtividade?.origem_template_id && (
+                                <span className="derivado-badge"> · do template</span>
                               )}
                             </td>
                             <td>{atividade.prazoDias != null ? `${atividade.prazoDias}d` : '—'}</td>
@@ -3590,6 +3715,125 @@ export function ImplementacaoDetalhe() {
             })}
           </>
         ))}
+
+      {aba === 'template' && implementacao && (
+        <>
+          <section className="card">
+            <h2>Template aplicado</h2>
+            {implementacao.template_aplicado_id ? (
+              <p className="field-hint">
+                <strong style={{ color: 'var(--color-text)' }}>{implementacao.template_aplicado_nome}</strong> · v
+                {implementacao.template_aplicado_versao}
+                {implementacao.template_aplicado_em ? ` · aplicado em ${formatarDataHoraLocal(implementacao.template_aplicado_em)}` : ''}
+              </p>
+            ) : (
+              <p className="field-hint">Nenhum template foi aplicado nesta implementação.</p>
+            )}
+          </section>
+
+          <section className="card form-card">
+            <h2>Reuniões esperadas</h2>
+            <p className="field-hint">
+              Só a expectativa operacional do template — a reunião de verdade continua sendo agendada na aba
+              "Reuniões".
+            </p>
+            {reunioesEsperadas.length === 0 ? (
+              <div className="empty-state">
+                <p>Nenhuma reunião esperada clonada de template nesta implementação.</p>
+              </div>
+            ) : (
+              <ul className="observacoes-lista">
+                {reunioesEsperadas.map((r) => (
+                  <li key={r.id} className="observacao-item">
+                    <div className="observacao-item-header">
+                      <span className="observacao-item-meta">
+                        {r.nao_aplicavel && <span className="status-badge status-tone-neutral">Não se aplica</span>}{' '}
+                        <strong style={{ color: 'var(--color-text)' }}>{TIPO_REUNIAO_LABELS[r.tipo]}</strong>
+                        {r.obrigatoria && !r.nao_aplicavel ? ' · obrigatória' : ''}
+                        {r.ciclo ? ` · ${r.ciclo}` : ''}
+                        {r.dia_recomendado != null ? ` · dia ${r.dia_recomendado}` : ''}
+                      </span>
+                      <span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-auto"
+                          onClick={() => handleMarcarReuniaoEsperadaNaoAplicavel(r)}
+                        >
+                          {r.nao_aplicavel ? 'Reverter' : 'Não se aplica'}
+                        </button>{' '}
+                        <button type="button" className="btn btn-danger btn-auto" onClick={() => handleExcluirReuniaoEsperada(r)}>
+                          Excluir
+                        </button>
+                      </span>
+                    </div>
+                    {r.objetivo && <p className="field-hint">{r.objetivo}</p>}
+                    {r.pauta_padrao.length > 0 && (
+                      <p className="field-hint">Pauta padrão: {r.pauta_padrao.join(' · ')}</p>
+                    )}
+                    {r.nao_aplicavel && r.nao_aplicavel_justificativa && (
+                      <p className="field-hint">Justificativa: {r.nao_aplicavel_justificativa}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {(['entrega', 'adocao'] as const).map((tipo) => {
+            const lista = criteriosTemplate.filter((c) => c.tipo === tipo);
+            return (
+              <section className="card form-card" key={tipo}>
+                <h2>Critérios de {TIPO_CRITERIO_TEMPLATE_LABELS[tipo]} (do template)</h2>
+                {tipo === 'adocao' && (
+                  <p className="field-hint">Nunca bloqueiam a conclusão técnica da implementação.</p>
+                )}
+                {lista.length === 0 ? (
+                  <div className="empty-state">
+                    <p>Nenhum critério de {TIPO_CRITERIO_TEMPLATE_LABELS[tipo].toLowerCase()} clonado de template.</p>
+                  </div>
+                ) : (
+                  <ul className="observacoes-lista">
+                    {lista.map((c) => (
+                      <li key={c.id} className="observacao-item">
+                        <div className="observacao-item-header">
+                          <span className="observacao-item-meta">
+                            <span className={`status-badge status-tone-${STATUS_CRITERIO_TONE[c.status]}`}>
+                              {STATUS_CRITERIO_LABELS[c.status]}
+                            </span>{' '}
+                            <strong style={{ color: 'var(--color-text)' }}>{c.titulo}</strong>
+                          </span>
+                          <span>
+                            <select
+                              value={c.status}
+                              onChange={(e) =>
+                                handleAtualizarStatusCriterioTemplate(c, e.target.value as StatusCriterioEntrega)
+                              }
+                            >
+                              {Object.entries(STATUS_CRITERIO_LABELS).map(([valor, rotulo]) => (
+                                <option key={valor} value={valor}>
+                                  {rotulo}
+                                </option>
+                              ))}
+                            </select>{' '}
+                            <button type="button" className="btn btn-danger btn-auto" onClick={() => handleExcluirCriterioTemplate(c)}>
+                              Excluir
+                            </button>
+                          </span>
+                        </div>
+                        {c.descricao && <p className="field-hint">{c.descricao}</p>}
+                        {c.evidencia_esperada && <p className="field-hint">Evidência esperada: {c.evidencia_esperada}</p>}
+                        {c.status === 'nao_se_aplica' && c.justificativa_nao_aplica && (
+                          <p className="field-hint">Justificativa: {c.justificativa_nao_aplica}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }

@@ -29,6 +29,8 @@ import { RelatorioFunil } from './pages/RelatorioFunil';
 import { RelatorioRespostas } from './pages/RelatorioRespostas';
 import { ResultadosBusca } from './pages/ResultadosBusca';
 import { RespostasFormulario } from './pages/RespostasFormulario';
+import { TemplateDetalhe } from './pages/TemplateDetalhe';
+import { Templates } from './pages/Templates';
 
 function App() {
   return (
@@ -82,6 +84,8 @@ function App() {
                   <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
                   <Route path="/configuracoes" element={<Configuracoes />} />
                   <Route path="/busca" element={<ResultadosBusca />} />
+                  <Route path="/templates" element={<Templates />} />
+                  <Route path="/templates/:id" element={<TemplateDetalhe />} />
                   <Route path="/configuracoes/pipefy" element={<ConfiguracoesPipefy />} />
                   <Route path="/implementacoes/:id" element={<ImplementacaoDetalhe />} />
                 </Route>
