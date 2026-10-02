@@ -10,27 +10,46 @@ import { TIPO_REUNIAO_LABELS } from '../lib/reunioes';
 import {
   STATUS_TEMPLATE_LABELS,
   STATUS_TEMPLATE_TONE,
+  TIPO_CAMPO_CRM_LABELS,
   TIPO_CRITERIO_TEMPLATE_LABELS,
 } from '../lib/templatesImplementacao';
 import { supabase } from '../lib/supabaseClient';
 import type {
   StatusTemplate,
   TemplateAtividade,
+  TemplateAutomacao,
+  TemplateCampoCrm,
   TemplateCriterio,
+  TemplateDocumento,
   TemplateImplementacao,
   TemplateReuniao,
+  TipoCampoCrm,
   TipoCriterioTemplate,
   TipoReuniao,
 } from '../types/database';
 
-type Aba = 'geral' | 'checklist' | 'reunioes' | 'criterios' | 'historico';
+type Aba = 'geral' | 'checklist' | 'reunioes' | 'criterios' | 'campos_crm' | 'automacoes' | 'documentos' | 'historico';
 
 const ABAS: { valor: Aba; label: string }[] = [
   { valor: 'geral', label: 'Geral' },
   { valor: 'checklist', label: 'Checklist' },
   { valor: 'reunioes', label: 'Reuniões' },
   { valor: 'criterios', label: 'Critérios' },
+  { valor: 'campos_crm', label: 'Campos CRM' },
+  { valor: 'automacoes', label: 'Automações' },
+  { valor: 'documentos', label: 'Documentos' },
   { valor: 'historico', label: 'Histórico' },
+];
+
+const TIPOS_CAMPO_CRM: TipoCampoCrm[] = [
+  'texto',
+  'numero',
+  'selecao',
+  'multipla_selecao',
+  'data',
+  'telefone',
+  'email',
+  'checkbox',
 ];
 
 const TIPOS_REUNIAO: TipoReuniao[] = [
@@ -67,6 +86,9 @@ export function TemplateDetalhe() {
   const [atividades, setAtividades] = useState<TemplateAtividade[]>([]);
   const [reunioes, setReunioes] = useState<TemplateReuniao[]>([]);
   const [criterios, setCriterios] = useState<TemplateCriterio[]>([]);
+  const [camposCrm, setCamposCrm] = useState<TemplateCampoCrm[]>([]);
+  const [automacoes, setAutomacoes] = useState<TemplateAutomacao[]>([]);
+  const [documentos, setDocumentos] = useState<TemplateDocumento[]>([]);
   const [historico, setHistorico] = useState<HistoricoEvento[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +115,9 @@ export function TemplateDetalhe() {
       { data: atividadesData },
       { data: reunioesData },
       { data: criteriosData },
+      { data: camposCrmData },
+      { data: automacoesData },
+      { data: documentosData },
       { data: historicoData },
     ] = await Promise.all([
       supabase.rpc('sou_administrador'),
@@ -100,6 +125,9 @@ export function TemplateDetalhe() {
       supabase.from('template_atividades').select('*').eq('template_id', id).order('ordem', { ascending: true }),
       supabase.from('template_reunioes').select('*').eq('template_id', id).order('ordem', { ascending: true }),
       supabase.from('template_criterios').select('*').eq('template_id', id).order('ordem', { ascending: true }),
+      supabase.from('template_campos_crm').select('*').eq('template_id', id).order('ordem', { ascending: true }),
+      supabase.from('template_automacoes').select('*').eq('template_id', id).order('ordem', { ascending: true }),
+      supabase.from('template_documentos').select('*').eq('template_id', id).order('ordem', { ascending: true }),
       supabase
         .from('auditoria_eventos')
         .select('id, acao, user_email, criado_em, detalhes')
@@ -129,6 +157,9 @@ export function TemplateDetalhe() {
     setAtividades(atividadesData ?? []);
     setReunioes(reunioesData ?? []);
     setCriterios(criteriosData ?? []);
+    setCamposCrm(camposCrmData ?? []);
+    setAutomacoes(automacoesData ?? []);
+    setDocumentos(documentosData ?? []);
     setHistorico((historicoData ?? []) as HistoricoEvento[]);
     setLoading(false);
   }
@@ -416,6 +447,175 @@ export function TemplateDetalhe() {
       return;
     }
     mostrarToast('Critério excluído.');
+    carregar();
+  }
+
+  // ============================================================
+  // Campos CRM recomendados — só conteúdo de referência (seção 13 do
+  // pedido): nunca criados automaticamente no Kommo, o consultor configura
+  // manualmente a partir daqui. Por isso não têm "status" por implementação,
+  // só são lidos direto do template aplicado (ver ImplementacaoDetalhe.tsx).
+  // ============================================================
+  const [formCampoCrm, setFormCampoCrm] = useState<Partial<TemplateCampoCrm> | null>(null);
+
+  function abrirNovoCampoCrm() {
+    setFormCampoCrm({ tipo: 'texto', nome: '', entidade: 'Lead', obrigatorio: false, ordem: camposCrm.length });
+  }
+
+  async function handleSalvarCampoCrm(e: FormEvent) {
+    e.preventDefault();
+    if (!formCampoCrm || !template || !formCampoCrm.nome?.trim() || !formCampoCrm.tipo || !formCampoCrm.entidade?.trim())
+      return;
+
+    const payload = {
+      template_id: template.id,
+      nome: formCampoCrm.nome.trim(),
+      tipo: formCampoCrm.tipo,
+      entidade: formCampoCrm.entidade.trim(),
+      obrigatorio: formCampoCrm.obrigatorio ?? false,
+      descricao: formCampoCrm.descricao?.trim() || null,
+      quando_usar: formCampoCrm.quando_usar?.trim() || null,
+      ordem: formCampoCrm.ordem ?? camposCrm.length,
+    };
+
+    const { error: salvarError } = formCampoCrm.id
+      ? await supabase.from('template_campos_crm').update(payload).eq('id', formCampoCrm.id)
+      : await supabase.from('template_campos_crm').insert(payload);
+
+    if (salvarError) {
+      setError(salvarError.message);
+      return;
+    }
+
+    setFormCampoCrm(null);
+    carregar();
+  }
+
+  async function handleExcluirCampoCrm(campo: TemplateCampoCrm) {
+    const confirmado = await confirmar({
+      titulo: `Excluir o campo "${campo.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('template_campos_crm').delete().eq('id', campo.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    mostrarToast('Campo excluído.');
+    carregar();
+  }
+
+  // ============================================================
+  // Automações sugeridas — mesma lógica dos campos CRM: só referência,
+  // nunca implantadas automaticamente no Kommo (seção 14 do pedido).
+  // ============================================================
+  const [formAutomacao, setFormAutomacao] = useState<Partial<TemplateAutomacao> | null>(null);
+
+  function abrirNovaAutomacao() {
+    setFormAutomacao({ nome: '', ordem: automacoes.length });
+  }
+
+  async function handleSalvarAutomacao(e: FormEvent) {
+    e.preventDefault();
+    if (!formAutomacao || !template || !formAutomacao.nome?.trim()) return;
+
+    const payload = {
+      template_id: template.id,
+      nome: formAutomacao.nome.trim(),
+      objetivo: formAutomacao.objetivo?.trim() || null,
+      gatilho: formAutomacao.gatilho?.trim() || null,
+      condicao: formAutomacao.condicao?.trim() || null,
+      acao: formAutomacao.acao?.trim() || null,
+      observacoes: formAutomacao.observacoes?.trim() || null,
+      ordem: formAutomacao.ordem ?? automacoes.length,
+    };
+
+    const { error: salvarError } = formAutomacao.id
+      ? await supabase.from('template_automacoes').update(payload).eq('id', formAutomacao.id)
+      : await supabase.from('template_automacoes').insert(payload);
+
+    if (salvarError) {
+      setError(salvarError.message);
+      return;
+    }
+
+    setFormAutomacao(null);
+    carregar();
+  }
+
+  async function handleExcluirAutomacao(automacao: TemplateAutomacao) {
+    const confirmado = await confirmar({
+      titulo: `Excluir a automação "${automacao.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('template_automacoes').delete().eq('id', automacao.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    mostrarToast('Automação excluída.');
+    carregar();
+  }
+
+  // ============================================================
+  // Documentos esperados — têm estado real por cliente (entregue ou não),
+  // por isso SÃO clonados por implementação ao aplicar o template.
+  // ============================================================
+  const [formDocumento, setFormDocumento] = useState<Partial<TemplateDocumento> | null>(null);
+
+  function abrirNovoDocumento() {
+    setFormDocumento({ nome: '', obrigatorio: true, ordem: documentos.length });
+  }
+
+  async function handleSalvarDocumento(e: FormEvent) {
+    e.preventDefault();
+    if (!formDocumento || !template || !formDocumento.nome?.trim()) return;
+
+    const payload = {
+      template_id: template.id,
+      nome: formDocumento.nome.trim(),
+      obrigatorio: formDocumento.obrigatorio ?? true,
+      fase: formDocumento.fase?.trim() || null,
+      descricao: formDocumento.descricao?.trim() || null,
+      ordem: formDocumento.ordem ?? documentos.length,
+    };
+
+    const { error: salvarError } = formDocumento.id
+      ? await supabase.from('template_documentos').update(payload).eq('id', formDocumento.id)
+      : await supabase.from('template_documentos').insert(payload);
+
+    if (salvarError) {
+      setError(salvarError.message);
+      return;
+    }
+
+    setFormDocumento(null);
+    carregar();
+  }
+
+  async function handleExcluirDocumento(documento: TemplateDocumento) {
+    const confirmado = await confirmar({
+      titulo: `Excluir o documento "${documento.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('template_documentos').delete().eq('id', documento.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    mostrarToast('Documento excluído.');
     carregar();
   }
 
@@ -1010,6 +1210,355 @@ export function TemplateDetalhe() {
             </form>
           )}
         </>
+      )}
+
+      {aba === 'campos_crm' && (
+        <section className="card form-card">
+          <div className="page-header-actions page-header-actions-split">
+            <h2 style={{ marginBottom: 0 }}>Campos CRM recomendados</h2>
+            {souAdministrador && !formCampoCrm && (
+              <button type="button" className="btn btn-secondary btn-auto" onClick={abrirNovoCampoCrm}>
+                + Novo campo
+              </button>
+            )}
+          </div>
+          <p className="field-hint">
+            Só referência — nenhum campo é criado automaticamente no Kommo. O consultor revisa e configura
+            manualmente ao aplicar o template.
+          </p>
+
+          {camposCrm.length === 0 ? (
+            <div className="empty-state">
+              <p>Nenhum campo cadastrado ainda.</p>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table data-table-cards-mobile">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Entidade</th>
+                    <th>Tipo</th>
+                    <th>Obrigatório</th>
+                    <th>Quando usar</th>
+                    {souAdministrador && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {camposCrm.map((c) => (
+                    <tr key={c.id}>
+                      <td data-label="Nome">{c.nome}</td>
+                      <td data-label="Entidade">{c.entidade}</td>
+                      <td data-label="Tipo">{TIPO_CAMPO_CRM_LABELS[c.tipo]}</td>
+                      <td data-label="Obrigatório">{c.obrigatorio ? 'Sim' : 'Não'}</td>
+                      <td data-label="Quando usar">{c.quando_usar ?? '—'}</td>
+                      {souAdministrador && (
+                        <td className="table-actions">
+                          <button type="button" className="btn btn-secondary" onClick={() => setFormCampoCrm(c)}>
+                            Editar
+                          </button>{' '}
+                          <button type="button" className="btn btn-danger" onClick={() => handleExcluirCampoCrm(c)}>
+                            Excluir
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {formCampoCrm && (
+            <form onSubmit={handleSalvarCampoCrm} className="card form-card">
+              <h3>{formCampoCrm.id ? 'Editar campo' : 'Novo campo'}</h3>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Nome</span>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={formCampoCrm.nome ?? ''}
+                    onChange={(e) => setFormCampoCrm({ ...formCampoCrm, nome: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  <span>Entidade (ex: Lead, Contato, Empresa)</span>
+                  <input
+                    type="text"
+                    required
+                    value={formCampoCrm.entidade ?? ''}
+                    onChange={(e) => setFormCampoCrm({ ...formCampoCrm, entidade: e.target.value })}
+                  />
+                </label>
+              </div>
+              <label className="field">
+                <span>Tipo</span>
+                <select
+                  required
+                  value={formCampoCrm.tipo ?? 'texto'}
+                  onChange={(e) => setFormCampoCrm({ ...formCampoCrm, tipo: e.target.value as TipoCampoCrm })}
+                >
+                  {TIPOS_CAMPO_CRM.map((t) => (
+                    <option key={t} value={t}>
+                      {TIPO_CAMPO_CRM_LABELS[t]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Descrição</span>
+                <textarea
+                  rows={2}
+                  value={formCampoCrm.descricao ?? ''}
+                  onChange={(e) => setFormCampoCrm({ ...formCampoCrm, descricao: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Quando usar</span>
+                <textarea
+                  rows={2}
+                  value={formCampoCrm.quando_usar ?? ''}
+                  onChange={(e) => setFormCampoCrm({ ...formCampoCrm, quando_usar: e.target.value })}
+                />
+              </label>
+              <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={formCampoCrm.obrigatorio ?? false}
+                  onChange={(e) => setFormCampoCrm({ ...formCampoCrm, obrigatorio: e.target.checked })}
+                />
+                <span>Obrigatório</span>
+              </label>
+              <div className="wizard-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setFormCampoCrm(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Salvar
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
+
+      {aba === 'automacoes' && (
+        <section className="card form-card">
+          <div className="page-header-actions page-header-actions-split">
+            <h2 style={{ marginBottom: 0 }}>Automações sugeridas</h2>
+            {souAdministrador && !formAutomacao && (
+              <button type="button" className="btn btn-secondary btn-auto" onClick={abrirNovaAutomacao}>
+                + Nova automação
+              </button>
+            )}
+          </div>
+          <p className="field-hint">
+            Modelos pra revisão — nenhuma automação é implantada automaticamente no Kommo.
+          </p>
+
+          {automacoes.length === 0 ? (
+            <div className="empty-state">
+              <p>Nenhuma automação cadastrada ainda.</p>
+            </div>
+          ) : (
+            <ul className="observacoes-lista">
+              {automacoes.map((a) => (
+                <li key={a.id} className="observacao-item">
+                  <div className="observacao-item-header">
+                    <strong>{a.nome}</strong>
+                    {souAdministrador && (
+                      <span>
+                        <button type="button" className="btn btn-secondary btn-auto" onClick={() => setFormAutomacao(a)}>
+                          Editar
+                        </button>{' '}
+                        <button type="button" className="btn btn-danger btn-auto" onClick={() => handleExcluirAutomacao(a)}>
+                          Excluir
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                  {a.objetivo && <p className="field-hint">{a.objetivo}</p>}
+                  <p className="field-hint">
+                    {a.gatilho ? `Gatilho: ${a.gatilho}` : ''}
+                    {a.condicao ? ` · Condição: ${a.condicao}` : ''}
+                    {a.acao ? ` · Ação: ${a.acao}` : ''}
+                  </p>
+                  {a.observacoes && <p className="field-hint">{a.observacoes}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {formAutomacao && (
+            <form onSubmit={handleSalvarAutomacao} className="card form-card">
+              <h3>{formAutomacao.id ? 'Editar automação' : 'Nova automação'}</h3>
+              <label className="field">
+                <span>Nome</span>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={formAutomacao.nome ?? ''}
+                  onChange={(e) => setFormAutomacao({ ...formAutomacao, nome: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Objetivo</span>
+                <textarea
+                  rows={2}
+                  value={formAutomacao.objetivo ?? ''}
+                  onChange={(e) => setFormAutomacao({ ...formAutomacao, objetivo: e.target.value })}
+                />
+              </label>
+              <div className="form-grid">
+                <label className="field">
+                  <span>Gatilho</span>
+                  <input
+                    type="text"
+                    value={formAutomacao.gatilho ?? ''}
+                    onChange={(e) => setFormAutomacao({ ...formAutomacao, gatilho: e.target.value })}
+                  />
+                </label>
+                <label className="field">
+                  <span>Condição</span>
+                  <input
+                    type="text"
+                    value={formAutomacao.condicao ?? ''}
+                    onChange={(e) => setFormAutomacao({ ...formAutomacao, condicao: e.target.value })}
+                  />
+                </label>
+              </div>
+              <label className="field">
+                <span>Ação</span>
+                <input
+                  type="text"
+                  value={formAutomacao.acao ?? ''}
+                  onChange={(e) => setFormAutomacao({ ...formAutomacao, acao: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Observações</span>
+                <textarea
+                  rows={2}
+                  value={formAutomacao.observacoes ?? ''}
+                  onChange={(e) => setFormAutomacao({ ...formAutomacao, observacoes: e.target.value })}
+                />
+              </label>
+              <div className="wizard-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setFormAutomacao(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Salvar
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      )}
+
+      {aba === 'documentos' && (
+        <section className="card form-card">
+          <div className="page-header-actions page-header-actions-split">
+            <h2 style={{ marginBottom: 0 }}>Documentos esperados</h2>
+            {souAdministrador && !formDocumento && (
+              <button type="button" className="btn btn-secondary btn-auto" onClick={abrirNovoDocumento}>
+                + Novo documento
+              </button>
+            )}
+          </div>
+          <p className="field-hint">
+            Ao aplicar o template, cada documento vira um item rastreável (entregue ou não) nesta implementação.
+          </p>
+
+          {documentos.length === 0 ? (
+            <div className="empty-state">
+              <p>Nenhum documento cadastrado ainda.</p>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table data-table-cards-mobile">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Fase</th>
+                    <th>Obrigatório</th>
+                    {souAdministrador && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {documentos.map((d) => (
+                    <tr key={d.id}>
+                      <td data-label="Nome">{d.nome}</td>
+                      <td data-label="Fase">{d.fase ?? '—'}</td>
+                      <td data-label="Obrigatório">{d.obrigatorio ? 'Sim' : 'Não'}</td>
+                      {souAdministrador && (
+                        <td className="table-actions">
+                          <button type="button" className="btn btn-secondary" onClick={() => setFormDocumento(d)}>
+                            Editar
+                          </button>{' '}
+                          <button type="button" className="btn btn-danger" onClick={() => handleExcluirDocumento(d)}>
+                            Excluir
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {formDocumento && (
+            <form onSubmit={handleSalvarDocumento} className="card form-card">
+              <h3>{formDocumento.id ? 'Editar documento' : 'Novo documento'}</h3>
+              <label className="field">
+                <span>Nome</span>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  value={formDocumento.nome ?? ''}
+                  onChange={(e) => setFormDocumento({ ...formDocumento, nome: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Fase (opcional)</span>
+                <input
+                  type="text"
+                  value={formDocumento.fase ?? ''}
+                  onChange={(e) => setFormDocumento({ ...formDocumento, fase: e.target.value })}
+                />
+              </label>
+              <label className="field">
+                <span>Descrição</span>
+                <textarea
+                  rows={2}
+                  value={formDocumento.descricao ?? ''}
+                  onChange={(e) => setFormDocumento({ ...formDocumento, descricao: e.target.value })}
+                />
+              </label>
+              <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={formDocumento.obrigatorio ?? true}
+                  onChange={(e) => setFormDocumento({ ...formDocumento, obrigatorio: e.target.checked })}
+                />
+                <span>Obrigatório</span>
+              </label>
+              <div className="wizard-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setFormDocumento(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Salvar
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
       )}
 
       {aba === 'historico' && (

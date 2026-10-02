@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AplicarTemplateModal } from '../components/AplicarTemplateModal';
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
@@ -76,6 +77,7 @@ import type {
   FunilVersao,
   ImplementacaoCriterioTemplate,
   ImplementacaoCrm,
+  ImplementacaoDocumentoTemplate,
   ImplementacaoReuniaoEsperada,
   ImplementacaoSettingsSnapshot,
   ImplementacaoStatus,
@@ -91,6 +93,8 @@ import type {
   StatusContratacaoKommo,
   StatusCriterioEntrega,
   StatusReuniao,
+  TemplateAutomacao,
+  TemplateCampoCrm,
   TipoReuniao,
   UsoDiarioCheckpoint,
   UsoRelatoriosDecisaoCheckpoint,
@@ -385,6 +389,10 @@ export function ImplementacaoDetalhe() {
   const [criteriosStatus, setCriteriosStatus] = useState<CriterioEntregaStatus[]>([]);
   const [reunioesEsperadas, setReunioesEsperadas] = useState<ImplementacaoReuniaoEsperada[]>([]);
   const [criteriosTemplate, setCriteriosTemplate] = useState<ImplementacaoCriterioTemplate[]>([]);
+  const [documentosTemplate, setDocumentosTemplate] = useState<ImplementacaoDocumentoTemplate[]>([]);
+  const [templateCamposCrm, setTemplateCamposCrm] = useState<TemplateCampoCrm[]>([]);
+  const [templateAutomacoes, setTemplateAutomacoes] = useState<TemplateAutomacao[]>([]);
+  const [mostrarAplicarTemplate, setMostrarAplicarTemplate] = useState(false);
   const [editandoCriterioId, setEditandoCriterioId] = useState<string | null>(null);
   const [formCriterio, setFormCriterio] = useState<{
     status: StatusCriterioEntrega;
@@ -617,6 +625,7 @@ export function ImplementacaoDetalhe() {
       { data: configGlobalData },
       { data: reunioesEsperadasData },
       { data: criteriosTemplateData },
+      { data: documentosTemplateData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -662,6 +671,11 @@ export function ImplementacaoDetalhe() {
         .select('*')
         .eq('implementacao_id', implementacaoId)
         .order('ordem', { ascending: true }),
+      supabase
+        .from('implementacao_documentos_template')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('ordem', { ascending: true }),
     ]);
 
     setPipefyConfig(pipefyData ?? null);
@@ -673,6 +687,7 @@ export function ImplementacaoDetalhe() {
     setConfigGlobal(configGlobalData ?? null);
     setReunioesEsperadas(reunioesEsperadasData ?? []);
     setCriteriosTemplate(criteriosTemplateData ?? []);
+    setDocumentosTemplate(documentosTemplateData ?? []);
 
     if (implError) {
       setError(implError.message);
@@ -682,6 +697,29 @@ export function ImplementacaoDetalhe() {
 
     setImplementacao(implData);
     setFormGeral(paraFormGeral(implData));
+
+    // Campos CRM e automações nunca são clonados por implementação (seções
+    // 13/14 do pedido — conteúdo de referência, nunca implantado
+    // automaticamente) — vêm direto do template aplicado, se houver um.
+    if (implData.template_aplicado_id) {
+      const [{ data: camposCrmData }, { data: automacoesData }] = await Promise.all([
+        supabase
+          .from('template_campos_crm')
+          .select('*')
+          .eq('template_id', implData.template_aplicado_id)
+          .order('ordem', { ascending: true }),
+        supabase
+          .from('template_automacoes')
+          .select('*')
+          .eq('template_id', implData.template_aplicado_id)
+          .order('ordem', { ascending: true }),
+      ]);
+      setTemplateCamposCrm(camposCrmData ?? []);
+      setTemplateAutomacoes(automacoesData ?? []);
+    } else {
+      setTemplateCamposCrm([]);
+      setTemplateAutomacoes([]);
+    }
     if (!atividadesError) setAtividadesTemplate(atividadesData ?? []);
     if (!atividadesStatusError) {
       setAtividadesStatus(atividadesStatusData ?? []);
@@ -1946,6 +1984,41 @@ export function ImplementacaoDetalhe() {
     if (deleteError) setError(deleteError.message);
     else {
       mostrarToast('Critério excluído.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleAlternarDocumentoEntregue(documento: ImplementacaoDocumentoTemplate) {
+    if (!implementacao) return;
+
+    const { error: updateError } = await supabase
+      .from('implementacao_documentos_template')
+      .update({
+        entregue: !documento.entregue,
+        entregue_em: !documento.entregue ? new Date().toISOString() : null,
+      })
+      .eq('id', documento.id);
+    if (updateError) setError(updateError.message);
+    else {
+      mostrarToast(documento.entregue ? 'Documento marcado como pendente.' : 'Documento marcado como entregue.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleExcluirDocumentoTemplate(documento: ImplementacaoDocumentoTemplate) {
+    if (!implementacao) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Excluir o documento "${documento.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('implementacao_documentos_template').delete().eq('id', documento.id);
+    if (deleteError) setError(deleteError.message);
+    else {
+      mostrarToast('Documento excluído.');
       carregar(implementacao.id);
     }
   }
@@ -3719,7 +3792,12 @@ export function ImplementacaoDetalhe() {
       {aba === 'template' && implementacao && (
         <>
           <section className="card">
-            <h2>Template aplicado</h2>
+            <div className="page-header-actions page-header-actions-split">
+              <h2 style={{ marginBottom: 0 }}>Template aplicado</h2>
+              <button type="button" className="btn btn-secondary btn-auto" onClick={() => setMostrarAplicarTemplate(true)}>
+                {implementacao.template_aplicado_id ? 'Aplicar outro template' : 'Aplicar template'}
+              </button>
+            </div>
             {implementacao.template_aplicado_id ? (
               <p className="field-hint">
                 <strong style={{ color: 'var(--color-text)' }}>{implementacao.template_aplicado_nome}</strong> · v
@@ -3730,6 +3808,116 @@ export function ImplementacaoDetalhe() {
               <p className="field-hint">Nenhum template foi aplicado nesta implementação.</p>
             )}
           </section>
+
+          {templateCamposCrm.length > 0 && (
+            <section className="card">
+              <h2>Campos CRM recomendados</h2>
+              <p className="field-hint">
+                Só referência — nenhum campo é criado automaticamente no Kommo. Revise e configure manualmente.
+              </p>
+              <div className="table-wrap">
+                <table className="data-table data-table-cards-mobile">
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Entidade</th>
+                      <th>Tipo</th>
+                      <th>Obrigatório</th>
+                      <th>Quando usar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {templateCamposCrm.map((c) => (
+                      <tr key={c.id}>
+                        <td data-label="Nome">{c.nome}</td>
+                        <td data-label="Entidade">{c.entidade}</td>
+                        <td data-label="Tipo">{c.tipo}</td>
+                        <td data-label="Obrigatório">{c.obrigatorio ? 'Sim' : 'Não'}</td>
+                        <td data-label="Quando usar">{c.quando_usar ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {templateAutomacoes.length > 0 && (
+            <section className="card">
+              <h2>Automações sugeridas</h2>
+              <p className="field-hint">
+                Modelos pra revisão — nenhuma automação é implantada automaticamente no Kommo.
+              </p>
+              <ul className="observacoes-lista">
+                {templateAutomacoes.map((a) => (
+                  <li key={a.id} className="observacao-item">
+                    <strong style={{ color: 'var(--color-text)' }}>{a.nome}</strong>
+                    {a.objetivo && <p className="field-hint">{a.objetivo}</p>}
+                    <p className="field-hint">
+                      {a.gatilho ? `Gatilho: ${a.gatilho}` : ''}
+                      {a.condicao ? ` · Condição: ${a.condicao}` : ''}
+                      {a.acao ? ` · Ação: ${a.acao}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section className="card form-card">
+            <h2>Documentos esperados</h2>
+            {documentosTemplate.length === 0 ? (
+              <div className="empty-state">
+                <p>Nenhum documento clonado de template nesta implementação.</p>
+              </div>
+            ) : (
+              <ul className="observacoes-lista">
+                {documentosTemplate.map((d) => (
+                  <li key={d.id} className="observacao-item">
+                    <div className="observacao-item-header">
+                      <span className="observacao-item-meta">
+                        <span className={`status-badge status-tone-${d.nao_aplicavel ? 'neutral' : d.entregue ? 'success' : 'warning'}`}>
+                          {d.nao_aplicavel ? 'Não se aplica' : d.entregue ? 'Entregue' : 'Pendente'}
+                        </span>{' '}
+                        <strong style={{ color: 'var(--color-text)' }}>{d.nome}</strong>
+                        {d.obrigatorio && !d.nao_aplicavel ? ' · obrigatório' : ''}
+                        {d.fase ? ` · ${d.fase}` : ''}
+                      </span>
+                      <span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-auto"
+                          onClick={() => handleAlternarDocumentoEntregue(d)}
+                        >
+                          {d.entregue ? 'Marcar pendente' : 'Marcar entregue'}
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-auto"
+                          onClick={() => handleExcluirDocumentoTemplate(d)}
+                        >
+                          Excluir
+                        </button>
+                      </span>
+                    </div>
+                    {d.descricao && <p className="field-hint">{d.descricao}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {mostrarAplicarTemplate && (
+            <AplicarTemplateModal
+              implementacaoId={implementacao.id}
+              implementacaoExistente
+              onConcluido={() => {
+                setMostrarAplicarTemplate(false);
+                carregar(implementacao.id);
+              }}
+              onFechar={() => setMostrarAplicarTemplate(false)}
+            />
+          )}
 
           <section className="card form-card">
             <h2>Reuniões esperadas</h2>

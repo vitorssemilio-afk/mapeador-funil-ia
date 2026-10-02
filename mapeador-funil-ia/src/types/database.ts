@@ -693,6 +693,81 @@ export type ImplementacaoCriterioTemplate = {
   updated_at: string;
 };
 
+// Campos CRM recomendados e Automações sugeridas (Fase 2 do módulo de
+// Templates) — só existem no template, nunca são clonados/aplicados
+// automaticamente em nenhuma tabela por implementação (ver migration
+// 0078): são referência pro consultor revisar e configurar manualmente
+// no Kommo, nunca uma ação do sistema.
+export type TipoCampoCrm =
+  | 'texto'
+  | 'numero'
+  | 'selecao'
+  | 'multipla_selecao'
+  | 'data'
+  | 'telefone'
+  | 'email'
+  | 'checkbox';
+
+export type TemplateCampoCrm = {
+  id: string;
+  template_id: string;
+  nome: string;
+  tipo: TipoCampoCrm;
+  entidade: string;
+  obrigatorio: boolean;
+  descricao: string | null;
+  quando_usar: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplateAutomacao = {
+  id: string;
+  template_id: string;
+  nome: string;
+  objetivo: string | null;
+  gatilho: string | null;
+  condicao: string | null;
+  acao: string | null;
+  observacoes: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Documentos esperados — têm estado real por cliente (entregue ou não),
+// por isso SÃO clonados por implementação ao aplicar o template.
+export type TemplateDocumento = {
+  id: string;
+  template_id: string;
+  nome: string;
+  obrigatorio: boolean;
+  fase: string | null;
+  descricao: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ImplementacaoDocumentoTemplate = {
+  id: string;
+  implementacao_id: string;
+  nome: string;
+  obrigatorio: boolean;
+  fase: string | null;
+  descricao: string | null;
+  entregue: boolean;
+  entregue_em: string | null;
+  nao_aplicavel: boolean;
+  nao_aplicavel_justificativa: string | null;
+  origem_template_id: string | null;
+  origem_template_documento_id: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
 // Auditoria genérica (migration 0050) — usada pelo histórico de templates
 // de implementação e por ações sensíveis (credenciais, exclusões, etc.).
 export type AuditoriaEvento = {
@@ -1287,6 +1362,30 @@ export type Database = {
         Update: Partial<ImplementacaoCriterioTemplate>;
         Relationships: [];
       };
+      template_campos_crm: {
+        Row: TemplateCampoCrm;
+        Insert: Partial<TemplateCampoCrm> & Pick<TemplateCampoCrm, 'template_id' | 'nome' | 'tipo'>;
+        Update: Partial<TemplateCampoCrm>;
+        Relationships: [];
+      };
+      template_automacoes: {
+        Row: TemplateAutomacao;
+        Insert: Partial<TemplateAutomacao> & Pick<TemplateAutomacao, 'template_id' | 'nome'>;
+        Update: Partial<TemplateAutomacao>;
+        Relationships: [];
+      };
+      template_documentos: {
+        Row: TemplateDocumento;
+        Insert: Partial<TemplateDocumento> & Pick<TemplateDocumento, 'template_id' | 'nome'>;
+        Update: Partial<TemplateDocumento>;
+        Relationships: [];
+      };
+      implementacao_documentos_template: {
+        Row: ImplementacaoDocumentoTemplate;
+        Insert: Partial<ImplementacaoDocumentoTemplate> & Pick<ImplementacaoDocumentoTemplate, 'implementacao_id' | 'nome'>;
+        Update: Partial<ImplementacaoDocumentoTemplate>;
+        Relationships: [];
+      };
       auditoria_eventos: {
         Row: AuditoriaEvento;
         Insert: Partial<AuditoriaEvento> & Pick<AuditoriaEvento, 'acao' | 'entidade'>;
@@ -1608,7 +1707,16 @@ export type Database = {
       };
       aplicar_template_implementacao: {
         Args: { p_implementacao_id: string; p_template_id: string };
-        Returns: { atividades_criadas: number; reunioes_criadas: number; criterios_criados: number }[];
+        Returns: {
+          atividades_criadas: number;
+          atividades_ignoradas: number;
+          reunioes_criadas: number;
+          reunioes_ignoradas: number;
+          criterios_criados: number;
+          criterios_ignorados: number;
+          documentos_criados: number;
+          documentos_ignorados: number;
+        }[];
       };
       duplicar_template_implementacao: {
         Args: { p_template_id: string; p_novo_nome: string };
