@@ -245,12 +245,7 @@ export function Dashboard() {
       return true;
     });
 
-    return [...filtrados].sort((a, b) => {
-      const ordemA = SAUDE_ORDEM.indexOf(a.saude);
-      const ordemB = SAUDE_ORDEM.indexOf(b.saude);
-      if (ordemA !== ordemB) return ordemA - ordemB;
-      return a.cliente.nome_empresa.localeCompare(b.cliente.nome_empresa, 'pt-BR');
-    });
+    return [...filtrados].sort((a, b) => a.cliente.nome_empresa.localeCompare(b.cliente.nome_empresa, 'pt-BR'));
   }, [resumos, busca, filtroFase, filtroConsultor, filtroSaude, soAtrasados, soMeusClientes, meuEmail]);
 
   function limparFiltros() {

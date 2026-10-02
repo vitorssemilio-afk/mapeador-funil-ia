@@ -69,8 +69,20 @@ export function Layout() {
             <NavLink to="/agenda" className={navLinkClass}>
               Agenda
             </NavLink>
+            <NavLink to="/campos-padrao" className={navLinkClass}>
+              Campos Padrão
+            </NavLink>
+            <NavLink to="/configuracoes" className={navLinkClass}>
+              Configurações
+            </NavLink>
+            <NavLink to="/consultores" className={navLinkClass}>
+              Consultores
+            </NavLink>
             <NavLink to="/cronograma" className={navLinkClass}>
               Cronograma
+            </NavLink>
+            <NavLink to="/formulario" className={navLinkClass}>
+              Formulário
             </NavLink>
             <NavLink to="/gestao" className={navLinkClass}>
               Gestão
@@ -78,26 +90,14 @@ export function Layout() {
             <NavLink to="/implementacoes" className={navLinkClass}>
               Implementações
             </NavLink>
-            <NavLink to="/templates" className={navLinkClass}>
-              Templates
-            </NavLink>
-            <NavLink to="/consultores" className={navLinkClass}>
-              Consultores
-            </NavLink>
-            <NavLink to="/formulario" className={navLinkClass}>
-              Formulário
+            <NavLink to="/observabilidade-ia" className={navLinkClass}>
+              Observabilidade de IA
             </NavLink>
             <NavLink to="/relatorio-respostas" className={navLinkClass}>
               Relatório de Respostas
             </NavLink>
-            <NavLink to="/campos-padrao" className={navLinkClass}>
-              Campos Padrão
-            </NavLink>
-            <NavLink to="/observabilidade-ia" className={navLinkClass}>
-              Observabilidade de IA
-            </NavLink>
-            <NavLink to="/configuracoes" className={navLinkClass}>
-              Configurações
+            <NavLink to="/templates" className={navLinkClass}>
+              Templates
             </NavLink>
           </nav>
         </div>
