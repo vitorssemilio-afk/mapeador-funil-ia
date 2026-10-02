@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { AplicarTemplateModal } from '../components/AplicarTemplateModal';
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,6 +39,7 @@ import {
   type ValidacaoFunilKickoff,
 } from '../lib/funilVersoes';
 import { nomeConsultor } from '../lib/operacaoResumo';
+import { TIPO_CRITERIO_TEMPLATE_LABELS } from '../lib/templatesImplementacao';
 import {
   alertaReuniaoObrigatoria,
   STATUS_REUNIAO_LABELS,
@@ -73,7 +75,10 @@ import type {
   FunilGerado,
   FunilKommoCriacao,
   FunilVersao,
+  ImplementacaoCriterioTemplate,
   ImplementacaoCrm,
+  ImplementacaoDocumentoTemplate,
+  ImplementacaoReuniaoEsperada,
   ImplementacaoSettingsSnapshot,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
@@ -88,12 +93,14 @@ import type {
   StatusContratacaoKommo,
   StatusCriterioEntrega,
   StatusReuniao,
+  TemplateAutomacao,
+  TemplateCampoCrm,
   TipoReuniao,
   UsoDiarioCheckpoint,
   UsoRelatoriosDecisaoCheckpoint,
 } from '../types/database';
 
-type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes';
+type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes' | 'template';
 const ABAS_IMPLEMENTACAO: Aba[] = [
   'geral',
   'checklist',
@@ -102,6 +109,7 @@ const ABAS_IMPLEMENTACAO: Aba[] = [
   'credenciais',
   'checkpoint',
   'reunioes',
+  'template',
 ];
 
 // Ordem fixa de exibição — os 5 tipos "estruturados" (um card cada, sempre
@@ -379,6 +387,12 @@ export function ImplementacaoDetalhe() {
   const [historicoConsultor, setHistoricoConsultor] = useState<ImplementacaoConsultorHistorico[]>([]);
   const [criterios, setCriterios] = useState<CriterioEntrega[]>([]);
   const [criteriosStatus, setCriteriosStatus] = useState<CriterioEntregaStatus[]>([]);
+  const [reunioesEsperadas, setReunioesEsperadas] = useState<ImplementacaoReuniaoEsperada[]>([]);
+  const [criteriosTemplate, setCriteriosTemplate] = useState<ImplementacaoCriterioTemplate[]>([]);
+  const [documentosTemplate, setDocumentosTemplate] = useState<ImplementacaoDocumentoTemplate[]>([]);
+  const [templateCamposCrm, setTemplateCamposCrm] = useState<TemplateCampoCrm[]>([]);
+  const [templateAutomacoes, setTemplateAutomacoes] = useState<TemplateAutomacao[]>([]);
+  const [mostrarAplicarTemplate, setMostrarAplicarTemplate] = useState(false);
   const [editandoCriterioId, setEditandoCriterioId] = useState<string | null>(null);
   const [formCriterio, setFormCriterio] = useState<{
     status: StatusCriterioEntrega;
@@ -609,6 +623,9 @@ export function ImplementacaoDetalhe() {
       { data: criteriosStatusData },
       { data: checkpointAcompanhamentosData },
       { data: configGlobalData },
+      { data: reunioesEsperadasData },
+      { data: criteriosTemplateData },
+      { data: documentosTemplateData },
     ] = await Promise.all([
       supabase.from('implementacoes_crm').select('*').eq('id', implementacaoId).single(),
       // Template global (implementacao_id nulo) + atividades derivadas do funil desta implementação.
@@ -644,6 +661,21 @@ export function ImplementacaoDetalhe() {
         .eq('implementacao_id', implementacaoId)
         .order('created_at', { ascending: false }),
       supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
+      supabase
+        .from('implementacao_reunioes_esperadas')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('ordem', { ascending: true }),
+      supabase
+        .from('implementacao_criterios_template')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('ordem', { ascending: true }),
+      supabase
+        .from('implementacao_documentos_template')
+        .select('*')
+        .eq('implementacao_id', implementacaoId)
+        .order('ordem', { ascending: true }),
     ]);
 
     setPipefyConfig(pipefyData ?? null);
@@ -653,6 +685,9 @@ export function ImplementacaoDetalhe() {
     setCriteriosStatus(criteriosStatusData ?? []);
     setCheckpointAcompanhamentos(checkpointAcompanhamentosData ?? []);
     setConfigGlobal(configGlobalData ?? null);
+    setReunioesEsperadas(reunioesEsperadasData ?? []);
+    setCriteriosTemplate(criteriosTemplateData ?? []);
+    setDocumentosTemplate(documentosTemplateData ?? []);
 
     if (implError) {
       setError(implError.message);
@@ -662,6 +697,29 @@ export function ImplementacaoDetalhe() {
 
     setImplementacao(implData);
     setFormGeral(paraFormGeral(implData));
+
+    // Campos CRM e automações nunca são clonados por implementação (seções
+    // 13/14 do pedido — conteúdo de referência, nunca implantado
+    // automaticamente) — vêm direto do template aplicado, se houver um.
+    if (implData.template_aplicado_id) {
+      const [{ data: camposCrmData }, { data: automacoesData }] = await Promise.all([
+        supabase
+          .from('template_campos_crm')
+          .select('*')
+          .eq('template_id', implData.template_aplicado_id)
+          .order('ordem', { ascending: true }),
+        supabase
+          .from('template_automacoes')
+          .select('*')
+          .eq('template_id', implData.template_aplicado_id)
+          .order('ordem', { ascending: true }),
+      ]);
+      setTemplateCamposCrm(camposCrmData ?? []);
+      setTemplateAutomacoes(automacoesData ?? []);
+    } else {
+      setTemplateCamposCrm([]);
+      setTemplateAutomacoes([]);
+    }
     if (!atividadesError) setAtividadesTemplate(atividadesData ?? []);
     if (!atividadesStatusError) {
       setAtividadesStatus(atividadesStatusData ?? []);
@@ -1835,6 +1893,136 @@ export function ImplementacaoDetalhe() {
     }
   }
 
+  // ============================================================
+  // Template aplicado — reuniões esperadas e critérios clonados (módulo
+  // de Templates de Implementação). O consultor pode adaptar livremente:
+  // marcar "não se aplica" (com justificativa) em vez de só excluir,
+  // pra manter histórico de que a decisão foi avaliada — ver seção 24/23
+  // do pedido do módulo de Templates.
+  // ============================================================
+  async function handleMarcarReuniaoEsperadaNaoAplicavel(reuniao: ImplementacaoReuniaoEsperada) {
+    if (!implementacao) return;
+
+    if (reuniao.nao_aplicavel) {
+      const { error: updateError } = await supabase
+        .from('implementacao_reunioes_esperadas')
+        .update({ nao_aplicavel: false, nao_aplicavel_justificativa: null })
+        .eq('id', reuniao.id);
+      if (updateError) setError(updateError.message);
+      else carregar(implementacao.id);
+      return;
+    }
+
+    const justificativa = window.prompt(
+      `Por que "${TIPO_REUNIAO_LABELS[reuniao.tipo]}" não se aplica a este cliente? (opcional)`,
+    );
+    if (justificativa === null) return;
+
+    const { error: updateError } = await supabase
+      .from('implementacao_reunioes_esperadas')
+      .update({ nao_aplicavel: true, nao_aplicavel_justificativa: justificativa.trim() || null })
+      .eq('id', reuniao.id);
+    if (updateError) setError(updateError.message);
+    else {
+      mostrarToast('Marcado como não aplicável.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleExcluirReuniaoEsperada(reuniao: ImplementacaoReuniaoEsperada) {
+    if (!implementacao) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Remover "${TIPO_REUNIAO_LABELS[reuniao.tipo]}" desta implementação?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Remover',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('implementacao_reunioes_esperadas').delete().eq('id', reuniao.id);
+    if (deleteError) setError(deleteError.message);
+    else {
+      mostrarToast('Reunião esperada removida.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleAtualizarStatusCriterioTemplate(criterio: ImplementacaoCriterioTemplate, novoStatus: StatusCriterioEntrega) {
+    if (!implementacao) return;
+
+    if (novoStatus === 'nao_se_aplica') {
+      const justificativa = window.prompt(`Por que "${criterio.titulo}" não se aplica a este cliente? (opcional)`);
+      if (justificativa === null) return;
+      const { error: updateError } = await supabase
+        .from('implementacao_criterios_template')
+        .update({ status: novoStatus, justificativa_nao_aplica: justificativa.trim() || null })
+        .eq('id', criterio.id);
+      if (updateError) setError(updateError.message);
+      else carregar(implementacao.id);
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from('implementacao_criterios_template')
+      .update({ status: novoStatus, justificativa_nao_aplica: null })
+      .eq('id', criterio.id);
+    if (updateError) setError(updateError.message);
+    else carregar(implementacao.id);
+  }
+
+  async function handleExcluirCriterioTemplate(criterio: ImplementacaoCriterioTemplate) {
+    if (!implementacao) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Excluir o critério "${criterio.titulo}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('implementacao_criterios_template').delete().eq('id', criterio.id);
+    if (deleteError) setError(deleteError.message);
+    else {
+      mostrarToast('Critério excluído.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleAlternarDocumentoEntregue(documento: ImplementacaoDocumentoTemplate) {
+    if (!implementacao) return;
+
+    const { error: updateError } = await supabase
+      .from('implementacao_documentos_template')
+      .update({
+        entregue: !documento.entregue,
+        entregue_em: !documento.entregue ? new Date().toISOString() : null,
+      })
+      .eq('id', documento.id);
+    if (updateError) setError(updateError.message);
+    else {
+      mostrarToast(documento.entregue ? 'Documento marcado como pendente.' : 'Documento marcado como entregue.');
+      carregar(implementacao.id);
+    }
+  }
+
+  async function handleExcluirDocumentoTemplate(documento: ImplementacaoDocumentoTemplate) {
+    if (!implementacao) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Excluir o documento "${documento.nome}"?`,
+      descricao: 'Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    const { error: deleteError } = await supabase.from('implementacao_documentos_template').delete().eq('id', documento.id);
+    if (deleteError) setError(deleteError.message);
+    else {
+      mostrarToast('Documento excluído.');
+      carregar(implementacao.id);
+    }
+  }
+
   function abrirFormCredencialKommo() {
     setFormCredencialKommo({
       subdominio: credencialKommoMeta?.subdominio ?? '',
@@ -2305,6 +2493,13 @@ export function ImplementacaoDetalhe() {
           Reuniões
           {alertasReunioes.length > 0 && <span className="badge-danger">{alertasReunioes.length}</span>}
         </button>
+        <button
+          type="button"
+          className={`tab-button${aba === 'template' ? ' active' : ''}`}
+          onClick={() => setAba('template')}
+        >
+          Template
+        </button>
       </div>
 
       {aba === 'geral' && (
@@ -2763,6 +2958,9 @@ export function ImplementacaoDetalhe() {
                               {atividade.nome}
                               {templateAtividade?.implementacao_id && (
                                 <span className="derivado-badge"> · gerado do funil</span>
+                              )}
+                              {templateAtividade?.origem_template_id && (
+                                <span className="derivado-badge"> · do template</span>
                               )}
                             </td>
                             <td>{atividade.prazoDias != null ? `${atividade.prazoDias}d` : '—'}</td>
@@ -3590,6 +3788,240 @@ export function ImplementacaoDetalhe() {
             })}
           </>
         ))}
+
+      {aba === 'template' && implementacao && (
+        <>
+          <section className="card">
+            <div className="page-header-actions page-header-actions-split">
+              <h2 style={{ marginBottom: 0 }}>Template aplicado</h2>
+              <button type="button" className="btn btn-secondary btn-auto" onClick={() => setMostrarAplicarTemplate(true)}>
+                {implementacao.template_aplicado_id ? 'Aplicar outro template' : 'Aplicar template'}
+              </button>
+            </div>
+            {implementacao.template_aplicado_id ? (
+              <p className="field-hint">
+                <strong style={{ color: 'var(--color-text)' }}>{implementacao.template_aplicado_nome}</strong> · v
+                {implementacao.template_aplicado_versao}
+                {implementacao.template_aplicado_em ? ` · aplicado em ${formatarDataHoraLocal(implementacao.template_aplicado_em)}` : ''}
+              </p>
+            ) : (
+              <p className="field-hint">Nenhum template foi aplicado nesta implementação.</p>
+            )}
+          </section>
+
+          {templateCamposCrm.length > 0 && (
+            <section className="card">
+              <h2>Campos CRM recomendados</h2>
+              <p className="field-hint">
+                Só referência — nenhum campo é criado automaticamente no Kommo. Revise e configure manualmente.
+              </p>
+              <div className="table-wrap">
+                <table className="data-table data-table-cards-mobile">
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Entidade</th>
+                      <th>Tipo</th>
+                      <th>Obrigatório</th>
+                      <th>Quando usar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {templateCamposCrm.map((c) => (
+                      <tr key={c.id}>
+                        <td data-label="Nome">{c.nome}</td>
+                        <td data-label="Entidade">{c.entidade}</td>
+                        <td data-label="Tipo">{c.tipo}</td>
+                        <td data-label="Obrigatório">{c.obrigatorio ? 'Sim' : 'Não'}</td>
+                        <td data-label="Quando usar">{c.quando_usar ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {templateAutomacoes.length > 0 && (
+            <section className="card">
+              <h2>Automações sugeridas</h2>
+              <p className="field-hint">
+                Modelos pra revisão — nenhuma automação é implantada automaticamente no Kommo.
+              </p>
+              <ul className="observacoes-lista">
+                {templateAutomacoes.map((a) => (
+                  <li key={a.id} className="observacao-item">
+                    <strong style={{ color: 'var(--color-text)' }}>{a.nome}</strong>
+                    {a.objetivo && <p className="field-hint">{a.objetivo}</p>}
+                    <p className="field-hint">
+                      {a.gatilho ? `Gatilho: ${a.gatilho}` : ''}
+                      {a.condicao ? ` · Condição: ${a.condicao}` : ''}
+                      {a.acao ? ` · Ação: ${a.acao}` : ''}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section className="card form-card">
+            <h2>Documentos esperados</h2>
+            {documentosTemplate.length === 0 ? (
+              <div className="empty-state">
+                <p>Nenhum documento clonado de template nesta implementação.</p>
+              </div>
+            ) : (
+              <ul className="observacoes-lista">
+                {documentosTemplate.map((d) => (
+                  <li key={d.id} className="observacao-item">
+                    <div className="observacao-item-header">
+                      <span className="observacao-item-meta">
+                        <span className={`status-badge status-tone-${d.nao_aplicavel ? 'neutral' : d.entregue ? 'success' : 'warning'}`}>
+                          {d.nao_aplicavel ? 'Não se aplica' : d.entregue ? 'Entregue' : 'Pendente'}
+                        </span>{' '}
+                        <strong style={{ color: 'var(--color-text)' }}>{d.nome}</strong>
+                        {d.obrigatorio && !d.nao_aplicavel ? ' · obrigatório' : ''}
+                        {d.fase ? ` · ${d.fase}` : ''}
+                      </span>
+                      <span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-auto"
+                          onClick={() => handleAlternarDocumentoEntregue(d)}
+                        >
+                          {d.entregue ? 'Marcar pendente' : 'Marcar entregue'}
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-auto"
+                          onClick={() => handleExcluirDocumentoTemplate(d)}
+                        >
+                          Excluir
+                        </button>
+                      </span>
+                    </div>
+                    {d.descricao && <p className="field-hint">{d.descricao}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {mostrarAplicarTemplate && (
+            <AplicarTemplateModal
+              implementacaoId={implementacao.id}
+              implementacaoExistente
+              onConcluido={() => {
+                setMostrarAplicarTemplate(false);
+                carregar(implementacao.id);
+              }}
+              onFechar={() => setMostrarAplicarTemplate(false)}
+            />
+          )}
+
+          <section className="card form-card">
+            <h2>Reuniões esperadas</h2>
+            <p className="field-hint">
+              Só a expectativa operacional do template — a reunião de verdade continua sendo agendada na aba
+              "Reuniões".
+            </p>
+            {reunioesEsperadas.length === 0 ? (
+              <div className="empty-state">
+                <p>Nenhuma reunião esperada clonada de template nesta implementação.</p>
+              </div>
+            ) : (
+              <ul className="observacoes-lista">
+                {reunioesEsperadas.map((r) => (
+                  <li key={r.id} className="observacao-item">
+                    <div className="observacao-item-header">
+                      <span className="observacao-item-meta">
+                        {r.nao_aplicavel && <span className="status-badge status-tone-neutral">Não se aplica</span>}{' '}
+                        <strong style={{ color: 'var(--color-text)' }}>{TIPO_REUNIAO_LABELS[r.tipo]}</strong>
+                        {r.obrigatoria && !r.nao_aplicavel ? ' · obrigatória' : ''}
+                        {r.ciclo ? ` · ${r.ciclo}` : ''}
+                        {r.dia_recomendado != null ? ` · dia ${r.dia_recomendado}` : ''}
+                      </span>
+                      <span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-auto"
+                          onClick={() => handleMarcarReuniaoEsperadaNaoAplicavel(r)}
+                        >
+                          {r.nao_aplicavel ? 'Reverter' : 'Não se aplica'}
+                        </button>{' '}
+                        <button type="button" className="btn btn-danger btn-auto" onClick={() => handleExcluirReuniaoEsperada(r)}>
+                          Excluir
+                        </button>
+                      </span>
+                    </div>
+                    {r.objetivo && <p className="field-hint">{r.objetivo}</p>}
+                    {r.pauta_padrao.length > 0 && (
+                      <p className="field-hint">Pauta padrão: {r.pauta_padrao.join(' · ')}</p>
+                    )}
+                    {r.nao_aplicavel && r.nao_aplicavel_justificativa && (
+                      <p className="field-hint">Justificativa: {r.nao_aplicavel_justificativa}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {(['entrega', 'adocao'] as const).map((tipo) => {
+            const lista = criteriosTemplate.filter((c) => c.tipo === tipo);
+            return (
+              <section className="card form-card" key={tipo}>
+                <h2>Critérios de {TIPO_CRITERIO_TEMPLATE_LABELS[tipo]} (do template)</h2>
+                {tipo === 'adocao' && (
+                  <p className="field-hint">Nunca bloqueiam a conclusão técnica da implementação.</p>
+                )}
+                {lista.length === 0 ? (
+                  <div className="empty-state">
+                    <p>Nenhum critério de {TIPO_CRITERIO_TEMPLATE_LABELS[tipo].toLowerCase()} clonado de template.</p>
+                  </div>
+                ) : (
+                  <ul className="observacoes-lista">
+                    {lista.map((c) => (
+                      <li key={c.id} className="observacao-item">
+                        <div className="observacao-item-header">
+                          <span className="observacao-item-meta">
+                            <span className={`status-badge status-tone-${STATUS_CRITERIO_TONE[c.status]}`}>
+                              {STATUS_CRITERIO_LABELS[c.status]}
+                            </span>{' '}
+                            <strong style={{ color: 'var(--color-text)' }}>{c.titulo}</strong>
+                          </span>
+                          <span>
+                            <select
+                              value={c.status}
+                              onChange={(e) =>
+                                handleAtualizarStatusCriterioTemplate(c, e.target.value as StatusCriterioEntrega)
+                              }
+                            >
+                              {Object.entries(STATUS_CRITERIO_LABELS).map(([valor, rotulo]) => (
+                                <option key={valor} value={valor}>
+                                  {rotulo}
+                                </option>
+                              ))}
+                            </select>{' '}
+                            <button type="button" className="btn btn-danger btn-auto" onClick={() => handleExcluirCriterioTemplate(c)}>
+                              Excluir
+                            </button>
+                          </span>
+                        </div>
+                        {c.descricao && <p className="field-hint">{c.descricao}</p>}
+                        {c.evidencia_esperada && <p className="field-hint">Evidência esperada: {c.evidencia_esperada}</p>}
+                        {c.status === 'nao_se_aplica' && c.justificativa_nao_aplica && (
+                          <p className="field-hint">Justificativa: {c.justificativa_nao_aplica}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }

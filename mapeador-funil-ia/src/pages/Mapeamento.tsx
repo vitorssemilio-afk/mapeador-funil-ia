@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { AplicarTemplateModal } from '../components/AplicarTemplateModal';
 import { FunilDetalhado } from '../components/funil/FunilDetalhado';
 import { StatusBadge } from '../components/StatusBadge';
 import { MapeamentoWizard } from '../components/wizard/MapeamentoWizard';
@@ -91,6 +92,7 @@ export function Mapeamento() {
   const [excluindo, setExcluindo] = useState(false);
   const [implementacaoExistente, setImplementacaoExistente] = useState<ImplementacaoCrm | null>(null);
   const [iniciandoImplementacao, setIniciandoImplementacao] = useState(false);
+  const [implementacaoRecemCriadaId, setImplementacaoRecemCriadaId] = useState<string | null>(null);
   const [blocosFormulario, setBlocosFormulario] = useState<BlocoFormulario[]>([]);
   const [mostrarRespostas, setMostrarRespostas] = useState(false);
   const [posVendaExistente, setPosVendaExistente] = useState<MapeamentoType | null>(null);
@@ -550,7 +552,7 @@ export function Mapeamento() {
       return;
     }
 
-    navigate(`/implementacoes/${data.id}`);
+    setImplementacaoRecemCriadaId(data.id);
   }
 
   async function handleDuplicar() {
@@ -1338,6 +1340,13 @@ export function Mapeamento() {
             </>
           )}
         </section>
+      )}
+
+      {implementacaoRecemCriadaId && (
+        <AplicarTemplateModal
+          implementacaoId={implementacaoRecemCriadaId}
+          onConcluido={() => navigate(`/implementacoes/${implementacaoRecemCriadaId}`)}
+        />
       )}
     </div>
   );

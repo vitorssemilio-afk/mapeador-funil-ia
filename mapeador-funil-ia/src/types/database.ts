@@ -476,6 +476,13 @@ export type ImplementacaoCrm = {
   status_contratacao_kommo: StatusContratacaoKommo;
   observacoes: string | null;
   codigo_checkpoint: string;
+  // Template aplicado (módulo de Templates de Implementação) — nome/versão
+  // denormalizados pra continuar exibindo certo mesmo se o template for
+  // arquivado/apagado depois. Nunca reaplicado (um por implementação).
+  template_aplicado_id: string | null;
+  template_aplicado_nome: string | null;
+  template_aplicado_versao: number | null;
+  template_aplicado_em: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -543,6 +550,14 @@ export type AtividadeCronograma = {
   // null = item do template global (compartilhado); preenchido = item
   // derivado automaticamente do funil dessa implementação específica.
   implementacao_id: string | null;
+  descricao: string | null;
+  categoria: string | null;
+  obrigatorio: boolean;
+  // Preenchidos quando esta linha veio de um Template de Implementação
+  // (módulo de Templates) em vez de gerada a partir do funil ou criada
+  // manualmente — usado só pra exibir "Origem: <template> vX".
+  origem_template_id: string | null;
+  origem_template_atividade_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -557,6 +572,215 @@ export type AtividadeStatusRow = {
   evidencia: string | null;
   created_at: string;
   updated_at: string;
+};
+
+// ============================================================
+// Templates de Implementação (núcleo, Fase 1) — modelos reutilizáveis de
+// estrutura operacional (checklist, reuniões esperadas, critérios).
+// Nunca o funil de vendas, que continua 100% gerado por IA a partir do
+// formulário. Aplicar um template faz uma CÓPIA (nunca um vínculo vivo) —
+// ver src/lib/templatesImplementacao.ts e migration 0077.
+// ============================================================
+export type StatusTemplate = 'rascunho' | 'ativo' | 'arquivado';
+
+export type TemplateImplementacao = {
+  id: string;
+  grupo_id: string;
+  versao: number;
+  nome: string;
+  descricao: string | null;
+  categoria: string | null;
+  tags: string[];
+  observacoes_internas: string | null;
+  status: StatusTemplate;
+  // Só rótulo/organização do checklist — a régua de verdade de dia/ciclo
+  // continua sendo configuracoes_implementacao + snapshot por cliente.
+  duracao_total_dias: number | null;
+  ciclos: CicloConfiguravel[] | null;
+  criado_por_email: string | null;
+  atualizado_por_email: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplateAtividade = {
+  id: string;
+  template_id: string;
+  titulo: string;
+  descricao: string | null;
+  ciclo: string | null;
+  dia_recomendado: number | null;
+  obrigatorio: boolean;
+  responsavel_padrao: string | null;
+  categoria: string | null;
+  ordem: number;
+  depende_de_atividade_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplateReuniao = {
+  id: string;
+  template_id: string;
+  tipo: TipoReuniao;
+  obrigatoria: boolean;
+  ciclo: string | null;
+  dia_recomendado: number | null;
+  duracao_sugerida_minutos: number | null;
+  objetivo: string | null;
+  pauta_padrao: string[];
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TipoCriterioTemplate = 'entrega' | 'adocao';
+
+export type TemplateCriterio = {
+  id: string;
+  template_id: string;
+  tipo: TipoCriterioTemplate;
+  titulo: string;
+  descricao: string | null;
+  obrigatorio: boolean;
+  evidencia_esperada: string | null;
+  categoria: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Clonadas de template_reunioes quando um template é aplicado — só a
+// EXPECTATIVA operacional, nunca uma reunião real (essa continua sendo
+// criada pelo consultor no módulo de Reuniões já existente).
+export type ImplementacaoReuniaoEsperada = {
+  id: string;
+  implementacao_id: string;
+  tipo: TipoReuniao;
+  obrigatoria: boolean;
+  ciclo: string | null;
+  dia_recomendado: number | null;
+  duracao_sugerida_minutos: number | null;
+  objetivo: string | null;
+  pauta_padrao: string[];
+  nao_aplicavel: boolean;
+  nao_aplicavel_justificativa: string | null;
+  origem_template_id: string | null;
+  origem_template_reuniao_id: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Clonados de template_criterios quando um template é aplicado — tabela
+// separada da criterios_entrega/criterios_entrega_status já existente, de
+// propósito (não altera o fluxo já em produção).
+export type ImplementacaoCriterioTemplate = {
+  id: string;
+  implementacao_id: string;
+  tipo: TipoCriterioTemplate;
+  titulo: string;
+  descricao: string | null;
+  obrigatorio: boolean;
+  evidencia_esperada: string | null;
+  categoria: string | null;
+  status: StatusCriterioEntrega;
+  justificativa_nao_aplica: string | null;
+  origem_template_id: string | null;
+  origem_template_criterio_id: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Campos CRM recomendados e Automações sugeridas (Fase 2 do módulo de
+// Templates) — só existem no template, nunca são clonados/aplicados
+// automaticamente em nenhuma tabela por implementação (ver migration
+// 0078): são referência pro consultor revisar e configurar manualmente
+// no Kommo, nunca uma ação do sistema.
+export type TipoCampoCrm =
+  | 'texto'
+  | 'numero'
+  | 'selecao'
+  | 'multipla_selecao'
+  | 'data'
+  | 'telefone'
+  | 'email'
+  | 'checkbox';
+
+export type TemplateCampoCrm = {
+  id: string;
+  template_id: string;
+  nome: string;
+  tipo: TipoCampoCrm;
+  entidade: string;
+  obrigatorio: boolean;
+  descricao: string | null;
+  quando_usar: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TemplateAutomacao = {
+  id: string;
+  template_id: string;
+  nome: string;
+  objetivo: string | null;
+  gatilho: string | null;
+  condicao: string | null;
+  acao: string | null;
+  observacoes: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Documentos esperados — têm estado real por cliente (entregue ou não),
+// por isso SÃO clonados por implementação ao aplicar o template.
+export type TemplateDocumento = {
+  id: string;
+  template_id: string;
+  nome: string;
+  obrigatorio: boolean;
+  fase: string | null;
+  descricao: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ImplementacaoDocumentoTemplate = {
+  id: string;
+  implementacao_id: string;
+  nome: string;
+  obrigatorio: boolean;
+  fase: string | null;
+  descricao: string | null;
+  entregue: boolean;
+  entregue_em: string | null;
+  nao_aplicavel: boolean;
+  nao_aplicavel_justificativa: string | null;
+  origem_template_id: string | null;
+  origem_template_documento_id: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+// Auditoria genérica (migration 0050) — usada pelo histórico de templates
+// de implementação e por ações sensíveis (credenciais, exclusões, etc.).
+export type AuditoriaEvento = {
+  id: string;
+  criado_em: string;
+  user_id: string | null;
+  user_email: string | null;
+  acao: string;
+  entidade: string;
+  entidade_id: string | null;
+  cliente_id: string | null;
+  implementacao_id: string | null;
+  detalhes: Record<string, unknown>;
 };
 
 export type ImpactoResponsavel = 'cliente' | 'consultor' | 'v4' | 'problema_tecnico' | 'outro';
@@ -1101,6 +1325,73 @@ export type Database = {
         Update: Partial<AtividadeStatusRow>;
         Relationships: [];
       };
+      templates_implementacao: {
+        Row: TemplateImplementacao;
+        Insert: Partial<TemplateImplementacao> & Pick<TemplateImplementacao, 'nome'>;
+        Update: Partial<TemplateImplementacao>;
+        Relationships: [];
+      };
+      template_atividades: {
+        Row: TemplateAtividade;
+        Insert: Partial<TemplateAtividade> & Pick<TemplateAtividade, 'template_id' | 'titulo'>;
+        Update: Partial<TemplateAtividade>;
+        Relationships: [];
+      };
+      template_reunioes: {
+        Row: TemplateReuniao;
+        Insert: Partial<TemplateReuniao> & Pick<TemplateReuniao, 'template_id' | 'tipo'>;
+        Update: Partial<TemplateReuniao>;
+        Relationships: [];
+      };
+      template_criterios: {
+        Row: TemplateCriterio;
+        Insert: Partial<TemplateCriterio> & Pick<TemplateCriterio, 'template_id' | 'tipo' | 'titulo'>;
+        Update: Partial<TemplateCriterio>;
+        Relationships: [];
+      };
+      implementacao_reunioes_esperadas: {
+        Row: ImplementacaoReuniaoEsperada;
+        Insert: Partial<ImplementacaoReuniaoEsperada> & Pick<ImplementacaoReuniaoEsperada, 'implementacao_id' | 'tipo'>;
+        Update: Partial<ImplementacaoReuniaoEsperada>;
+        Relationships: [];
+      };
+      implementacao_criterios_template: {
+        Row: ImplementacaoCriterioTemplate;
+        Insert: Partial<ImplementacaoCriterioTemplate> &
+          Pick<ImplementacaoCriterioTemplate, 'implementacao_id' | 'tipo' | 'titulo'>;
+        Update: Partial<ImplementacaoCriterioTemplate>;
+        Relationships: [];
+      };
+      template_campos_crm: {
+        Row: TemplateCampoCrm;
+        Insert: Partial<TemplateCampoCrm> & Pick<TemplateCampoCrm, 'template_id' | 'nome' | 'tipo'>;
+        Update: Partial<TemplateCampoCrm>;
+        Relationships: [];
+      };
+      template_automacoes: {
+        Row: TemplateAutomacao;
+        Insert: Partial<TemplateAutomacao> & Pick<TemplateAutomacao, 'template_id' | 'nome'>;
+        Update: Partial<TemplateAutomacao>;
+        Relationships: [];
+      };
+      template_documentos: {
+        Row: TemplateDocumento;
+        Insert: Partial<TemplateDocumento> & Pick<TemplateDocumento, 'template_id' | 'nome'>;
+        Update: Partial<TemplateDocumento>;
+        Relationships: [];
+      };
+      implementacao_documentos_template: {
+        Row: ImplementacaoDocumentoTemplate;
+        Insert: Partial<ImplementacaoDocumentoTemplate> & Pick<ImplementacaoDocumentoTemplate, 'implementacao_id' | 'nome'>;
+        Update: Partial<ImplementacaoDocumentoTemplate>;
+        Relationships: [];
+      };
+      auditoria_eventos: {
+        Row: AuditoriaEvento;
+        Insert: Partial<AuditoriaEvento> & Pick<AuditoriaEvento, 'acao' | 'entidade'>;
+        Update: Partial<AuditoriaEvento>;
+        Relationships: [];
+      };
       checklist_grupos_implementacao: {
         Row: ChecklistGrupoImplementacao;
         Insert: Partial<ChecklistGrupoImplementacao> &
@@ -1413,6 +1704,31 @@ export type Database = {
       busca_formularios: {
         Args: { p_termo: string; p_limite?: number; p_offset?: number };
         Returns: BuscaGlobalResultado[];
+      };
+      aplicar_template_implementacao: {
+        Args: { p_implementacao_id: string; p_template_id: string };
+        Returns: {
+          atividades_criadas: number;
+          atividades_ignoradas: number;
+          reunioes_criadas: number;
+          reunioes_ignoradas: number;
+          criterios_criados: number;
+          criterios_ignorados: number;
+          documentos_criados: number;
+          documentos_ignorados: number;
+        }[];
+      };
+      duplicar_template_implementacao: {
+        Args: { p_template_id: string; p_novo_nome: string };
+        Returns: string;
+      };
+      criar_versao_template_implementacao: {
+        Args: { p_template_id: string };
+        Returns: string;
+      };
+      alterar_status_template_implementacao: {
+        Args: { p_template_id: string; p_novo_status: string };
+        Returns: TemplateImplementacao;
       };
       registrar_auditoria: {
         Args: {
