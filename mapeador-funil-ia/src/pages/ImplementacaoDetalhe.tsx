@@ -28,9 +28,16 @@ import {
   STATUS_CRITERIO_TONE,
 } from '../lib/criteriosEntrega';
 import {
+  ATIVIDADES_FORA_KOMMO_LABELS,
+  AUTONOMIA_EQUIPE_LABELS,
+  FREQUENCIA_USO_LABELS,
+  INTENCAO_MANUTENCAO_LABELS,
+  PERCENTUAL_PROCESSO_LABELS,
   resolverDiagnosticoAdocao,
   STATUS_DIAGNOSTICO_LABELS,
   STATUS_DIAGNOSTICO_TONE,
+  USO_DIARIO_LABELS,
+  USO_RELATORIOS_DECISAO_LABELS,
 } from '../lib/diagnosticoAdocao';
 import {
   aprovarVersao,
@@ -59,8 +66,6 @@ import { supabase } from '../lib/supabaseClient';
 import type {
   AtividadeCronograma,
   AtividadeStatusRow,
-  AtividadesForaKommoCheckpoint,
-  AutonomiaEquipeCheckpoint,
   CheckpointAcompanhamento,
   CheckpointAdocao,
   Cliente,
@@ -71,7 +76,6 @@ import type {
   CredencialCrmListada,
   CriterioEntrega,
   CriterioEntregaStatus,
-  FrequenciaUsoCheckpoint,
   FunilGerado,
   FunilKommoCriacao,
   FunilVersao,
@@ -82,12 +86,10 @@ import type {
   ImplementacaoSettingsSnapshot,
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
-  IntencaoManutencaoCheckpoint,
   Mapeamento,
   ImpactoResponsavel,
   ImplementacaoConsultorHistorico,
   MarcoRemarcacao,
-  PercentualProcessoKommo,
   Reuniao,
   ReuniaoRemarcacao,
   StatusContratacaoKommo,
@@ -96,8 +98,6 @@ import type {
   TemplateAutomacao,
   TemplateCampoCrm,
   TipoReuniao,
-  UsoDiarioCheckpoint,
-  UsoRelatoriosDecisaoCheckpoint,
 } from '../types/database';
 
 type Aba = 'geral' | 'checklist' | 'criterios' | 'cronograma' | 'credenciais' | 'checkpoint' | 'reunioes' | 'template';
@@ -202,54 +202,6 @@ function paraFormReuniao(reuniao: Reuniao): FormReuniao {
     proximos_passos: reuniao.proximos_passos ?? '',
   };
 }
-
-const USO_DIARIO_LABELS: Record<UsoDiarioCheckpoint, string> = {
-  so_kommo: 'Só Kommo',
-  kommo_mais_planilha: 'Kommo + planilha ainda',
-  voltou_planilha: 'Voltaram pra planilha',
-};
-
-const FREQUENCIA_USO_LABELS: Record<FrequenciaUsoCheckpoint, string> = {
-  diariamente: 'Diariamente',
-  semanalmente: 'Semanalmente',
-  raramente: 'Raramente',
-  nao_uso: 'Não uso',
-};
-
-const INTENCAO_MANUTENCAO_LABELS: Record<IntencaoManutencaoCheckpoint, string> = {
-  sim: 'Sim',
-  talvez: 'Talvez',
-  nao: 'Não',
-};
-
-const PERCENTUAL_PROCESSO_LABELS: Record<PercentualProcessoKommo, string> = {
-  praticamente_tudo: 'Praticamente tudo',
-  maior_parte: 'A maior parte',
-  cerca_metade: 'Cerca da metade',
-  pouco: 'Pouco',
-  quase_nada: 'Quase nada',
-};
-
-const AUTONOMIA_EQUIPE_LABELS: Record<AutonomiaEquipeCheckpoint, string> = {
-  sim_totalmente: 'Sim, totalmente',
-  maior_parte_vezes: 'Na maior parte das vezes',
-  precisamos_ajuda_frequente: 'Ainda precisamos de ajuda com frequência',
-  nao_conseguimos_sem_ajuda: 'Não conseguimos operar sem ajuda',
-};
-
-const USO_RELATORIOS_DECISAO_LABELS: Record<UsoRelatoriosDecisaoCheckpoint, string> = {
-  sim_mais_uma_vez: 'Sim, mais de uma vez',
-  sim_uma_vez: 'Sim, uma vez',
-  ainda_nao: 'Ainda não',
-  nao_sei_utilizar: 'Não sei utilizar os relatórios',
-};
-
-const ATIVIDADES_FORA_KOMMO_LABELS: Record<AtividadesForaKommoCheckpoint, string> = {
-  nao_tudo_no_kommo: 'Não, praticamente tudo está no Kommo',
-  sim_algumas: 'Sim, algumas atividades',
-  sim_varias: 'Sim, várias atividades',
-  voltou_processo_antigo: 'A equipe praticamente voltou ao processo antigo',
-};
 
 type FormGeral = {
   nome_cliente: string;
