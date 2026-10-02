@@ -768,6 +768,77 @@ export type ImplementacaoDocumentoTemplate = {
   updated_at: string;
 };
 
+// ============================================================
+// Módulo de Relatórios e Entrega Final (núcleo, Fase 1, migration 0079) —
+// consolida dados já existentes (funil aprovado, cronograma, reuniões,
+// critérios, trial, ocorrências, checkpoint de adoção) em documentos
+// gerados e rastreáveis. O conteúdo é sempre montado a partir das fontes
+// oficiais já em produção (ver src/lib/relatoriosEntrega.ts) — só o
+// resultado (snapshot) é persistido aqui.
+// ============================================================
+export type TipoRelatorioImplementacao =
+  | 'implementacao'
+  | 'funil_vendas'
+  | 'funil_pos_venda'
+  | 'entrega_final'
+  | 'adocao';
+
+export type VisaoRelatorio = 'executiva' | 'tecnica';
+
+export type StatusRelatorioImplementacao = 'rascunho' | 'gerado' | 'final' | 'arquivado';
+
+export type RelatorioImplementacao = {
+  id: string;
+  implementacao_id: string;
+  cliente_id: string | null;
+  tipo: TipoRelatorioImplementacao;
+  visao: VisaoRelatorio | null;
+  versao: number;
+  status: StatusRelatorioImplementacao;
+  titulo: string;
+  conteudo_snapshot: Record<string, unknown>;
+  texto_editavel: Record<string, unknown>;
+  motivo_nova_versao: string | null;
+  gerado_por_email: string | null;
+  gerado_em: string | null;
+  finalizado_em: string | null;
+  arquivado_em: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StatusAceiteEntrega = 'aguardando_aceite' | 'aceito' | 'aceito_com_ressalvas' | 'nao_aceito';
+
+export type EntregaAceite = {
+  id: string;
+  implementacao_id: string;
+  relatorio_entrega_final_id: string | null;
+  data_entrega: string | null;
+  responsavel_entrega_id: string | null;
+  contato_cliente: string | null;
+  status: StatusAceiteEntrega;
+  observacao: string | null;
+  motivo_nao_aceito: string | null;
+  itens_contestados: string | null;
+  proximos_passos_nao_aceito: string | null;
+  registrado_por_email: string | null;
+  registrado_em: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EntregaRessalva = {
+  id: string;
+  aceite_id: string;
+  ressalva: string;
+  responsavel_id: string | null;
+  prazo: string | null;
+  acao_necessaria: string | null;
+  pendencia_id: string | null;
+  resolvida: boolean;
+  created_at: string;
+};
+
 // Auditoria genérica (migration 0050) — usada pelo histórico de templates
 // de implementação e por ações sensíveis (credenciais, exclusões, etc.).
 export type AuditoriaEvento = {
@@ -965,6 +1036,10 @@ export type ConfiguracaoOperacao = {
   razao_social: string | null;
   cnpj: string | null;
   texto_padrao_rodape: string | null;
+  // Identidade visual mínima pros documentos do módulo de Relatórios e
+  // Entrega (migration 0079) — reaproveitada daqui, nunca duplicada.
+  logo_url: string | null;
+  cor_principal: string | null;
   atualizado_por_email: string | null;
   updated_at: string;
 };
@@ -1384,6 +1459,24 @@ export type Database = {
         Row: ImplementacaoDocumentoTemplate;
         Insert: Partial<ImplementacaoDocumentoTemplate> & Pick<ImplementacaoDocumentoTemplate, 'implementacao_id' | 'nome'>;
         Update: Partial<ImplementacaoDocumentoTemplate>;
+        Relationships: [];
+      };
+      relatorios_implementacao: {
+        Row: RelatorioImplementacao;
+        Insert: Partial<RelatorioImplementacao> & Pick<RelatorioImplementacao, 'implementacao_id' | 'tipo' | 'titulo'>;
+        Update: Partial<RelatorioImplementacao>;
+        Relationships: [];
+      };
+      entregas_aceite: {
+        Row: EntregaAceite;
+        Insert: Partial<EntregaAceite> & Pick<EntregaAceite, 'implementacao_id'>;
+        Update: Partial<EntregaAceite>;
+        Relationships: [];
+      };
+      entrega_ressalvas: {
+        Row: EntregaRessalva;
+        Insert: Partial<EntregaRessalva> & Pick<EntregaRessalva, 'aceite_id' | 'ressalva'>;
+        Update: Partial<EntregaRessalva>;
         Relationships: [];
       };
       auditoria_eventos: {

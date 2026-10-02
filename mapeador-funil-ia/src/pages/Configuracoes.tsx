@@ -148,6 +148,8 @@ type FormOperacao = {
   razao_social: string;
   cnpj: string;
   texto_padrao_rodape: string;
+  logo_url: string;
+  cor_principal: string;
 };
 
 function paraFormOperacao(c: ConfiguracaoOperacao): FormOperacao {
@@ -157,6 +159,8 @@ function paraFormOperacao(c: ConfiguracaoOperacao): FormOperacao {
     razao_social: c.razao_social ?? '',
     cnpj: c.cnpj ?? '',
     texto_padrao_rodape: c.texto_padrao_rodape ?? '',
+    logo_url: c.logo_url ?? '',
+    cor_principal: c.cor_principal ?? '',
   };
 }
 
@@ -672,6 +676,8 @@ export function Configuracoes() {
       razao_social: formOperacao.razao_social.trim() || null,
       cnpj: formOperacao.cnpj.trim() || null,
       texto_padrao_rodape: formOperacao.texto_padrao_rodape.trim() || null,
+      logo_url: formOperacao.logo_url.trim() || null,
+      cor_principal: formOperacao.cor_principal.trim() || null,
     };
     const original = {
       nome_operacao: configOperacao.nome_operacao,
@@ -679,6 +685,8 @@ export function Configuracoes() {
       razao_social: configOperacao.razao_social,
       cnpj: configOperacao.cnpj,
       texto_padrao_rodape: configOperacao.texto_padrao_rodape,
+      logo_url: configOperacao.logo_url,
+      cor_principal: configOperacao.cor_principal,
     };
     const patch = patchComparado(original, atual);
     if (Object.keys(patch).length === 0) return;
@@ -1261,6 +1269,33 @@ export function Configuracoes() {
               onChange={(e) => setFormOperacao({ ...formOperacao, texto_padrao_rodape: e.target.value })}
             />
           </label>
+
+          <p className="field-hint">
+            Usados nos documentos do módulo de Relatórios e Entrega (capa, cabeçalho) — não cria uma configuração
+            separada, é a mesma identidade da operação.
+          </p>
+          <div className="form-grid">
+            <label className="field">
+              <span>URL do logo (opcional)</span>
+              <input
+                type="text"
+                value={formOperacao.logo_url}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormOperacao({ ...formOperacao, logo_url: e.target.value })}
+                placeholder="https://…"
+              />
+            </label>
+            <label className="field">
+              <span>Cor principal (opcional)</span>
+              <input
+                type="text"
+                value={formOperacao.cor_principal}
+                disabled={!souAdministrador}
+                onChange={(e) => setFormOperacao({ ...formOperacao, cor_principal: e.target.value })}
+                placeholder="#D42A42"
+              />
+            </label>
+          </div>
 
           {souAdministrador && (
             <div className="wizard-actions">
