@@ -507,19 +507,22 @@ export function construirResumoTrialGestao(resumos: ClienteResumo[]): ResumoTria
   }
 
   const usoDias = resumos.filter((r) => r.trial).map((r) => r.trial!.usoTotalDias);
-  const usouExtensao14 = comTrialIniciado.filter((r) => r.cliente.extensao_14_solicitada_em).length;
-  const usouExtensao7 = comTrialIniciado.filter((r) => r.cliente.extensao_7_solicitada_em).length;
+  // Primeira extensão concedida = +7 dias, segunda = +14 dias (ver
+  // src/lib/trialKommo.ts) — os campos extensao_14_*/extensao_7_* continuam
+  // nomeados pela duração, não pela ordem.
+  const usouPrimeiraExtensao = comTrialIniciado.filter((r) => r.cliente.extensao_7_solicitada_em).length;
+  const usouSegundaExtensao = comTrialIniciado.filter((r) => r.cliente.extensao_14_solicitada_em).length;
 
   return {
     ativos: filtro((r) => r.trial != null && r.trial.status !== 'encerrado'),
     trialInicial: filtro((r) => r.trial?.periodoAtual === 'Trial inicial'),
-    em14Dias: filtro((r) => r.trial?.periodoAtual === 'Primeira extensão'),
-    em7Dias: filtro((r) => r.trial?.periodoAtual === 'Segunda extensão'),
+    em14Dias: filtro((r) => r.trial?.periodoAtual === 'Segunda extensão'),
+    em7Dias: filtro((r) => r.trial?.periodoAtual === 'Primeira extensão'),
     proximosVencimento: filtro((r) => r.trial?.status === 'proximo_vencimento'),
     extensaoPendente: filtro((r) => r.trial?.status === 'extensao_pendente'),
     mediaDiasUtilizados: media(usoDias),
-    percentualUsouPrimeiraExtensao: percentual(usouExtensao14, comTrialIniciado.length),
-    percentualUsouSegundaExtensao: percentual(usouExtensao7, comTrialIniciado.length),
+    percentualUsouPrimeiraExtensao: percentual(usouPrimeiraExtensao, comTrialIniciado.length),
+    percentualUsouSegundaExtensao: percentual(usouSegundaExtensao, comTrialIniciado.length),
   };
 }
 

@@ -2622,8 +2622,8 @@ export function ClienteDetalhe() {
               </p>
               <p className="field-hint">
                 Períodos: <span style={resumoTrial.periodoAtual === 'Trial inicial' ? { fontWeight: 700 } : undefined}>14</span> +{' '}
-                <span style={resumoTrial.periodoAtual === 'Primeira extensão' ? { fontWeight: 700 } : undefined}>14</span> +{' '}
-                <span style={resumoTrial.periodoAtual === 'Segunda extensão' ? { fontWeight: 700 } : undefined}>7</span>
+                <span style={resumoTrial.periodoAtual === 'Primeira extensão' ? { fontWeight: 700 } : undefined}>7</span> +{' '}
+                <span style={resumoTrial.periodoAtual === 'Segunda extensão' ? { fontWeight: 700 } : undefined}>14</span>
               </p>
               <p className="field-hint">
                 Dias utilizados: {resumoTrial.usoTotalDias}/{resumoTrial.usoTotalMaximo} · Dias restantes (período
@@ -2645,18 +2645,18 @@ export function ClienteDetalhe() {
                         </a>
                       </li>
                     )}
-                    {pipefyConfig.url_extensao_14 && (
+                    {pipefyConfig.url_extensao_7 && (
                       <li className="field-hint">
-                        Extensão +14 dias —{' '}
-                        <a href={pipefyConfig.url_extensao_14} target="_blank" rel="noopener noreferrer">
+                        Extensão +7 dias (1ª) —{' '}
+                        <a href={pipefyConfig.url_extensao_7} target="_blank" rel="noopener noreferrer">
                           Abrir
                         </a>
                       </li>
                     )}
-                    {pipefyConfig.url_extensao_7 && (
+                    {pipefyConfig.url_extensao_14 && (
                       <li className="field-hint">
-                        Extensão +7 dias —{' '}
-                        <a href={pipefyConfig.url_extensao_7} target="_blank" rel="noopener noreferrer">
+                        Extensão +14 dias (2ª) —{' '}
+                        <a href={pipefyConfig.url_extensao_14} target="_blank" rel="noopener noreferrer">
                           Abrir
                         </a>
                       </li>
@@ -2681,24 +2681,24 @@ export function ClienteDetalhe() {
                 {cliente.conta_kommo_criada_em && (
                   <li className="field-hint">Conta Kommo criada: {formatarDataHora(cliente.conta_kommo_criada_em)}</li>
                 )}
-                {cliente.extensao_14_solicitada_em && (
-                  <li className="field-hint">
-                    Extensão de 14 dias solicitada: {formatarDataHora(cliente.extensao_14_solicitada_em)}
-                  </li>
-                )}
-                {cliente.extensao_14_aprovada_em && (
-                  <li className="field-hint">
-                    Extensão de 14 dias aprovada: {formatarDataHora(cliente.extensao_14_aprovada_em)}
-                  </li>
-                )}
                 {cliente.extensao_7_solicitada_em && (
                   <li className="field-hint">
-                    Extensão de 7 dias solicitada: {formatarDataHora(cliente.extensao_7_solicitada_em)}
+                    Extensão de 7 dias (1ª) solicitada: {formatarDataHora(cliente.extensao_7_solicitada_em)}
                   </li>
                 )}
                 {cliente.extensao_7_aprovada_em && (
                   <li className="field-hint">
-                    Extensão de 7 dias aprovada: {formatarDataHora(cliente.extensao_7_aprovada_em)}
+                    Extensão de 7 dias (1ª) aprovada: {formatarDataHora(cliente.extensao_7_aprovada_em)}
+                  </li>
+                )}
+                {cliente.extensao_14_solicitada_em && (
+                  <li className="field-hint">
+                    Extensão de 14 dias (2ª) solicitada: {formatarDataHora(cliente.extensao_14_solicitada_em)}
+                  </li>
+                )}
+                {cliente.extensao_14_aprovada_em && (
+                  <li className="field-hint">
+                    Extensão de 14 dias (2ª) aprovada: {formatarDataHora(cliente.extensao_14_aprovada_em)}
                   </li>
                 )}
                 {cliente.contratacao_kommo_solicitada_em && (

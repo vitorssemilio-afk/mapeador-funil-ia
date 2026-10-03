@@ -21,10 +21,13 @@ export const MARCOS_ORDENADOS: { campo: CampoMarco; label: string; apenasData: b
   { campo: 'conta_kommo_criada_em', label: 'Conta Kommo criada', apenasData: false },
   { campo: 'treinamento_agendado_para', label: 'Treinamento agendado para', apenasData: false },
   { campo: 'treinamento_realizado_em', label: 'Treinamento realizado', apenasData: false },
-  { campo: 'extensao_14_solicitada_em', label: 'Extensão de 14 dias solicitada', apenasData: true },
-  { campo: 'extensao_14_aprovada_em', label: 'Extensão de 14 dias aprovada', apenasData: true },
-  { campo: 'extensao_7_solicitada_em', label: 'Extensão de 7 dias solicitada', apenasData: true },
-  { campo: 'extensao_7_aprovada_em', label: 'Extensão de 7 dias aprovada', apenasData: true },
+  // Ordem real de concessão: 1ª extensão = +7 dias, 2ª extensão = +14 dias
+  // (ver src/lib/trialKommo.ts) — os nomes dos campos (extensao_14/
+  // extensao_7) seguem a duração, não a ordem.
+  { campo: 'extensao_7_solicitada_em', label: 'Extensão de 7 dias (1ª) solicitada', apenasData: true },
+  { campo: 'extensao_7_aprovada_em', label: 'Extensão de 7 dias (1ª) aprovada', apenasData: true },
+  { campo: 'extensao_14_solicitada_em', label: 'Extensão de 14 dias (2ª) solicitada', apenasData: true },
+  { campo: 'extensao_14_aprovada_em', label: 'Extensão de 14 dias (2ª) aprovada', apenasData: true },
   { campo: 'contratacao_kommo_solicitada_em', label: 'Contratação definitiva do Kommo solicitada', apenasData: false },
   { campo: 'implementacao_concluida_em', label: 'Implementação concluída', apenasData: false },
 ];

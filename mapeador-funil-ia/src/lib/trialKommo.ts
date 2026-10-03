@@ -1,7 +1,11 @@
-// Controle completo do Trial Kommo: 3 períodos (14 + 14 + 7 = 35 dias no
-// máximo), começando em conta_kommo_criada_em. Independente do prazo de 40
-// dias da implementação (esse é ancorado no Kickoff — ver cronograma.ts) —
-// os dois indicadores nunca se misturam.
+// Controle completo do Trial Kommo: 3 períodos (14 + 7 + 14 = 35 dias no
+// máximo), começando em conta_kommo_criada_em. A primeira extensão concedida
+// é a de 7 dias, a segunda é a de 14 — os campos `extensao_14_*`/
+// `extensao_7_*` em `clientes` continuam nomeados pela DURAÇÃO que cada um
+// concede (não pela ordem), então nada muda no banco: só a ordem em que são
+// aplicados aqui. Independente do prazo de 40 dias da implementação (esse é
+// ancorado no Kickoff — ver cronograma.ts) — os dois indicadores nunca se
+// misturam.
 import type { Cliente } from '../types/database';
 
 export type StatusTrial =
@@ -106,41 +110,51 @@ export function resolverResumoTrialKommo(
 
   const inicio = new Date(cliente.conta_kommo_criada_em);
   const vencimentoTrialInicial = adicionarDias(inicio, diasInicial);
-  const ext14Aprovada = !!cliente.extensao_14_aprovada_em;
-  const ext7Aprovada = !!cliente.extensao_7_aprovada_em;
+  // Primeira extensão concedida = +7 dias (campos extensao_7_*); segunda =
+  // +14 dias (campos extensao_14_*) — ordem invertida em relação ao nome
+  // dos campos, de propósito (ver comentário no topo do arquivo). As duas
+  // contam de forma INDEPENDENTE (nunca uma exige a outra ter sido aprovada
+  // antes) — clientes que já tinham extensao_14_aprovada_em preenchido de
+  // quando a 2ª extensão ainda não existia continuam com esses dias
+  // contados normalmente, sem perder nada retroativamente.
+  const primeiraExtensaoAprovada = !!cliente.extensao_7_aprovada_em;
+  const segundaExtensaoAprovada = !!cliente.extensao_14_aprovada_em;
 
-  const vencimentoComExt14 = ext14Aprovada ? adicionarDias(vencimentoTrialInicial, diasExtensao14) : null;
-  const vencimentoComExt7 =
-    ext14Aprovada && ext7Aprovada && vencimentoComExt14 ? adicionarDias(vencimentoComExt14, diasExtensao7) : null;
+  const vencimentoAposPrimeira = primeiraExtensaoAprovada
+    ? adicionarDias(vencimentoTrialInicial, diasExtensao7)
+    : vencimentoTrialInicial;
+  const vencimento = segundaExtensaoAprovada ? adicionarDias(vencimentoAposPrimeira, diasExtensao14) : vencimentoAposPrimeira;
 
-  const vencimento = vencimentoComExt7 ?? vencimentoComExt14 ?? vencimentoTrialInicial;
-
-  const periodoAtual: ResumoTrialKommo['periodoAtual'] = ext7Aprovada
+  const periodoAtual: ResumoTrialKommo['periodoAtual'] = segundaExtensaoAprovada
     ? 'Segunda extensão'
-    : ext14Aprovada
+    : primeiraExtensaoAprovada
       ? 'Primeira extensão'
       : 'Trial inicial';
-  const duracaoPeriodoAtual = ext7Aprovada ? diasExtensao7 : ext14Aprovada ? diasExtensao14 : diasInicial;
-  const inicioPeriodoAtual = ext7Aprovada ? vencimentoComExt14! : ext14Aprovada ? vencimentoTrialInicial : inicio;
+  const duracaoPeriodoAtual = segundaExtensaoAprovada ? diasExtensao14 : primeiraExtensaoAprovada ? diasExtensao7 : diasInicial;
+  const inicioPeriodoAtual = segundaExtensaoAprovada
+    ? vencimentoAposPrimeira
+    : primeiraExtensaoAprovada
+      ? vencimentoTrialInicial
+      : inicio;
 
   const diaAtualPeriodo = diferencaEmDias(hoje, inicioPeriodoAtual) + 1;
   const usoTotalDias = diferencaEmDias(hoje, inicio) + 1;
   const diasRestantes = diferencaEmDias(vencimento, hoje);
 
-  const proximaExtensao: ProximaExtensaoTrial | null = ext7Aprovada
+  const proximaExtensao: ProximaExtensaoTrial | null = segundaExtensaoAprovada
     ? null
-    : ext14Aprovada
+    : primeiraExtensaoAprovada
       ? {
-          rotulo: '+7 dias',
-          dias: diasExtensao7,
-          solicitadaEm: cliente.extensao_7_solicitada_em,
-          aprovadaEm: cliente.extensao_7_aprovada_em,
-        }
-      : {
           rotulo: '+14 dias',
           dias: diasExtensao14,
           solicitadaEm: cliente.extensao_14_solicitada_em,
           aprovadaEm: cliente.extensao_14_aprovada_em,
+        }
+      : {
+          rotulo: '+7 dias',
+          dias: diasExtensao7,
+          solicitadaEm: cliente.extensao_7_solicitada_em,
+          aprovadaEm: cliente.extensao_7_aprovada_em,
         };
 
   const solicitada = !!proximaExtensao?.solicitadaEm && !proximaExtensao.aprovadaEm;
@@ -156,7 +170,7 @@ export function resolverResumoTrialKommo(
     status = 'extensao_pendente';
   } else if (diasRestantes <= maiorAlerta) {
     status = 'proximo_vencimento';
-  } else if (ext14Aprovada) {
+  } else if (primeiraExtensaoAprovada || segundaExtensaoAprovada) {
     status = 'estendido';
   } else {
     status = 'ativo';

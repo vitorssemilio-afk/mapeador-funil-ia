@@ -259,7 +259,7 @@ export function construirResumoClientes(params: {
   // Área de Configurações: regras vigentes por cliente (snapshot do
   // Kickoff, ou a config global pra quem ainda não teve Kickoff). Default
   // pra todo mundo usando CONFIGURACAO_PADRAO — os 40 dias/4 ciclos/Trial
-  // 14+14+7 hardcoded de sempre — pra chamadas que ainda não migraram pra
+  // 14+7+14 hardcoded de sempre — pra chamadas que ainda não migraram pra
   // Configurações continuarem idênticas.
   configuracoesPorCliente?: Map<string, ConfiguracaoResolvida>;
 }): ClienteResumo[] {
