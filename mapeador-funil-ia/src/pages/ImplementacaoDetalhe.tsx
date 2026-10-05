@@ -325,6 +325,8 @@ export function ImplementacaoDetalhe() {
   } | null>(null);
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
   const [linkPosVendaCopiado, setLinkPosVendaCopiado] = useState(false);
+  const [idImplementacaoCopiado, setIdImplementacaoCopiado] = useState(false);
+  const [idClienteCopiado, setIdClienteCopiado] = useState(false);
   const [kickoffRealizadoEm, setKickoffRealizadoEm] = useState<string | null>(null);
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
@@ -2528,6 +2530,19 @@ export function ImplementacaoDetalhe() {
 
   const gateSemanaUmBloqueado = implementacao.status === 'preparacao_crm' && !preRequisitoCompleto(formGeral);
 
+  async function handleCopiarIdImplementacao() {
+    await navigator.clipboard.writeText(implementacao!.id);
+    setIdImplementacaoCopiado(true);
+    setTimeout(() => setIdImplementacaoCopiado(false), 2000);
+  }
+
+  async function handleCopiarIdCliente() {
+    if (!implementacao?.cliente_id) return;
+    await navigator.clipboard.writeText(implementacao.cliente_id);
+    setIdClienteCopiado(true);
+    setTimeout(() => setIdClienteCopiado(false), 2000);
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -2544,6 +2559,20 @@ export function ImplementacaoDetalhe() {
               </>
             )}
             <Link to={`/mapeamento/${implementacao.mapeamento_id}`}>Ver mapeamento de origem</Link>
+          </p>
+          <p className="field-hint">
+            ID da implementação: <code>{implementacao.id}</code>{' '}
+            <button type="button" className="btn-link" onClick={handleCopiarIdImplementacao}>
+              {idImplementacaoCopiado ? 'Copiado!' : 'Copiar'}
+            </button>
+            {implementacao.cliente_id && (
+              <>
+                {' · '}ID do cliente: <code>{implementacao.cliente_id}</code>{' '}
+                <button type="button" className="btn-link" onClick={handleCopiarIdCliente}>
+                  {idClienteCopiado ? 'Copiado!' : 'Copiar'}
+                </button>
+              </>
+            )}
           </p>
         </div>
         <div className="page-header-actions">

@@ -280,6 +280,7 @@ export function ClienteDetalhe() {
   const [editando, setEditando] = useState(false);
   const [form, setForm] = useState<FormCliente | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [idCopiado, setIdCopiado] = useState(false);
 
   const [criandoVendas, setCriandoVendas] = useState(false);
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
@@ -1342,6 +1343,13 @@ export function ClienteDetalhe() {
   if (error && !cliente) return <p className="form-error">{error}</p>;
   if (!cliente || !form) return <p className="form-error">Cliente não encontrado.</p>;
 
+  async function handleCopiarIdCliente() {
+    if (!cliente) return;
+    await navigator.clipboard.writeText(cliente.id);
+    setIdCopiado(true);
+    setTimeout(() => setIdCopiado(false), 2000);
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -1350,6 +1358,12 @@ export function ClienteDetalhe() {
           {(cliente.nome_contato || cliente.segmento) && (
             <p className="field-hint">{[cliente.nome_contato, cliente.segmento].filter(Boolean).join(' · ')}</p>
           )}
+          <p className="field-hint">
+            ID do cliente: <code>{cliente.id}</code>{' '}
+            <button type="button" className="btn-link" onClick={handleCopiarIdCliente}>
+              {idCopiado ? 'Copiado!' : 'Copiar'}
+            </button>
+          </p>
         </div>
         {!editando && (
           <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}>
