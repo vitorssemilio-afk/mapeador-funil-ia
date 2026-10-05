@@ -352,6 +352,8 @@ export function ImplementacaoDetalhe() {
     consultor_responsavel_id: string;
     status: StatusReuniao;
   } | null>(null);
+  const [vinculandoReuniaoSalvando, setVinculandoReuniaoSalvando] = useState(false);
+  const [erroVinculoReuniao, setErroVinculoReuniao] = useState<string | null>(null);
   const [formImportarAta, setFormImportarAta] = useState<{
     reuniao_id: string;
     titulo: string;
@@ -1929,56 +1931,72 @@ export function ImplementacaoDetalhe() {
   // mesmo (só com os campos essenciais) — se já existir, atualizamos ela em
   // vez de duplicar.
   async function handleVincularAtaManualmente(ata: AtaReuniao) {
-    if (!formVinculoReuniao?.tipo || !implementacao || !cliente) return;
+    if (!formVinculoReuniao?.tipo) {
+      setErroVinculoReuniao('Selecione o tipo de reunião.');
+      return;
+    }
+    if (!implementacao || !cliente) {
+      setErroVinculoReuniao('Implementação ou cliente não carregados — recarregue a página.');
+      return;
+    }
     const { tipo, data_hora, consultor_responsavel_id, status } = formVinculoReuniao;
-    const existente = reunioes.find((r) => r.tipo === tipo) ?? null;
 
-    const payload = {
-      titulo: existente?.titulo ?? TIPO_REUNIAO_LABELS[tipo],
-      data_hora: data_hora ? new Date(data_hora).toISOString() : (existente?.data_hora ?? null),
-      consultor_responsavel_id: consultor_responsavel_id || existente?.consultor_responsavel_id || null,
-      status,
-    };
+    setErroVinculoReuniao(null);
+    setVinculandoReuniaoSalvando(true);
+    try {
+      const existente = reunioes.find((r) => r.tipo === tipo) ?? null;
 
-    const { data: reuniaoSalva, error: reuniaoError } = existente
-      ? await supabase.from('reunioes').update(payload).eq('id', existente.id).select().single()
-      : await supabase
-          .from('reunioes')
-          .insert({ ...payload, cliente_id: cliente.id, implementacao_id: implementacao.id, tipo })
-          .select()
-          .single();
+      const payload = {
+        titulo: existente?.titulo ?? TIPO_REUNIAO_LABELS[tipo],
+        data_hora: data_hora ? new Date(data_hora).toISOString() : (existente?.data_hora ?? null),
+        consultor_responsavel_id: consultor_responsavel_id || existente?.consultor_responsavel_id || null,
+        status,
+      };
 
-    if (reuniaoError) {
-      setError(reuniaoError.message);
-      return;
+      const { data: reuniaoSalva, error: reuniaoError } = existente
+        ? await supabase.from('reunioes').update(payload).eq('id', existente.id).select().single()
+        : await supabase
+            .from('reunioes')
+            .insert({ ...payload, cliente_id: cliente.id, implementacao_id: implementacao.id, tipo })
+            .select()
+            .single();
+
+      if (reuniaoError) {
+        setErroVinculoReuniao(reuniaoError.message);
+        return;
+      }
+
+      setReunioes((prev) => {
+        const idx = prev.findIndex((r) => r.id === reuniaoSalva.id);
+        if (idx === -1) return [...prev, reuniaoSalva];
+        const copia = [...prev];
+        copia[idx] = reuniaoSalva;
+        return copia;
+      });
+
+      await sincronizarMarcoCliente(reuniaoSalva, cliente);
+
+      const { error: rpcError } = await supabase.rpc('vincular_ata_manualmente', {
+        p_ata_id: ata.id,
+        p_cliente_id: cliente.id,
+        p_implementacao_id: implementacao.id,
+        p_reuniao_id: reuniaoSalva.id,
+      });
+
+      if (rpcError) {
+        setErroVinculoReuniao(rpcError.message);
+        return;
+      }
+
+      mostrarToast('Ata vinculada.');
+      setVinculandoAtaId(null);
+      setFormVinculoReuniao(null);
+      await carregar(implementacao.id);
+    } catch (err) {
+      setErroVinculoReuniao(err instanceof Error ? err.message : 'Erro inesperado ao vincular a ata.');
+    } finally {
+      setVinculandoReuniaoSalvando(false);
     }
-
-    setReunioes((prev) => {
-      const idx = prev.findIndex((r) => r.id === reuniaoSalva.id);
-      if (idx === -1) return [...prev, reuniaoSalva];
-      const copia = [...prev];
-      copia[idx] = reuniaoSalva;
-      return copia;
-    });
-
-    await sincronizarMarcoCliente(reuniaoSalva, cliente);
-
-    const { error: rpcError } = await supabase.rpc('vincular_ata_manualmente', {
-      p_ata_id: ata.id,
-      p_cliente_id: cliente.id,
-      p_implementacao_id: implementacao.id,
-      p_reuniao_id: reuniaoSalva.id,
-    });
-
-    if (rpcError) {
-      setError(rpcError.message);
-      return;
-    }
-
-    mostrarToast('Ata vinculada.');
-    setVinculandoAtaId(null);
-    setFormVinculoReuniao(null);
-    await carregar(implementacao.id);
   }
 
   // Seção 37 — fallback manual: serve tanto pra quando o webhook falhar
@@ -4141,13 +4159,16 @@ export function ImplementacaoDetalhe() {
                           ))}
                         </select>
                       </label>
+                      {erroVinculoReuniao && <p className="form-error">{erroVinculoReuniao}</p>}
                       <div className="wizard-actions">
                         <button
                           type="button"
                           className="btn btn-secondary"
+                          disabled={vinculandoReuniaoSalvando}
                           onClick={() => {
                             setVinculandoAtaId(null);
                             setFormVinculoReuniao(null);
+                            setErroVinculoReuniao(null);
                           }}
                         >
                           Cancelar
@@ -4155,10 +4176,10 @@ export function ImplementacaoDetalhe() {
                         <button
                           type="button"
                           className="btn btn-primary"
-                          disabled={!formVinculoReuniao.tipo}
+                          disabled={!formVinculoReuniao.tipo || vinculandoReuniaoSalvando}
                           onClick={() => handleVincularAtaManualmente(ata)}
                         >
-                          Vincular
+                          {vinculandoReuniaoSalvando ? 'Vinculando…' : 'Vincular'}
                         </button>
                       </div>
                     </div>
@@ -4168,6 +4189,7 @@ export function ImplementacaoDetalhe() {
                       className="btn btn-secondary btn-auto"
                       onClick={() => {
                         setVinculandoAtaId(ata.id);
+                        setErroVinculoReuniao(null);
                         const tipoSugerido = (
                           [...TIPOS_REUNIAO_ESTRUTURADOS, ...TIPOS_REUNIAO_AD_HOC] as string[]
                         ).includes(ata.tipo_reuniao ?? '')
