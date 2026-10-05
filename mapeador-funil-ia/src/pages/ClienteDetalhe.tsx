@@ -1596,7 +1596,7 @@ export function ClienteDetalhe() {
             )}
             {implementacao && (
               <Link to={`/implementacoes/${implementacao.id}`} className="btn btn-secondary btn-auto">
-                Ver Indicadores de Adoção
+                Ver indicadores
               </Link>
             )}
           </section>
