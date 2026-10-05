@@ -248,13 +248,18 @@ img.brand-mark {
   flex: 1;
   width: 100%;
   max-width: 1760px;
-  margin: 0 auto;
+  /* Antes de ter sidebar, "margin: 0 auto" centrava a página — com a
+     sidebar fixa à esquerda, isso faz o conteúdo flutuar centralizado
+     no espaço restante em telas bem largas, abrindo um vão vazio logo
+     ao lado da sidebar (seção 1). Sem auto-centro, o conteúdo começa
+     colado no gutter e só sobra espaço (se houver) do lado direito. */
+  margin: 0;
   padding: 36px 28px 72px;
 }
 
 /* ── Sidebar ── */
 .sidebar {
-  width: 248px;
+  width: 230px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -263,7 +268,7 @@ img.brand-mark {
   height: 100vh;
   position: sticky;
   top: 0;
-  transition: width 0.15s ease;
+  transition: width 0.12s ease;
 }
 
 .sidebar-collapsed {
@@ -312,15 +317,14 @@ img.brand-mark {
 
 .sidebar-collapsed .sidebar-logo-nome,
 .sidebar-collapsed .sidebar-group-titulo,
-.sidebar-collapsed .sidebar-link-label,
-.sidebar-collapsed .sidebar-collapse-toggle-label {
+.sidebar-collapsed .sidebar-link-label {
   display: none;
 }
 
 .sidebar-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 14px 10px;
+  padding: 14px 8px;
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -345,8 +349,8 @@ img.brand-mark {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 10px;
+  gap: 10px;
+  padding: 9px 8px;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   text-decoration: none;
@@ -428,33 +432,82 @@ img.brand-mark {
   opacity: 1;
 }
 
+/* Botão de recolher/expandir — só ícone (seção 6). Fica dentro da
+   própria sidebar (cantos arredondados discretos, sem borda de campo de
+   formulário) e sempre tem tooltip, expandida ou recolhida, já que não
+   sobra mais nenhum texto visível ao lado do ícone em nenhum dos dois
+   estados. */
 .sidebar-collapse-toggle {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin: 10px;
-  padding: 9px;
+  width: 32px;
+  height: 32px;
+  margin: 10px auto;
+  padding: 0;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border);
+  border: none;
   background: transparent;
   color: var(--color-text-muted);
-  font-size: 12.5px;
-  font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.sidebar-collapse-toggle:hover {
+.sidebar:not(.sidebar-collapsed) .sidebar-collapse-toggle {
+  margin: 10px 10px 10px auto;
+}
+
+.sidebar-collapse-toggle:hover,
+.sidebar-collapse-toggle:focus-visible {
   color: var(--color-text);
   background: var(--color-surface-raised);
 }
 
+.sidebar-collapse-toggle:focus-visible {
+  outline: 2px solid var(--color-info);
+  outline-offset: 1px;
+}
+
 .sidebar-collapse-toggle svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
+}
+
+/* Tooltip próprio deste botão (classe isolada — não compartilha
+   ".sidebar-tooltip" com os itens de navegação de propósito: este
+   precisa aparecer nos dois estados da sidebar, não só quando
+   recolhida, e fica acima do botão em vez de ao lado). */
+.sidebar-collapse-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+  z-index: 20;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.sidebar-collapsed .sidebar-collapse-tooltip {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.sidebar-collapse-toggle:hover .sidebar-collapse-tooltip,
+.sidebar-collapse-toggle:focus-visible .sidebar-collapse-tooltip {
+  opacity: 1;
 }
 
 /* ── Breadcrumbs ── */
@@ -497,6 +550,23 @@ img.brand-mark {
 }
 
 /* ── Menu do usuário ── */
+/* ── Avatar (header, menu do usuário, lista de Consultores) ── */
+.avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
 .user-menu {
   position: relative;
 }
@@ -504,22 +574,26 @@ img.brand-mark {
 .user-menu-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: transparent;
   border: none;
   cursor: pointer;
   color: var(--color-text);
-  padding: 6px 4px;
+  padding: 4px 6px 4px 4px;
   border-radius: var(--radius-sm);
 }
 
-.user-menu-trigger:hover {
+.user-menu-trigger:hover,
+.user-menu-trigger:focus-visible {
   background: var(--color-surface-raised);
 }
 
-.user-menu-email {
-  font-size: 13px;
-  max-width: 180px;
+/* Seção 11: nome curto no header, nunca o e-mail inteiro — o e-mail
+   completo só aparece dentro do painel do menu. */
+.user-menu-nome {
+  font-size: 13.5px;
+  font-weight: 600;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -536,7 +610,7 @@ img.brand-mark {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  min-width: 200px;
+  min-width: 240px;
   background: var(--color-surface-raised);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
@@ -545,14 +619,49 @@ img.brand-mark {
   overflow: hidden;
 }
 
-.user-menu-panel-email {
-  padding: 10px 14px;
-  font-size: 12.5px;
-  color: var(--color-text-muted);
+.user-menu-panel-identidade {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--color-border);
+}
+
+.user-menu-panel-identidade-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.user-menu-panel-nome {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.user-menu-panel-email {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-panel-papel {
+  font-size: 11px;
+  color: var(--color-placeholder);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.user-menu-panel-foto-acoes {
+  border-bottom: 1px solid var(--color-border);
+  padding: 4px 0;
 }
 
 .user-menu-panel-item {
@@ -569,6 +678,16 @@ img.brand-mark {
 
 .user-menu-panel-item:hover {
   background: var(--color-border);
+}
+
+.user-menu-panel-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.user-menu-panel-item-sair {
+  color: var(--color-danger);
+  padding-top: 10px;
 }
 
 /* Sidebar: desktop fixo (expandida ou recolhida) até 900px; abaixo disso
@@ -2414,7 +2533,10 @@ img.auth-logo {
     gap: 8px;
   }
 
-  .user-menu-email {
+  /* Seção 35: no mobile o header mostra só o avatar, compacto — nome
+     completo/e-mail ficam dentro do painel do menu ao tocar. */
+  .user-menu-nome,
+  .user-menu-chevron {
     display: none;
   }
 
