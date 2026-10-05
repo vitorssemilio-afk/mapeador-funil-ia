@@ -79,11 +79,10 @@ export function Sidebar({
           type="button"
           className="sidebar-collapse-toggle"
           onClick={onAlternarColapso}
-          title={colapsada ? 'Expandir menu' : 'Recolher menu'}
           aria-label={colapsada ? 'Expandir menu' : 'Recolher menu'}
         >
           {colapsada ? <IconChevronRight /> : <IconChevronLeft />}
-          <span className="sidebar-collapse-toggle-label">Recolher</span>
+          <span className="sidebar-collapse-tooltip">{colapsada ? 'Expandir menu' : 'Recolher menu'}</span>
         </button>
       </aside>
     </>

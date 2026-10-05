@@ -1,14 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Avatar } from '../components/Avatar';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
+import { PAPEL_LABELS } from '../lib/consultores';
 import { supabase } from '../lib/supabaseClient';
 import type { Consultor, PapelConsultor } from '../types/database';
-
-const PAPEL_LABELS: Record<PapelConsultor, string> = {
-  administrador: 'Administrador',
-  consultor: 'Consultor',
-  consultor_apoio: 'Consultor de apoio',
-};
 
 type FormConsultor = {
   nome: string;
@@ -301,15 +297,7 @@ export function Consultores() {
               {consultores.map((c) => (
                 <tr key={c.id} className={c.ativo ? undefined : 'checklist-grupo-travado'}>
                   <td>
-                    {c.avatar_url ? (
-                      <img
-                        src={c.avatar_url}
-                        alt=""
-                        style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
-                      />
-                    ) : (
-                      '—'
-                    )}
+                    <Avatar nome={c.nome} avatarUrl={c.avatar_url} size={32} />
                   </td>
                   <td>{c.nome}</td>
                   <td>{c.email}</td>
