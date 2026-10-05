@@ -20,6 +20,8 @@ import {
   STATUS_DIAGNOSTICO_TONE,
 } from '../lib/diagnosticoAdocao';
 import type {
+  AtaAcaoIdentificada,
+  AtaReuniao,
   AtividadeCronograma,
   AtividadeStatusRow,
   CategoriaOcorrencia,
@@ -41,6 +43,7 @@ import type {
   ReuniaoRemarcacao,
   Reuniao,
   StatusOcorrencia,
+  TipoReuniao,
 } from '../types/database';
 
 // Só esses dois marcos têm a ação dedicada de "Remarcar" — os únicos com par
@@ -321,6 +324,8 @@ export function ClienteDetalhe() {
   const [ocorrencias, setOcorrencias] = useState<ClienteOcorrencia[]>([]);
   const [formOcorrencia, setFormOcorrencia] = useState<FormOcorrencia | null>(null);
   const [salvandoOcorrencia, setSalvandoOcorrencia] = useState(false);
+  const [atasIntegracao, setAtasIntegracao] = useState<AtaReuniao[]>([]);
+  const [acoesAtaIntegracao, setAcoesAtaIntegracao] = useState<AtaAcaoIdentificada[]>([]);
   const [resolvendoOcorrenciaId, setResolvendoOcorrenciaId] = useState<string | null>(null);
 
   // Aba ativa da central operacional — puramente de navegação/exibição,
@@ -367,6 +372,7 @@ export function ClienteDetalhe() {
       { data: pipefyConfigData },
       { data: configGlobalData },
       { data: snapshotData },
+      { data: atasData },
     ] = await Promise.all([
       supabase.from('clientes').select('*').eq('id', clienteId).single(),
       supabase
@@ -421,6 +427,7 @@ export function ClienteDetalhe() {
       supabase.from('configuracoes_pipefy').select('*').eq('id', true).maybeSingle(),
       supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
       supabase.from('implementacao_settings_snapshot').select('*').eq('cliente_id', clienteId).maybeSingle(),
+      supabase.from('atas_reuniao').select('*').eq('cliente_id', clienteId).order('recebido_em', { ascending: false }),
     ]);
 
     if (clienteError || !clienteData) {
@@ -445,6 +452,18 @@ export function ClienteDetalhe() {
     setPipefyConfig(pipefyConfigData ?? null);
     setConfigGlobal(configGlobalData ?? null);
     setSnapshot(snapshotData ?? null);
+    setAtasIntegracao(atasData ?? []);
+
+    const idsAtas = (atasData ?? []).map((a) => a.id);
+    if (idsAtas.length > 0) {
+      const { data: acoesAtaData } = await supabase
+        .from('ata_acoes_identificadas')
+        .select('*')
+        .in('ata_id', idsAtas);
+      setAcoesAtaIntegracao(acoesAtaData ?? []);
+    } else {
+      setAcoesAtaIntegracao([]);
+    }
 
     // P2-A3: remarcações de reunião (Kickoff/Treinamento/Check-in 1/Check-in
     // 2/Reunião final) vivem em reuniao_remarcacoes desde a migration 0041 —
@@ -1166,6 +1185,31 @@ export function ClienteDetalhe() {
       });
     }
 
+    // Integração com o App de Atas (MVP, seção 25) — só os eventos
+    // relevantes em grosso (ata recebida, N pendências criadas), nunca um
+    // evento por detalhe da ata.
+    for (const ata of atasIntegracao) {
+      if (ata.status === 'vinculada' || ata.status === 'processada') {
+        itens.push({
+          data: new Date(ata.recebido_em),
+          tipo: `Ata recebida — ${TIPO_REUNIAO_LABELS[ata.tipo_reuniao as TipoReuniao] ?? ata.titulo ?? 'reunião'}`,
+          descricao: ata.resumo ?? '',
+          usuario: null,
+        });
+      }
+      const acoesConvertidas = acoesAtaIntegracao.filter(
+        (a) => a.ata_id === ata.id && a.status === 'convertida_pendencia',
+      );
+      if (acoesConvertidas.length > 0) {
+        itens.push({
+          data: new Date(acoesConvertidas[acoesConvertidas.length - 1].updated_at),
+          tipo: `${acoesConvertidas.length} pendência(s) criada(s) a partir da ata`,
+          descricao: TIPO_REUNIAO_LABELS[ata.tipo_reuniao as TipoReuniao] ?? ata.titulo ?? '',
+          usuario: null,
+        });
+      }
+    }
+
     return itens.sort((a, b) => b.data.getTime() - a.data.getTime());
   }, [
     cliente,
@@ -1174,6 +1218,8 @@ export function ClienteDetalhe() {
     atividadesAutomacao,
     statusAutomacao,
     reunioes,
+    atasIntegracao,
+    acoesAtaIntegracao,
     ocorrencias,
     historicoConsultor,
     consultores,

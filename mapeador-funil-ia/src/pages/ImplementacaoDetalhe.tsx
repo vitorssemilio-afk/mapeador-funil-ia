@@ -19,6 +19,14 @@ import {
   type AtividadeResolvida,
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import {
+  fonteAtaLabel,
+  RESPONSAVEL_TIPO_ACAO_LABELS,
+  STATUS_ACAO_ATA_LABELS,
+  STATUS_ACAO_ATA_TONE,
+  STATUS_ATA_LABELS,
+  STATUS_ATA_TONE,
+} from '../lib/atasIntegracao';
 import { CONFIGURACAO_PADRAO, resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import {
   resolverResumoCriteriosEntrega,
@@ -64,6 +72,8 @@ import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { PX_POR_DIA, calcularEscala, diaParaPx, fasesImplementacao, tempoAteReuniao } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
 import type {
+  AtaAcaoIdentificada,
+  AtaReuniao,
   AtividadeCronograma,
   AtividadeStatusRow,
   CheckpointAcompanhamento,
@@ -90,6 +100,7 @@ import type {
   ImpactoResponsavel,
   ImplementacaoConsultorHistorico,
   MarcoRemarcacao,
+  ResponsavelTipoAcaoAta,
   Reuniao,
   ReuniaoRemarcacao,
   StatusContratacaoKommo,
@@ -318,6 +329,29 @@ export function ImplementacaoDetalhe() {
   const [remarcacoes, setRemarcacoes] = useState<MarcoRemarcacao[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [reuniaoRemarcacoes, setReuniaoRemarcacoes] = useState<ReuniaoRemarcacao[]>([]);
+  // Integração com o App de Atas (MVP) — atas do cliente (vinculadas ou
+  // ainda aguardando vínculo) e as ações identificadas nelas.
+  const [atasIntegracao, setAtasIntegracao] = useState<AtaReuniao[]>([]);
+  const [acoesAtaIntegracao, setAcoesAtaIntegracao] = useState<AtaAcaoIdentificada[]>([]);
+  const [formPendenciaDeAcao, setFormPendenciaDeAcao] = useState<{
+    acao: AtaAcaoIdentificada;
+    ata: AtaReuniao;
+    titulo: string;
+    descricao: string;
+    tipo: ResponsavelTipoAcaoAta;
+    consultor_responsavel_id: string;
+    prazo: string;
+  } | null>(null);
+  const [salvandoPendenciaDeAcao, setSalvandoPendenciaDeAcao] = useState(false);
+  const [vinculandoAtaId, setVinculandoAtaId] = useState<string | null>(null);
+  const [reuniaoParaVinculo, setReuniaoParaVinculo] = useState('');
+  const [formImportarAta, setFormImportarAta] = useState<{
+    reuniao_id: string;
+    titulo: string;
+    resumo: string;
+    conteudo_original: string;
+  } | null>(null);
+  const [importandoAta, setImportandoAta] = useState(false);
   const [editandoReuniaoTipo, setEditandoReuniaoTipo] = useState<TipoReuniao | null>(null);
   const [editandoReuniaoId, setEditandoReuniaoId] = useState<string | null>(null);
   const [formReuniao, setFormReuniao] = useState<FormReuniao | null>(null);
@@ -755,6 +789,30 @@ export function ImplementacaoDetalhe() {
       setRemarcacoes([]);
       setReunioes([]);
       setReuniaoRemarcacoes([]);
+    }
+
+    if (clienteData) {
+      const { data: atasData } = await supabase
+        .from('atas_reuniao')
+        .select('*')
+        .eq('cliente_id', clienteData.id)
+        .order('recebido_em', { ascending: false });
+      setAtasIntegracao(atasData ?? []);
+
+      const idsAtas = (atasData ?? []).map((a) => a.id);
+      if (idsAtas.length > 0) {
+        const { data: acoesData } = await supabase
+          .from('ata_acoes_identificadas')
+          .select('*')
+          .in('ata_id', idsAtas)
+          .order('ordem', { ascending: true });
+        setAcoesAtaIntegracao(acoesData ?? []);
+      } else {
+        setAcoesAtaIntegracao([]);
+      }
+    } else {
+      setAtasIntegracao([]);
+      setAcoesAtaIntegracao([]);
     }
 
     const idsMapeamentos = [implData.mapeamento_id, ...(posVendaData ?? []).map((m) => m.id)];
@@ -1681,6 +1739,358 @@ export function ImplementacaoDetalhe() {
           </button>
         </div>
       </form>
+    );
+  }
+
+  // ============================================================
+  // Integração com o App de Atas (MVP) — a ata chega pronta (ou é
+  // importada manualmente), o Mapeador só vincula e permite transformar
+  // ação em pendência real. NUNCA cria pendência sozinho.
+  // ============================================================
+  function acoesDaAta(ataId: string): AtaAcaoIdentificada[] {
+    return acoesAtaIntegracao.filter((a) => a.ata_id === ataId);
+  }
+
+  function abrirFormPendenciaDeAcao(acao: AtaAcaoIdentificada, ata: AtaReuniao) {
+    const tipoSugerido: ResponsavelTipoAcaoAta = acao.responsavel_tipo ?? 'interna';
+    const consultorSugerido = acao.responsavel_nome
+      ? consultores.find((c) => c.nome.toLowerCase().includes(acao.responsavel_nome!.toLowerCase()))?.id ?? ''
+      : '';
+    setFormPendenciaDeAcao({
+      acao,
+      ata,
+      titulo: acao.titulo,
+      descricao: acao.descricao ?? '',
+      tipo: tipoSugerido,
+      consultor_responsavel_id: tipoSugerido === 'interna' ? consultorSugerido : '',
+      prazo: acao.prazo_sugerido ?? '',
+    });
+  }
+
+  // Seção 42 — antes de criar, verifica se já existe uma ação da MESMA
+  // reunião já convertida em pendência com título parecido. Não bloqueia;
+  // só avisa antes de confirmar.
+  function possivelDuplicidade(acao: AtaAcaoIdentificada, ata: AtaReuniao): boolean {
+    if (!ata.reuniao_id) return false;
+    const atasDaMesmaReuniao = atasIntegracao.filter((a) => a.reuniao_id === ata.reuniao_id).map((a) => a.id);
+    return acoesAtaIntegracao.some(
+      (outra) =>
+        outra.id !== acao.id &&
+        atasDaMesmaReuniao.includes(outra.ata_id) &&
+        outra.status === 'convertida_pendencia' &&
+        outra.titulo.trim().toLowerCase() === acao.titulo.trim().toLowerCase(),
+    );
+  }
+
+  async function criarPendenciaDeAcao(
+    acao: AtaAcaoIdentificada,
+    ata: AtaReuniao,
+    dados: { titulo: string; descricao: string; tipo: ResponsavelTipoAcaoAta; consultor_responsavel_id: string; prazo: string },
+  ): Promise<boolean> {
+    if (!cliente) return false;
+
+    const { data: pendenciaData, error: pendenciaError } = await supabase
+      .from('cliente_ocorrencias')
+      .insert({
+        cliente_id: cliente.id,
+        categoria: dados.tipo === 'cliente' ? 'pendencia_cliente' : 'outro',
+        descricao: dados.descricao.trim() ? `${dados.titulo} — ${dados.descricao.trim()}` : dados.titulo,
+        responsavel_impacto: dados.tipo === 'cliente' ? 'cliente' : 'consultor',
+        data_ocorrencia: new Date().toISOString().slice(0, 10),
+        impacta_cronograma: false,
+        status: 'aberta',
+        consultor_responsavel_id: dados.consultor_responsavel_id || null,
+        prazo: dados.prazo || null,
+        ata_id: ata.id,
+        ata_acao_id: acao.id,
+      })
+      .select()
+      .single();
+
+    if (pendenciaError) {
+      setError(pendenciaError.message);
+      return false;
+    }
+
+    const { error: updateError } = await supabase
+      .from('ata_acoes_identificadas')
+      .update({ status: 'convertida_pendencia', pendencia_id: pendenciaData.id })
+      .eq('id', acao.id);
+
+    if (updateError) {
+      setError(updateError.message);
+      return false;
+    }
+
+    await supabase.rpc('registrar_auditoria', {
+      p_acao: 'pendencia_criada_de_ata',
+      p_entidade: 'ata_integracao',
+      p_entidade_id: acao.id,
+      p_cliente_id: cliente.id,
+      p_implementacao_id: implementacao?.id ?? null,
+      p_detalhes: { ata_id: ata.id, pendencia_id: pendenciaData.id },
+    });
+    await supabase.rpc('resolver_notificacao_ata_revisao', { p_ata_id: ata.id });
+
+    return true;
+  }
+
+  async function handleSalvarPendenciaDeAcao(e: FormEvent) {
+    e.preventDefault();
+    if (!formPendenciaDeAcao) return;
+    const { acao, ata, ...dados } = formPendenciaDeAcao;
+
+    if (possivelDuplicidade(acao, ata)) {
+      const confirmado = await confirmarAcao({
+        titulo: 'Possível duplicidade',
+        descricao:
+          'Já existe uma ação desta mesma reunião convertida em pendência com um título parecido. Quer criar mesmo assim?',
+        confirmarLabel: 'Criar mesmo assim',
+      });
+      if (!confirmado) return;
+    }
+
+    setSalvandoPendenciaDeAcao(true);
+    const ok = await criarPendenciaDeAcao(acao, ata, dados);
+    setSalvandoPendenciaDeAcao(false);
+
+    if (ok) {
+      mostrarToast('Pendência criada a partir da ata.');
+      setFormPendenciaDeAcao(null);
+      if (implementacao) await carregar(implementacao.id);
+    }
+  }
+
+  async function handleDescartarAcaoAta(acao: AtaAcaoIdentificada, ata: AtaReuniao) {
+    const confirmado = await confirmarAcao({
+      titulo: `Descartar a ação "${acao.titulo}"?`,
+      descricao: 'Ela não vai mais aparecer como pendente de revisão. Isso não cria nem remove nenhuma pendência.',
+      confirmarLabel: 'Descartar',
+    });
+    if (!confirmado) return;
+
+    const motivo = window.prompt('Motivo (opcional): já concluída, observação, duplicada, não aplicável…') ?? '';
+
+    const { error: rpcError } = await supabase.rpc('descartar_acao_ata', {
+      p_acao_id: acao.id,
+      p_motivo: motivo.trim() || null,
+    });
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    await supabase.rpc('resolver_notificacao_ata_revisao', { p_ata_id: ata.id });
+    mostrarToast('Ação descartada.');
+    if (implementacao) await carregar(implementacao.id);
+  }
+
+  // Seção 20 — "Criar todas": sem formulário individual por item, usa os
+  // dados já sugeridos (tipo/consultor/prazo) direto; o consultor que
+  // quiser ajustar algo antes de criar usa o botão individual.
+  async function handleCriarTodasPendenciasDaAta(ata: AtaReuniao, selecionadas: AtaAcaoIdentificada[]) {
+    if (selecionadas.length === 0) return;
+    const confirmado = await confirmarAcao({
+      titulo: `Confirmar ${selecionadas.length} pendência(s)?`,
+      descricao: 'Cada ação marcada vira uma pendência rastreável, com os dados sugeridos pela ata.',
+      confirmarLabel: `Confirmar ${selecionadas.length}`,
+    });
+    if (!confirmado) return;
+
+    setSalvandoPendenciaDeAcao(true);
+    for (const acao of selecionadas) {
+      const tipo: ResponsavelTipoAcaoAta = acao.responsavel_tipo ?? 'interna';
+      const consultorId = acao.responsavel_nome
+        ? consultores.find((c) => c.nome.toLowerCase().includes(acao.responsavel_nome!.toLowerCase()))?.id ?? ''
+        : '';
+      await criarPendenciaDeAcao(acao, ata, {
+        titulo: acao.titulo,
+        descricao: acao.descricao ?? '',
+        tipo,
+        consultor_responsavel_id: tipo === 'interna' ? consultorId : '',
+        prazo: acao.prazo_sugerido ?? '',
+      });
+    }
+    setSalvandoPendenciaDeAcao(false);
+    mostrarToast(`${selecionadas.length} pendência(s) criada(s).`);
+    if (implementacao) await carregar(implementacao.id);
+  }
+
+  async function handleVincularAtaManualmente(ata: AtaReuniao) {
+    if (!reuniaoParaVinculo) return;
+    const { error: rpcError } = await supabase.rpc('vincular_ata_manualmente', {
+      p_ata_id: ata.id,
+      p_cliente_id: cliente?.id ?? null,
+      p_implementacao_id: implementacao?.id ?? null,
+      p_reuniao_id: reuniaoParaVinculo,
+    });
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    mostrarToast('Ata vinculada.');
+    setVinculandoAtaId(null);
+    setReuniaoParaVinculo('');
+    if (implementacao) await carregar(implementacao.id);
+  }
+
+  // Seção 37 — fallback manual: serve tanto pra quando o webhook falhar
+  // quanto pra reunião que aconteceu fora do fluxo automático.
+  async function handleImportarAtaManual(e: FormEvent) {
+    e.preventDefault();
+    if (!formImportarAta || !cliente) return;
+
+    setImportandoAta(true);
+    const { error: rpcError } = await supabase.rpc('importar_ata_manual', {
+      p_cliente_id: cliente.id,
+      p_implementacao_id: implementacao?.id ?? null,
+      p_reuniao_id: formImportarAta.reuniao_id || null,
+      p_titulo: formImportarAta.titulo.trim() || null,
+      p_conteudo_original: formImportarAta.conteudo_original.trim() || null,
+      p_resumo: formImportarAta.resumo.trim() || null,
+    });
+    setImportandoAta(false);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      return;
+    }
+
+    mostrarToast('Ata importada.');
+    setFormImportarAta(null);
+    if (implementacao) await carregar(implementacao.id);
+  }
+
+  // Seção 14/39 — seção "Ata" dentro do card da reunião: estado vazio
+  // ("Aguardando ata"), ata recebida com resumo/decisões, e as ações
+  // aguardando revisão (seção 15/16/20/21/22). Cada reunião pode, em tese,
+  // ter mais de uma versão de ata (seção 13) — mostra sempre a mais recente
+  // (atasIntegracao já vem ordenada por recebido_em desc).
+  function renderAtaDaReuniao(reuniao: Reuniao) {
+    const ata = atasIntegracao.find((a) => a.reuniao_id === reuniao.id);
+    if (!ata) {
+      return (
+        <p className="field-hint">
+          <strong>Ata (integração):</strong> Aguardando ata.
+        </p>
+      );
+    }
+
+    const acoes = acoesDaAta(ata.id);
+    const pendentes = acoes.filter((a) => a.status === 'pendente_revisao');
+    const selecionaveis = pendentes;
+
+    return (
+      <div className="card" style={{ background: 'var(--color-surface-raised)' }}>
+        <div className="page-header-actions page-header-actions-split">
+          <h3 style={{ marginBottom: 0 }}>Ata</h3>
+          <span className={`status-badge status-tone-${STATUS_ATA_TONE[ata.status]}`}>
+            {STATUS_ATA_LABELS[ata.status]}
+          </span>
+        </div>
+        <p className="field-hint">{fonteAtaLabel(ata.integration_source)}</p>
+
+        {ata.status === 'vinculada' && reuniao.status !== 'realizada' && (
+          <p className="form-error">
+            Ata recebida, mas esta reunião ainda não está marcada como realizada.{' '}
+            <button type="button" className="btn btn-ghost btn-auto" onClick={() => abrirFormReuniao(reuniao.tipo, reuniao)}>
+              Revisar reunião
+            </button>
+          </p>
+        )}
+
+        {ata.resumo && <p className="field-hint">{ata.resumo}</p>}
+
+        {ata.decisoes.length > 0 && (
+          <>
+            <p>
+              <strong>Decisões</strong>
+            </p>
+            <ul className="observacoes-lista">
+              {ata.decisoes.map((d, i) => (
+                <li key={i} className="observacao-item">
+                  <strong>{d.titulo ?? 'Decisão'}</strong>
+                  {d.descricao && <p className="field-hint">{d.descricao}</p>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {acoes.length > 0 && (
+          <>
+            <div className="page-header-actions page-header-actions-split">
+              <p style={{ margin: 0 }}>
+                <strong>Ações identificadas</strong> ({pendentes.length} aguardando revisão)
+              </p>
+              {selecionaveis.length > 1 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-auto"
+                  disabled={salvandoPendenciaDeAcao}
+                  onClick={() => handleCriarTodasPendenciasDaAta(ata, selecionaveis)}
+                >
+                  Criar todas ({selecionaveis.length})
+                </button>
+              )}
+            </div>
+            <ul className="observacoes-lista">
+              {acoes.map((acao) => (
+                <li key={acao.id} className="observacao-item">
+                  <div className="observacao-item-header">
+                    <span className="observacao-item-meta">
+                      <span className={`status-badge status-tone-${STATUS_ACAO_ATA_TONE[acao.status]}`}>
+                        {STATUS_ACAO_ATA_LABELS[acao.status]}
+                      </span>{' '}
+                      <strong style={{ color: 'var(--color-text)' }}>{acao.titulo}</strong>
+                    </span>
+                    {acao.status === 'pendente_revisao' && (
+                      <span>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-auto"
+                          onClick={() => abrirFormPendenciaDeAcao(acao, ata)}
+                        >
+                          Criar pendência
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-auto"
+                          onClick={() => handleDescartarAcaoAta(acao, ata)}
+                        >
+                          Não virar pendência
+                        </button>
+                      </span>
+                    )}
+                    {acao.status === 'convertida_pendencia' && acao.pendencia_id && cliente && (
+                      <Link to={`/clientes/${cliente.id}`} className="btn btn-ghost btn-auto">
+                        Ver pendência
+                      </Link>
+                    )}
+                  </div>
+                  {acao.descricao && <p className="field-hint">{acao.descricao}</p>}
+                  <p className="field-hint">
+                    {acao.responsavel_nome ? `Responsável sugerido: ${acao.responsavel_nome}` : 'Responsável não definido'}
+                    {acao.prazo_sugerido ? ` · Prazo sugerido: ${new Date(`${acao.prazo_sugerido}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {ata.conteudo_original && (
+          <details>
+            <summary className="field-hint">Conteúdo original</summary>
+            <p className="field-hint" style={{ whiteSpace: 'pre-wrap' }}>
+              {ata.conteudo_original}
+            </p>
+          </details>
+        )}
+      </div>
     );
   }
 
@@ -3508,6 +3918,76 @@ export function ImplementacaoDetalhe() {
           </section>
         ) : (
           <>
+            <section className="card form-card">
+              <div className="page-header-actions page-header-actions-split">
+                <h2 style={{ marginBottom: 0 }}>Atas</h2>
+                {!formImportarAta && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-auto"
+                    onClick={() => setFormImportarAta({ reuniao_id: '', titulo: '', resumo: '', conteudo_original: '' })}
+                  >
+                    Importar ata
+                  </button>
+                )}
+              </div>
+              <p className="field-hint">
+                Atas chegam automaticamente do App de Atas. Use "Importar ata" se o webhook falhar ou a reunião tiver
+                acontecido fora do fluxo normal.
+              </p>
+              {formImportarAta && (
+                <form onSubmit={handleImportarAtaManual} className="card form-card">
+                  <label className="field">
+                    <span>Reunião (opcional)</span>
+                    <select
+                      value={formImportarAta.reuniao_id}
+                      onChange={(e) => setFormImportarAta({ ...formImportarAta, reuniao_id: e.target.value })}
+                    >
+                      <option value="">Sem reunião específica</option>
+                      {reunioes.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {TIPO_REUNIAO_LABELS[r.tipo]}
+                          {r.data_hora ? ` — ${formatarDataHoraLocal(r.data_hora)}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Título</span>
+                    <input
+                      type="text"
+                      value={formImportarAta.titulo}
+                      onChange={(e) => setFormImportarAta({ ...formImportarAta, titulo: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Resumo</span>
+                    <textarea
+                      rows={3}
+                      value={formImportarAta.resumo}
+                      onChange={(e) => setFormImportarAta({ ...formImportarAta, resumo: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>Conteúdo original (colar texto)</span>
+                    <textarea
+                      rows={6}
+                      value={formImportarAta.conteudo_original}
+                      onChange={(e) => setFormImportarAta({ ...formImportarAta, conteudo_original: e.target.value })}
+                    />
+                  </label>
+                  <div className="wizard-actions">
+                    <button type="button" className="btn btn-secondary" onClick={() => setFormImportarAta(null)} disabled={importandoAta}>
+                      Cancelar
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={importandoAta}>
+                      {importandoAta ? 'Importando…' : 'Importar'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </section>
+
             {alertasReunioes.length > 0 && (
               <section className="card form-card">
                 {alertasReunioes.map((alerta) => (
@@ -3517,6 +3997,58 @@ export function ImplementacaoDetalhe() {
                 ))}
               </section>
             )}
+
+            {atasIntegracao
+              .filter((a) => a.status === 'requer_revisao' || a.status === 'erro_vinculo')
+              .map((ata) => (
+                <section key={ata.id} className="card form-card">
+                  <p className="form-error">
+                    Esta ata precisa ser vinculada a uma reunião.
+                    {ata.erro_mensagem ? ` (${ata.erro_mensagem})` : ''}
+                  </p>
+                  {ata.resumo && <p className="field-hint">{ata.resumo}</p>}
+                  {vinculandoAtaId === ata.id ? (
+                    <div className="form-grid">
+                      <label className="field">
+                        <span>Vincular à reunião</span>
+                        <select value={reuniaoParaVinculo} onChange={(e) => setReuniaoParaVinculo(e.target.value)}>
+                          <option value="">Selecione</option>
+                          {reunioes.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {TIPO_REUNIAO_LABELS[r.tipo]}
+                              {r.data_hora ? ` — ${formatarDataHoraLocal(r.data_hora)}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="wizard-actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => {
+                            setVinculandoAtaId(null);
+                            setReuniaoParaVinculo('');
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={!reuniaoParaVinculo}
+                          onClick={() => handleVincularAtaManualmente(ata)}
+                        >
+                          Vincular
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn btn-secondary btn-auto" onClick={() => setVinculandoAtaId(ata.id)}>
+                      Vincular manualmente
+                    </button>
+                  )}
+                </section>
+              ))}
 
             {TIPOS_REUNIAO_ESTRUTURADOS.map((tipo) => {
               const reuniao = reunioes.find((r) => r.tipo === tipo) ?? null;
@@ -3636,6 +4168,7 @@ export function ImplementacaoDetalhe() {
                           Remarcar
                         </button>
                       )}
+                      {renderAtaDaReuniao(reuniao)}
                     </>
                   ) : (
                     <p className="field-hint">Ainda não agendada.</p>
@@ -3720,6 +4253,7 @@ export function ImplementacaoDetalhe() {
                               </button>
                             )}
                             {remarcandoReuniaoId === r.id && renderFormRemarcacaoReuniao()}
+                            {renderAtaDaReuniao(r)}
                             {remarcacoesDaReuniao.length > 0 && (
                               <p className="field-hint">
                                 Histórico de remarcação:{' '}
@@ -3743,6 +4277,95 @@ export function ImplementacaoDetalhe() {
             })}
           </>
         ))}
+
+      {formPendenciaDeAcao && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Criar pendência a partir da ata">
+          <form onSubmit={handleSalvarPendenciaDeAcao} className="card modal-card">
+            <h2>Criar pendência</h2>
+            <p className="field-hint">
+              Origem: {TIPO_REUNIAO_LABELS[formPendenciaDeAcao.ata.tipo_reuniao as TipoReuniao] ?? formPendenciaDeAcao.ata.titulo ?? 'Ata'}
+            </p>
+            <label className="field">
+              <span>Título</span>
+              <input
+                type="text"
+                required
+                value={formPendenciaDeAcao.titulo}
+                onChange={(e) => setFormPendenciaDeAcao({ ...formPendenciaDeAcao, titulo: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Descrição</span>
+              <textarea
+                rows={2}
+                value={formPendenciaDeAcao.descricao}
+                onChange={(e) => setFormPendenciaDeAcao({ ...formPendenciaDeAcao, descricao: e.target.value })}
+              />
+            </label>
+            <label className="field">
+              <span>Tipo</span>
+              <select
+                value={formPendenciaDeAcao.tipo}
+                onChange={(e) =>
+                  setFormPendenciaDeAcao({ ...formPendenciaDeAcao, tipo: e.target.value as ResponsavelTipoAcaoAta })
+                }
+              >
+                {Object.entries(RESPONSAVEL_TIPO_ACAO_LABELS).map(([valor, rotulo]) => (
+                  <option key={valor} value={valor}>
+                    {rotulo}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {formPendenciaDeAcao.tipo === 'interna' && (
+              <label className="field">
+                <span>Responsável</span>
+                <select
+                  value={formPendenciaDeAcao.consultor_responsavel_id}
+                  onChange={(e) =>
+                    setFormPendenciaDeAcao({ ...formPendenciaDeAcao, consultor_responsavel_id: e.target.value })
+                  }
+                >
+                  <option value="">
+                    {formPendenciaDeAcao.acao.responsavel_nome
+                      ? `Sugestão da ata: ${formPendenciaDeAcao.acao.responsavel_nome} (selecione o consultor)`
+                      : 'Sem responsável'}
+                  </option>
+                  {consultores.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {formPendenciaDeAcao.tipo === 'cliente' && formPendenciaDeAcao.acao.responsavel_nome && (
+              <p className="field-hint">Responsável sugerido pela ata: {formPendenciaDeAcao.acao.responsavel_nome}</p>
+            )}
+            <label className="field">
+              <span>Prazo</span>
+              <input
+                type="date"
+                value={formPendenciaDeAcao.prazo}
+                onChange={(e) => setFormPendenciaDeAcao({ ...formPendenciaDeAcao, prazo: e.target.value })}
+              />
+            </label>
+            <div className="wizard-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setFormPendenciaDeAcao(null)}
+                disabled={salvandoPendenciaDeAcao}
+              >
+                Cancelar
+              </button>
+              <button type="submit" className="btn btn-primary" disabled={salvandoPendenciaDeAcao}>
+                {salvandoPendenciaDeAcao ? 'Criando…' : 'Criar pendência'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {aba === 'template' && implementacao && (
         <>

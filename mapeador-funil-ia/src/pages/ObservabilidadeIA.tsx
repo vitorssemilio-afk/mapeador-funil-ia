@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import type { IaOperacao, IaOperacaoStatus, IaOperacaoTipo } from '../types/database';
+import type { AtaIntegracaoLog, IaOperacao, IaOperacaoStatus, IaOperacaoTipo } from '../types/database';
 
 const TIPO_LABELS: Record<IaOperacaoTipo, string> = {
   gerar_funil: 'Gerar funil',
@@ -51,6 +51,9 @@ export function ObservabilidadeIA() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filtroStatus, setFiltroStatus] = useState<'todas' | 'falhas'>('falhas');
+  const [aba, setAba] = useState<'ia' | 'atas'>('ia');
+  const [logsAtas, setLogsAtas] = useState<AtaIntegracaoLog[]>([]);
+  const [filtroLogsAtas, setFiltroLogsAtas] = useState<'todas' | 'falhas'>('falhas');
 
   useEffect(() => {
     supabase.rpc('sou_administrador').then(({ data }) => setSouAdministrador(data === true));
@@ -100,6 +103,25 @@ export function ObservabilidadeIA() {
     carregar();
   }, [filtroStatus]);
 
+  useEffect(() => {
+    if (aba !== 'atas') return;
+    async function carregarLogsAtas() {
+      let query = supabase
+        .from('atas_integracao_log')
+        .select('*')
+        .order('criado_em', { ascending: false })
+        .limit(100);
+
+      if (filtroLogsAtas === 'falhas') {
+        query = query.eq('sucesso', false);
+      }
+
+      const { data } = await query;
+      setLogsAtas((data ?? []) as AtaIntegracaoLog[]);
+    }
+    carregarLogsAtas();
+  }, [aba, filtroLogsAtas]);
+
   if (souAdministrador === false) {
     return (
       <div className="page">
@@ -120,59 +142,132 @@ export function ObservabilidadeIA() {
         </div>
       </div>
 
-      <div className="notification-filtros-rapidos">
-        <button
-          type="button"
-          className={`filtro-chip${filtroStatus === 'falhas' ? ' filtro-chip-ativo' : ''}`}
-          onClick={() => setFiltroStatus('falhas')}
-        >
-          Só falhas
+      <div className="tabs">
+        <button type="button" className={`tab-button${aba === 'ia' ? ' active' : ''}`} onClick={() => setAba('ia')}>
+          IA
         </button>
-        <button
-          type="button"
-          className={`filtro-chip${filtroStatus === 'todas' ? ' filtro-chip-ativo' : ''}`}
-          onClick={() => setFiltroStatus('todas')}
-        >
-          Todas (últimas 100)
+        <button type="button" className={`tab-button${aba === 'atas' ? ' active' : ''}`} onClick={() => setAba('atas')}>
+          Integração de Atas
         </button>
       </div>
 
-      {error && <p className="form-error">{error}</p>}
-      {loading ? (
-        <p className="field-hint">Carregando…</p>
-      ) : operacoes.length === 0 ? (
-        <p className="field-hint">Nenhuma operação encontrada.</p>
-      ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Operação</th>
-              <th>Cliente</th>
-              <th>Data</th>
-              <th>Status</th>
-              <th>Tentativa</th>
-              <th>Duração</th>
-              <th>Erro</th>
-            </tr>
-          </thead>
-          <tbody>
-            {operacoes.map((op) => (
-              <tr key={op.id}>
-                <td>{TIPO_LABELS[op.tipo_operacao]}</td>
-                <td>{op.cliente_id ? nomesClientes[op.cliente_id] ?? '—' : '—'}</td>
-                <td>{formatarData(op.created_at)}</td>
-                <td>
-                  <span className={`status-badge status-tone-${STATUS_TONE[op.status]}`}>
-                    {STATUS_LABELS[op.status]}
-                  </span>
-                </td>
-                <td>{op.tentativa}</td>
-                <td>{formatarDuracao(op.duracao_ms)}</td>
-                <td>{op.erro_mensagem_amigavel ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {aba === 'ia' && (
+        <>
+          <div className="notification-filtros-rapidos">
+            <button
+              type="button"
+              className={`filtro-chip${filtroStatus === 'falhas' ? ' filtro-chip-ativo' : ''}`}
+              onClick={() => setFiltroStatus('falhas')}
+            >
+              Só falhas
+            </button>
+            <button
+              type="button"
+              className={`filtro-chip${filtroStatus === 'todas' ? ' filtro-chip-ativo' : ''}`}
+              onClick={() => setFiltroStatus('todas')}
+            >
+              Todas (últimas 100)
+            </button>
+          </div>
+
+          {error && <p className="form-error">{error}</p>}
+          {loading ? (
+            <p className="field-hint">Carregando…</p>
+          ) : operacoes.length === 0 ? (
+            <p className="field-hint">Nenhuma operação encontrada.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Operação</th>
+                  <th>Cliente</th>
+                  <th>Data</th>
+                  <th>Status</th>
+                  <th>Tentativa</th>
+                  <th>Duração</th>
+                  <th>Erro</th>
+                </tr>
+              </thead>
+              <tbody>
+                {operacoes.map((op) => (
+                  <tr key={op.id}>
+                    <td>{TIPO_LABELS[op.tipo_operacao]}</td>
+                    <td>{op.cliente_id ? nomesClientes[op.cliente_id] ?? '—' : '—'}</td>
+                    <td>{formatarData(op.created_at)}</td>
+                    <td>
+                      <span className={`status-badge status-tone-${STATUS_TONE[op.status]}`}>
+                        {STATUS_LABELS[op.status]}
+                      </span>
+                    </td>
+                    <td>{op.tentativa}</td>
+                    <td>{formatarDuracao(op.duracao_ms)}</td>
+                    <td>{op.erro_mensagem_amigavel ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+
+      {aba === 'atas' && (
+        <>
+          <p className="field-hint">
+            Cada tentativa de receber uma ata do App de Atas (sucesso, erro, reenvio) fica registrada aqui — pra
+            nenhuma falha de integração ficar invisível.
+          </p>
+          <div className="notification-filtros-rapidos">
+            <button
+              type="button"
+              className={`filtro-chip${filtroLogsAtas === 'falhas' ? ' filtro-chip-ativo' : ''}`}
+              onClick={() => setFiltroLogsAtas('falhas')}
+            >
+              Só falhas
+            </button>
+            <button
+              type="button"
+              className={`filtro-chip${filtroLogsAtas === 'todas' ? ' filtro-chip-ativo' : ''}`}
+              onClick={() => setFiltroLogsAtas('todas')}
+            >
+              Todas (últimas 100)
+            </button>
+          </div>
+
+          {logsAtas.length === 0 ? (
+            <p className="field-hint">Nenhum evento encontrado.</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Evento</th>
+                  <th>Origem</th>
+                  <th>External minute id</th>
+                  <th>Tentativa</th>
+                  <th>Resultado</th>
+                  <th>Erro</th>
+                </tr>
+              </thead>
+              <tbody>
+                {logsAtas.map((log) => (
+                  <tr key={log.id}>
+                    <td>{formatarData(log.criado_em)}</td>
+                    <td>{log.evento}</td>
+                    <td>{log.integration_source}</td>
+                    <td>{log.external_minute_id ?? '—'}</td>
+                    <td>{log.tentativa}</td>
+                    <td>
+                      <span className={`status-badge status-tone-${log.sucesso ? 'success' : 'danger'}`}>
+                        {log.sucesso ? 'Sucesso' : 'Falha'}
+                      </span>
+                    </td>
+                    <td>{log.mensagem_erro ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
       )}
     </div>
   );
