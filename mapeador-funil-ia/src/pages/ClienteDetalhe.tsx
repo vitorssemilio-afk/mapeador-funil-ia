@@ -242,7 +242,7 @@ type ItemHistorico = {
 
 const CICLOS_AUTOMACAO = ['Ciclo 2 — Automações I e Check-in 1', 'Ciclo 3 — Automações II e Check-in 2'];
 
-type AbaCliente =
+export type AbaCliente =
   | 'resumo'
   | 'mapeamento'
   | 'implementacao'

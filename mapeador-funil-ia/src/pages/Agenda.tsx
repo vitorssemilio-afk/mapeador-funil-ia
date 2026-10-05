@@ -248,7 +248,7 @@ export function Agenda() {
           if (lista.length === 0) return null;
 
           return (
-            <section key={bucket} className="card form-card">
+            <section key={bucket} id={bucket} className="card form-card">
               <h2>
                 {BUCKET_AGENDA_LABELS[bucket]}
                 <span className="field-hint"> ({lista.length})</span>
