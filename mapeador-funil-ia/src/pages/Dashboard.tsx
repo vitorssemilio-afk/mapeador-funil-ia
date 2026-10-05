@@ -49,6 +49,8 @@ import type {
 const MAX_ATENCAO_VISIVEL = 5;
 const MAX_CARTEIRA_VISIVEL = 9;
 const MAX_PROXIMOS_COMPROMISSOS = 3;
+const MAX_GRUPOS_DECISAO_VISIVEL = 5;
+const MAX_ITENS_PREVIEW_GRUPO_DECISAO = 3;
 
 const PESO_SAUDE: Record<SaudeCliente, number> = {
   critico: 0,
@@ -159,6 +161,16 @@ type ItemDecisao = {
   motivo: string;
   acaoLabel: string;
   to: string;
+  // Só pra ordenar (seção 3) — reaproveita sinais já existentes (erro de
+  // vínculo da ata, ocorrência que impacta o cronograma) em vez de inventar
+  // uma escala de severidade nova. 0 = mais urgente.
+  prioridade: number;
+};
+
+type GrupoDecisao = {
+  clienteId: string;
+  clienteNome: string;
+  itens: ItemDecisao[];
 };
 
 // Formato da linha de ata_acoes_identificadas quando embeda atas_reuniao
@@ -189,6 +201,8 @@ export function Dashboard() {
   const [souAdministrador, setSouAdministrador] = useState(false);
 
   const [mostrarTodaAtencao, setMostrarTodaAtencao] = useState(false);
+  const [mostrarTodasDecisoes, setMostrarTodasDecisoes] = useState(false);
+  const [gruposDecisaoExpandidos, setGruposDecisaoExpandidos] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -529,6 +543,9 @@ export function Dashboard() {
         to: ata.implementacao_id
           ? `/implementacoes/${ata.implementacao_id}?aba=reunioes`
           : `/clientes/${cliente.id}?aba=reunioes`,
+        // erro_vinculo é uma falha (tentativa automática já falhou) —
+        // mais urgente que requer_revisao (só falta uma escolha manual).
+        prioridade: ata.status === 'erro_vinculo' ? 0 : 1,
       });
     }
 
@@ -554,6 +571,7 @@ export function Dashboard() {
         to: info.implementacaoId
           ? `/implementacoes/${info.implementacaoId}?aba=reunioes`
           : `/clientes/${clienteId}?aba=reunioes`,
+        prioridade: 1,
       });
     }
 
@@ -568,6 +586,7 @@ export function Dashboard() {
         motivo: `Funil com ${MAPEAMENTO_STATUS_LABELS[mapa.status].toLowerCase()} pelo cliente`,
         acaoLabel: 'Revisar funil',
         to: `/mapeamento/${mapa.id}`,
+        prioridade: 1,
       });
     }
 
@@ -587,6 +606,7 @@ export function Dashboard() {
         motivo: 'Relatório de entrega final gerado, aguardando revisão antes de apresentar',
         acaoLabel: 'Revisar entrega',
         to: `/implementacoes/${relatorio.implementacao_id}/entrega`,
+        prioridade: 1,
       });
     }
 
@@ -604,11 +624,38 @@ export function Dashboard() {
         motivo: `Pendência sem responsável: ${ocorrencia.descricao}`,
         acaoLabel: 'Definir responsável',
         to: `/clientes/${cliente.id}?aba=resumo`,
+        // impacta_cronograma já é o mesmo sinal que construirAlertas usa
+        // pra marcar uma ocorrência como crítica — reaproveitado aqui.
+        prioridade: ocorrencia.impacta_cronograma ? 0 : 1,
       });
     }
 
-    return itens;
+    return itens.sort((a, b) => a.prioridade - b.prioridade);
   }, [atasPendentes, acoesPendentesComAta, mapeamentos, relatoriosEntrega, aceitePorImplementacao, ocorrenciasAbertas, clientes]);
+
+  // Agrupa por cliente (seção 1) — como itensDecisao já vem ordenado por
+  // prioridade, o Map preserva a ordem de primeira aparição de cada
+  // cliente, então os grupos saem ordenados pelo item mais urgente deles.
+  const gruposDecisao = useMemo(() => {
+    const mapa = new Map<string, GrupoDecisao>();
+    for (const item of itensDecisao) {
+      const atual = mapa.get(item.clienteId);
+      if (atual) atual.itens.push(item);
+      else mapa.set(item.clienteId, { clienteId: item.clienteId, clienteNome: item.clienteNome, itens: [item] });
+    }
+    return Array.from(mapa.values());
+  }, [itensDecisao]);
+
+  const gruposDecisaoVisiveis = mostrarTodasDecisoes ? gruposDecisao : gruposDecisao.slice(0, MAX_GRUPOS_DECISAO_VISIVEL);
+
+  function alternarGrupoDecisaoExpandido(clienteId: string) {
+    setGruposDecisaoExpandidos((prev) => {
+      const copia = new Set(prev);
+      if (copia.has(clienteId)) copia.delete(clienteId);
+      else copia.add(clienteId);
+      return copia;
+    });
+  }
 
   const kpis = useMemo(
     () => ({
@@ -722,16 +769,55 @@ export function Dashboard() {
                     <span className="ops-section-count">{itensDecisao.length}</span>
                   </div>
                   <ul className="ops-decision-list">
-                    {itensDecisao.map((d) => (
-                      <li key={d.id} className="ops-decision-item">
-                        <Link to={`/clientes/${d.clienteId}`}>{d.clienteNome}</Link>
-                        <p className="field-hint">{d.motivo}</p>
-                        <Link to={d.to} className="btn btn-secondary btn-auto">
-                          {d.acaoLabel}
-                        </Link>
-                      </li>
-                    ))}
+                    {gruposDecisaoVisiveis.map((grupo) =>
+                      grupo.itens.length === 1 ? (
+                        <li key={grupo.clienteId} className="ops-decision-item">
+                          <Link to={`/clientes/${grupo.clienteId}`}>{grupo.clienteNome}</Link>
+                          <p className="field-hint">{grupo.itens[0].motivo}</p>
+                          <Link to={grupo.itens[0].to} className="btn btn-secondary btn-auto">
+                            {grupo.itens[0].acaoLabel}
+                          </Link>
+                        </li>
+                      ) : (
+                        <li key={grupo.clienteId} className="ops-decision-item ops-decision-group">
+                          <Link to={`/clientes/${grupo.clienteId}`}>{grupo.clienteNome}</Link>
+                          <p className="field-hint">{grupo.itens.length} decisões pendentes</p>
+                          {gruposDecisaoExpandidos.has(grupo.clienteId) ? (
+                            <ul className="ops-decision-sublist">
+                              {grupo.itens.map((item) => (
+                                <li key={item.id}>
+                                  <p className="field-hint">{item.motivo}</p>
+                                  <Link to={item.to} className="btn btn-secondary btn-auto">
+                                    {item.acaoLabel}
+                                  </Link>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <ul className="ops-decision-preview">
+                              {grupo.itens.slice(0, MAX_ITENS_PREVIEW_GRUPO_DECISAO).map((item) => (
+                                <li key={item.id}>{item.motivo}</li>
+                              ))}
+                            </ul>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-auto"
+                            onClick={() => alternarGrupoDecisaoExpandido(grupo.clienteId)}
+                          >
+                            {gruposDecisaoExpandidos.has(grupo.clienteId)
+                              ? 'Recolher'
+                              : `Revisar ${grupo.itens.length} pendências`}
+                          </button>
+                        </li>
+                      ),
+                    )}
                   </ul>
+                  {!mostrarTodasDecisoes && gruposDecisao.length > MAX_GRUPOS_DECISAO_VISIVEL && (
+                    <button type="button" className="btn btn-ghost btn-auto" onClick={() => setMostrarTodasDecisoes(true)}>
+                      Ver todas as {itensDecisao.length} decisões
+                    </button>
+                  )}
                 </section>
               )}
 
@@ -960,7 +1046,7 @@ function LinhaCarteira({
         )}
       </td>
       <td data-label="Próxima ação">
-        <Link to={acao.to} onClick={(e) => e.stopPropagation()}>
+        <Link to={acao.to} className="ops-link-acao" onClick={(e) => e.stopPropagation()}>
           {acao.label}
         </Link>
       </td>
