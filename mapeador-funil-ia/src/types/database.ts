@@ -115,6 +115,11 @@ export type ClienteOcorrencia = {
   // migration 0065.
   consultor_responsavel_id: string | null;
   prazo: string | null;
+  // Integração com o App de Atas (migration 0080) — presentes só quando a
+  // pendência nasceu de uma ação identificada numa ata; nulos pra toda
+  // pendência criada do jeito normal.
+  ata_id: string | null;
+  ata_acao_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -839,6 +844,85 @@ export type EntregaRessalva = {
   created_at: string;
 };
 
+// ============================================================
+// Integração com o App de Atas (MVP, migration 0080) — o App de Atas
+// continua sendo dono de gerar/processar a ata; o Mapeador só recebe (via
+// Edge Function webhook-atas), vincula a cliente/implementação/reunião e
+// permite transformar ações identificadas em pendências rastreáveis
+// (nunca automaticamente — sempre com revisão humana). Ver
+// src/lib/atasIntegracao.ts.
+// ============================================================
+export type StatusAtaReuniao = 'recebida' | 'processada' | 'requer_revisao' | 'vinculada' | 'erro_vinculo' | 'falhou';
+export type VinculoAtaTipo = 'automatico_id' | 'automatico_sugerido' | 'manual';
+
+export type ParticipanteAta = {
+  nome?: string;
+  papel?: string;
+};
+
+export type DecisaoAta = {
+  titulo?: string;
+  descricao?: string;
+};
+
+export type AtaReuniao = {
+  id: string;
+  external_minute_id: string | null;
+  integration_source: string;
+  versao: number;
+  cliente_id: string | null;
+  implementacao_id: string | null;
+  reuniao_id: string | null;
+  tipo_reuniao: string | null;
+  titulo: string | null;
+  data_reuniao: string | null;
+  status: StatusAtaReuniao;
+  vinculo_tipo: VinculoAtaTipo | null;
+  participantes: ParticipanteAta[];
+  resumo: string | null;
+  decisoes: DecisaoAta[];
+  conteudo_original: string | null;
+  conteudo_hash: string | null;
+  gerada_em: string | null;
+  erro_mensagem: string | null;
+  recebido_em: string;
+  processado_em: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ResponsavelTipoAcaoAta = 'cliente' | 'interna';
+export type StatusAcaoAta = 'pendente_revisao' | 'convertida_pendencia' | 'descartada';
+
+export type AtaAcaoIdentificada = {
+  id: string;
+  ata_id: string;
+  titulo: string;
+  descricao: string | null;
+  responsavel_nome: string | null;
+  responsavel_tipo: ResponsavelTipoAcaoAta | null;
+  prazo_sugerido: string | null;
+  status: StatusAcaoAta;
+  motivo_descarte: string | null;
+  pendencia_id: string | null;
+  ordem: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AtaIntegracaoLog = {
+  id: string;
+  external_minute_id: string | null;
+  integration_source: string;
+  ata_id: string | null;
+  evento: string;
+  sucesso: boolean;
+  mensagem_erro: string | null;
+  detalhes: Record<string, unknown>;
+  tentativa: number;
+  criado_em: string;
+};
+
 // Auditoria genérica (migration 0050) — usada pelo histórico de templates
 // de implementação e por ações sensíveis (credenciais, exclusões, etc.).
 export type AuditoriaEvento = {
@@ -1479,6 +1563,24 @@ export type Database = {
         Update: Partial<EntregaRessalva>;
         Relationships: [];
       };
+      atas_reuniao: {
+        Row: AtaReuniao;
+        Insert: Partial<AtaReuniao>;
+        Update: Partial<AtaReuniao>;
+        Relationships: [];
+      };
+      ata_acoes_identificadas: {
+        Row: AtaAcaoIdentificada;
+        Insert: Partial<AtaAcaoIdentificada> & Pick<AtaAcaoIdentificada, 'ata_id' | 'titulo'>;
+        Update: Partial<AtaAcaoIdentificada>;
+        Relationships: [];
+      };
+      atas_integracao_log: {
+        Row: AtaIntegracaoLog;
+        Insert: Partial<AtaIntegracaoLog> & Pick<AtaIntegracaoLog, 'evento' | 'sucesso'>;
+        Update: Partial<AtaIntegracaoLog>;
+        Relationships: [];
+      };
       auditoria_eventos: {
         Row: AuditoriaEvento;
         Insert: Partial<AuditoriaEvento> & Pick<AuditoriaEvento, 'acao' | 'entidade'>;
@@ -1833,6 +1935,34 @@ export type Database = {
           p_detalhes?: Record<string, unknown>;
         };
         Returns: string;
+      };
+      vincular_ata_manualmente: {
+        Args: {
+          p_ata_id: string;
+          p_cliente_id: string | null;
+          p_implementacao_id: string | null;
+          p_reuniao_id: string | null;
+        };
+        Returns: AtaReuniao;
+      };
+      importar_ata_manual: {
+        Args: {
+          p_cliente_id: string | null;
+          p_implementacao_id: string | null;
+          p_reuniao_id: string | null;
+          p_titulo: string | null;
+          p_conteudo_original: string | null;
+          p_resumo: string | null;
+        };
+        Returns: AtaReuniao;
+      };
+      descartar_acao_ata: {
+        Args: { p_acao_id: string; p_motivo: string | null };
+        Returns: AtaAcaoIdentificada;
+      };
+      resolver_notificacao_ata_revisao: {
+        Args: { p_ata_id: string };
+        Returns: undefined;
       };
       transferir_consultor_responsavel_implementacao: {
         Args: {

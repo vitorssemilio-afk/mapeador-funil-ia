@@ -426,7 +426,7 @@ export function construirAgendaOperacional(params: {
   reunioes?: Reuniao[];
   hoje: Date;
   // Área de Configurações: regras vigentes por cliente — default
-  // CONFIGURACAO_PADRAO (40 dias/4 ciclos/Trial 14+14+7 hardcoded) pra quem
+  // CONFIGURACAO_PADRAO (40 dias/4 ciclos/Trial 14+7+14 hardcoded) pra quem
   // não tiver snapshot nem config global resolvida ainda.
   configuracoesPorCliente?: Map<string, ConfiguracaoResolvida>;
 }): ItemAgendaOperacional[] {

@@ -376,11 +376,11 @@ export function Configuracoes() {
       setError('Trial inicial precisa ser um número inteiro positivo.');
       return;
     }
-    if (!Number.isInteger(ext14) || ext14 <= 0) {
+    if (!Number.isInteger(ext7) || ext7 <= 0) {
       setError('A primeira extensão precisa ser um número inteiro positivo.');
       return;
     }
-    if (!Number.isInteger(ext7) || ext7 <= 0) {
+    if (!Number.isInteger(ext14) || ext14 <= 0) {
       setError('A segunda extensão precisa ser um número inteiro positivo.');
       return;
     }
@@ -910,20 +910,26 @@ export function Configuracoes() {
             <input
               type="number"
               min={1}
-              value={formTrial.trial_extensao_14_dias}
+              value={formTrial.trial_extensao_7_dias}
               disabled={!souAdministrador}
-              onChange={(e) => setFormTrial({ ...formTrial, trial_extensao_14_dias: e.target.value })}
+              onChange={(e) => setFormTrial({ ...formTrial, trial_extensao_7_dias: e.target.value })}
             />
+            <span className="field-hint">
+              Campo guardado internamente como "extensão de 7 dias" — nomeado pela duração padrão, não pela ordem.
+            </span>
           </label>
           <label className="field">
             <span>Segunda extensão (dias)</span>
             <input
               type="number"
               min={1}
-              value={formTrial.trial_extensao_7_dias}
+              value={formTrial.trial_extensao_14_dias}
               disabled={!souAdministrador}
-              onChange={(e) => setFormTrial({ ...formTrial, trial_extensao_7_dias: e.target.value })}
+              onChange={(e) => setFormTrial({ ...formTrial, trial_extensao_14_dias: e.target.value })}
             />
+            <span className="field-hint">
+              Campo guardado internamente como "extensão de 14 dias" — nomeado pela duração padrão, não pela ordem.
+            </span>
           </label>
           <label className="field">
             <span>Alertas (dias antes do vencimento, separados por vírgula)</span>
