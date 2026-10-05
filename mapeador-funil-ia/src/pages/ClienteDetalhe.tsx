@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabaseClient';
 import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marcosCliente';
 import { funilValidado } from '../lib/statusFluxo';
 import { CICLOS_OPERACIONAIS, calcularDiaCiclo, IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
+import { CATEGORIAS_PENDENCIA_CLIENTE } from '../lib/agendaOperacional';
 import { resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
 import { construirResumoClientes, nomeConsultor, prazoLabelDe, SAUDE_LABELS, SAUDE_TONE } from '../lib/operacaoResumo';
@@ -1300,6 +1301,22 @@ export function ClienteDetalhe() {
 
   const ocorrenciasAbertas = useMemo(() => ocorrencias.filter((o) => o.status === 'aberta'), [ocorrencias]);
 
+  // P2-M5: "pendência do cliente" é uma categoria específica (ver
+  // CATEGORIAS_PENDENCIA_CLIENTE em lib/agendaOperacional.ts) — o resto das
+  // ocorrências abertas (cancelamento, remarcação, problema técnico etc.)
+  // é incidente/registro, não uma pendência de ninguém em especial. Os
+  // cards "Pendências abertas" e "Ocorrências abertas" mostravam a mesma
+  // lista inteira duplicada; agora cada um mostra seu próprio subconjunto.
+  const pendenciasClienteAbertas = useMemo(
+    () => ocorrenciasAbertas.filter((o) => CATEGORIAS_PENDENCIA_CLIENTE.includes(o.categoria)),
+    [ocorrenciasAbertas],
+  );
+
+  const outrasOcorrenciasAbertas = useMemo(
+    () => ocorrenciasAbertas.filter((o) => !CATEGORIAS_PENDENCIA_CLIENTE.includes(o.categoria)),
+    [ocorrenciasAbertas],
+  );
+
   const riscosAbertos = useMemo(
     () => ocorrenciasAbertas.filter((o) => o.impacta_cronograma),
     [ocorrenciasAbertas],
@@ -1612,10 +1629,10 @@ export function ClienteDetalhe() {
 
           <section className="card">
             <span className="etapa-card-label">Pendências abertas</span>
-            <p>{ocorrenciasAbertas.length} ocorrência(s) aberta(s)</p>
-            {ocorrenciasAbertas.length > 0 && (
+            <p>{pendenciasClienteAbertas.length} pendência(s) do cliente</p>
+            {pendenciasClienteAbertas.length > 0 && (
               <ul className="observacoes-lista">
-                {ocorrenciasAbertas.map((o) => (
+                {pendenciasClienteAbertas.map((o) => (
                   <li key={o.id} className="field-hint">
                     {o.descricao}
                   </li>
@@ -1641,11 +1658,11 @@ export function ClienteDetalhe() {
 
           <section className="card">
             <span className="etapa-card-label">Ocorrências abertas</span>
-            {ocorrenciasAbertas.length === 0 ? (
+            {outrasOcorrenciasAbertas.length === 0 ? (
               <p className="field-hint">Nenhuma ocorrência aberta.</p>
             ) : (
               <ul className="observacoes-lista">
-                {ocorrenciasAbertas.map((o) => (
+                {outrasOcorrenciasAbertas.map((o) => (
                   <li key={o.id} className="field-hint">
                     {CATEGORIA_OCORRENCIA_LABELS[o.categoria]} — {o.descricao}
                   </li>
