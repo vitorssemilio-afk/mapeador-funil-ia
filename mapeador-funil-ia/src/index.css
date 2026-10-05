@@ -241,7 +241,7 @@ img.brand-mark {
 .app-main {
   flex: 1;
   width: 100%;
-  max-width: 1600px;
+  max-width: 1760px;
   margin: 0 auto;
   padding: 36px 28px 72px;
 }
@@ -2210,62 +2210,48 @@ img.auth-logo {
   overflow-y: auto;
 }
 
+/* Hierarquia vertical em camadas (seção 7 do redesenho): cliente → status
+   com contexto de prazo → descrição → próxima ação → CTA — em vez da linha
+   horizontal única de antes, que acumulava elementos demais lado a lado. */
 .ops-alert-card {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  flex-direction: column;
+  gap: 4px;
   padding: 12px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
   background: var(--color-surface-raised);
 }
 
-.ops-alert-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: 6px;
-  flex-shrink: 0;
-  background: var(--color-warning);
-}
-
-.ops-alert-critico .ops-alert-dot {
-  background: var(--color-accent);
-}
-
 .ops-alert-critico {
   border-color: rgba(212, 42, 66, 0.35);
 }
 
-.ops-alert-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.ops-alert-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 .ops-alert-cliente {
+  margin: 0;
   font-weight: 700;
   font-size: 14px;
 }
 
-.ops-alert-prazo {
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--color-warning);
-  white-space: nowrap;
+.ops-alert-status-linha {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
 }
 
-.ops-alert-critico .ops-alert-prazo {
+.ops-severity-icon {
+  font-size: 11px;
+  color: var(--color-warning);
+}
+
+.ops-alert-critico .ops-severity-icon {
   color: var(--color-accent);
+}
+
+.ops-alert-prazo {
+  color: var(--color-text-muted);
 }
 
 .ops-alert-motivo {
@@ -2280,8 +2266,15 @@ img.auth-logo {
   color: var(--color-text-muted);
 }
 
-.ops-alert-btn {
-  flex-shrink: 0;
+.ops-alert-cta {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+.ops-breakdown-line {
+  margin: -4px 0 2px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
 }
 
 .ops-meetings-empty {
@@ -2453,11 +2446,6 @@ img.auth-logo {
   overflow-y: visible;
 }
 
-.ops-alert-top {
-  flex-wrap: wrap;
-  row-gap: 4px;
-}
-
 .ops-decision-list {
   list-style: none;
   margin: 0;
@@ -2502,6 +2490,60 @@ img.auth-logo {
   margin: 0;
   font-size: 13.5px;
   color: var(--color-text);
+}
+
+/* Agenda rápida (seção 12) — Hoje/Amanhã/Próximos 7 dias/Próximos
+   compromissos consolidados num único card, cada um como um bloco
+   compacto, em vez de 3 cards separados como na versão anterior. */
+.ops-agenda-bloco {
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.ops-agenda-bloco:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.ops-agenda-bloco h3 {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+.ops-compromissos-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ops-compromissos-list li {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  font-size: 13px;
+}
+
+.ops-compromisso-quando {
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.ops-compromisso-tipo {
+  color: var(--color-text);
+}
+
+.ops-compromisso-cliente {
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 /* ── Marcos / linha do tempo (ficha do cliente) ── */

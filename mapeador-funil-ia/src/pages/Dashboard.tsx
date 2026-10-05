@@ -23,9 +23,10 @@ import {
   type ClienteResumo,
   type SaudeCliente,
 } from '../lib/operacaoResumo';
+import { TIPO_REUNIAO_LABELS } from '../lib/reunioes';
+import { MAPEAMENTO_STATUS_LABELS } from '../lib/statusFluxo';
 import { supabase } from '../lib/supabaseClient';
-import { STATUS_TRIAL_LABELS, STATUS_TRIAL_TONE } from '../lib/trialKommo';
-import type { AbaCliente } from './ClienteDetalhe';
+import { STATUS_TRIAL_TONE } from '../lib/trialKommo';
 import type {
   AtaReuniao,
   AtividadeCronograma,
@@ -41,7 +42,9 @@ import type {
   Reuniao,
 } from '../types/database';
 
-const SAUDE_ORDEM: SaudeCliente[] = ['critico', 'atencao', 'aguardando_cliente', 'normal', 'concluido'];
+const MAX_ATENCAO_VISIVEL = 5;
+const MAX_CARTEIRA_VISIVEL = 9;
+const MAX_PROXIMOS_COMPROMISSOS = 3;
 
 const PESO_SAUDE: Record<SaudeCliente, number> = {
   critico: 0,
@@ -51,26 +54,58 @@ const PESO_SAUDE: Record<SaudeCliente, number> = {
   concluido: 4,
 };
 
-const MAX_ATENCAO_VISIVEL = 5;
-const MAX_CARTEIRA_VISIVEL = 9;
-
-type AcaoContextual = { aba: AbaCliente; label: string };
+type AcaoContextual = { to: string; label: string };
 
 // Deriva, do texto já produzido por construirAlertas (nenhuma regra nova —
-// só leitura do motivo), qual aba da ficha do cliente resolve aquele alerta
-// e um rótulo de botão melhor que um genérico "Abrir". Mesmo mecanismo de
-// ?aba= já usado pela Central de Notificações.
-function acaoContextualDoAlerta(alerta: AlertaOperacao): AcaoContextual {
+// só leitura do motivo) e do resumo oficial do cliente, qual destino e
+// rótulo de botão resolvem aquele alerta. Mesmo mecanismo de ?aba= já usado
+// pela Central de Notificações; deep link direto pro mapeamento quando
+// existe (seção 17 — "evitar mandar tudo só pra ficha geral").
+function acaoContextualDoAlerta(alerta: AlertaOperacao, resumo: ClienteResumo | undefined): AcaoContextual {
   const m = alerta.motivo.toLowerCase();
-  if (m.includes('trial kommo')) return { aba: 'trial', label: 'Ver Trial Kommo' };
-  if (m.includes('ocorrência aberta')) return { aba: 'resumo', label: 'Ver pendências' };
-  if (m.includes('reunião')) return { aba: 'reunioes', label: 'Ver reuniões' };
-  if (m.includes('funil de vendas') || m.includes('mapeamento de vendas') || m.includes('formulário de vendas')) {
-    return { aba: 'mapeamento', label: 'Ver mapeamento' };
+  const clienteId = alerta.clienteId;
+
+  if (m.includes('trial kommo')) {
+    return { to: `/clientes/${clienteId}?aba=trial`, label: 'Solicitar extensão' };
   }
-  if (m.includes('pós-venda')) return { aba: 'mapeamento', label: 'Ver pós-venda' };
-  if (m.includes('prazo geral') || m.includes('atividade')) return { aba: 'implementacao', label: 'Ver checklist' };
-  return { aba: 'resumo', label: 'Abrir' };
+  if (m.includes('reunião obrigatória')) {
+    return { to: `/clientes/${clienteId}?aba=reunioes`, label: 'Agendar reunião' };
+  }
+  if (m.includes('ocorrência aberta')) {
+    return {
+      to: `/clientes/${clienteId}?aba=resumo`,
+      label: alerta.severidade === 'critico' ? 'Resolver pendência' : 'Ver pendência',
+    };
+  }
+  if (m.includes('prazo geral') || m.includes('atividade')) {
+    return { to: `/clientes/${clienteId}?aba=implementacao`, label: 'Ver pendências' };
+  }
+  if (
+    m.includes('funil de vendas') ||
+    m.includes('mapeamento de vendas') ||
+    m.includes('formulário de vendas') ||
+    m.includes('pós-venda')
+  ) {
+    const mapeamentoId = m.includes('pós-venda') ? resumo?.posVenda?.id : resumo?.vendas?.id;
+    return {
+      to: mapeamentoId ? `/mapeamento/${mapeamentoId}` : `/clientes/${clienteId}?aba=mapeamento`,
+      label: 'Ver formulário',
+    };
+  }
+  return { to: `/clientes/${clienteId}?aba=resumo`, label: 'Ver detalhes' };
+}
+
+// Contexto de prazo pra cada alerta — evita o caso descrito na seção 11: um
+// prazo geral da implementação (ex: "32d restantes") ao lado de um alerta
+// de reunião não agendada passa a impressão errada de que esses 32 dias são
+// o prazo pra agendar a reunião. Pra esse motivo específico, troca por um
+// dado que já existe (ciclo atual) em vez do prazo geral; os demais alertas
+// continuam usando prazoLabel normalmente (lá ele É a informação certa).
+function contextoPrazoAlerta(alerta: AlertaOperacao, resumo: ClienteResumo | undefined): string | null {
+  if (alerta.motivo.includes('Reunião obrigatória')) {
+    return resumo?.diaCiclo?.ciclo ? `Ciclo atual: ${resumo.diaCiclo.ciclo.nome}` : null;
+  }
+  return alerta.prazoLabel;
 }
 
 function compararPrioridadeCarteira(a: ClienteResumo, b: ClienteResumo): number {
@@ -103,15 +138,14 @@ function contarPorTipo(itens: ItemAgendaOperacional[]): Partial<Record<TipoItemA
   return contagem;
 }
 
-// Rótulos curtos pro resumo de "Amanhã"/"Próximos 7 dias" (spec pede
-// "2 reuniões · 1 pendência vence", não a lista de TIPO_ITEM_AGENDA_LABELS
-// inteira). trial usa "Trial(s) próximo(s)" em vez do rótulo padrão
-// "Trial Kommo" só nesse resumo condensado.
+// Resumo contado por tipo (seção 12: "2 reuniões · 1 pendência vence"), não
+// a lista completa — usado pra Amanhã/Próximos 7 dias dentro da Agenda
+// rápida.
 function resumoContagemPorTipo(itens: ItemAgendaOperacional[]): string[] {
   const contagem = contarPorTipo(itens);
   const partes: string[] = [];
   if (contagem.reuniao) partes.push(`${contagem.reuniao} reunião(ões)`);
-  if (contagem.trial) partes.push(`${contagem.trial} Trial(s) próximo(s)`);
+  if (contagem.trial) partes.push(`${contagem.trial} Trial(s)`);
   const pendencias = (contagem.pendencia_cliente ?? 0) + (contagem.pendencia_interna ?? 0);
   if (pendencias) partes.push(`${pendencias} pendência(s)`);
   if (contagem.tarefa) partes.push(`${contagem.tarefa} atividade(s)`);
@@ -119,12 +153,49 @@ function resumoContagemPorTipo(itens: ItemAgendaOperacional[]): string[] {
   return partes;
 }
 
+// "Nd restantes"/"Nd atrasado" já vem de prazoLabelDe (fonte oficial) — só
+// troca a fraseação dos dois casos mais confundíveis (seção 22), sem
+// recalcular nada.
+function prazoHumanizado(resumo: ClienteResumo): string | null {
+  const label = prazoLabelDe(resumo);
+  if (label === '0d restantes') return 'vence hoje';
+  if (label === '1d restantes') return 'vence amanhã';
+  return label;
+}
+
+function trialHumanizado(diasRestantes: number): string {
+  if (diasRestantes === 0) return 'Expira hoje';
+  if (diasRestantes === 1) return 'Expira amanhã';
+  return `${diasRestantes}d`;
+}
+
+function diaCicloLabel(resumo: ClienteResumo): string {
+  if (!resumo.diaCiclo) return 'Kickoff pendente';
+  return resumo.diaCiclo.ciclo
+    ? `Dia ${resumo.diaCiclo.dia}/${resumo.duracaoTotalDias} · ${resumo.diaCiclo.ciclo.nome}`
+    : `Dia ${resumo.diaCiclo.dia}/${resumo.duracaoTotalDias}`;
+}
+
+function diferencaEmDiasLocal(depois: Date, antes: Date): number {
+  const MS_POR_DIA = 24 * 60 * 60 * 1000;
+  const d = inicioDoDia(depois).getTime() - inicioDoDia(antes).getTime();
+  return Math.round(d / MS_POR_DIA);
+}
+
+function rotuloDiaRelativo(data: Date, hoje: Date): string {
+  const dias = diferencaEmDiasLocal(data, hoje);
+  if (dias === 0) return 'Hoje';
+  if (dias === 1) return 'Amanhã';
+  return data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
 type ItemDecisao = {
   id: string;
   clienteId: string;
   clienteNome: string;
-  implementacaoId: string | null;
   motivo: string;
+  acaoLabel: string;
+  to: string;
 };
 
 // Formato da linha de ata_acoes_identificadas quando embeda atas_reuniao
@@ -150,13 +221,8 @@ export function Dashboard() {
   const [configGlobal, setConfigGlobal] = useState<ConfiguracaoImplementacao | null>(null);
   const [snapshots, setSnapshots] = useState<ImplementacaoSettingsSnapshot[]>([]);
   const [atasPendentes, setAtasPendentes] = useState<AtaReuniao[]>([]);
+  const [souAdministrador, setSouAdministrador] = useState(false);
 
-  const [busca, setBusca] = useState('');
-  const [filtroFase, setFiltroFase] = useState('');
-  const [filtroConsultor, setFiltroConsultor] = useState('');
-  const [filtroSaude, setFiltroSaude] = useState('');
-  const [soAtrasados, setSoAtrasados] = useState(false);
-  const [soMeusClientes, setSoMeusClientes] = useState(false);
   const [mostrarTodaAtencao, setMostrarTodaAtencao] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -196,9 +262,8 @@ export function Dashboard() {
         supabase.from('reunioes').select('*'),
         supabase.from('configuracoes_implementacao').select('*').eq('id', true).maybeSingle(),
         supabase.from('implementacao_settings_snapshot').select('*'),
-        // "Precisa da sua decisão" (seção 11) — mesma tabela/status já usados
-        // na seção "Ata" da implementação (ImplementacaoDetalhe), só filtrados
-        // aqui pra quem exige alguma decisão do consultor.
+        // "Precisa da sua decisão" — mesma tabela/status já usados na seção
+        // "Ata" da implementação (ImplementacaoDetalhe).
         supabase.from('atas_reuniao').select('*').in('status', ['requer_revisao', 'erro_vinculo']),
       ]);
 
@@ -231,10 +296,13 @@ export function Dashboard() {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    supabase.rpc('sou_administrador').then(({ data }) => setSouAdministrador(data === true));
+  }, [user]);
+
   // Configurações (Fase 1): regras vigentes por cliente — snapshot do
-  // Kickoff se já existir, senão a configuração global. Nunca recalcula
-  // implementação em andamento com uma config diferente da que valia
-  // quando o Kickoff dela aconteceu.
+  // Kickoff se já existir, senão a configuração global.
   const configuracoesPorCliente = useMemo(
     () => construirMapaConfiguracoes(clientes.map((c) => c.id), snapshots, configGlobal),
     [clientes, snapshots, configGlobal],
@@ -257,14 +325,44 @@ export function Dashboard() {
     [clientes, mapeamentos, implementacoes, historico, atividades, statusRows, consultores, reunioes, hoje, configuracoesPorCliente],
   );
 
-  // Fonte oficial de "atenção necessária" — mesma usada antes, já vem
-  // ordenada por severidade (crítico primeiro). Nenhuma regra nova aqui.
+  const resumoPorCliente = useMemo(() => {
+    const mapa = new Map<string, ClienteResumo>();
+    for (const r of resumos) mapa.set(r.cliente.id, r);
+    return mapa;
+  }, [resumos]);
+
+  // Fonte oficial de "atenção necessária" — já vem ordenada por severidade
+  // (crítico primeiro). Nenhuma regra nova aqui.
   const alertas = useMemo(
     () => construirAlertas(resumos, hoje, ocorrenciasAbertas),
     [resumos, hoje, ocorrenciasAbertas],
   );
 
   const alertasVisiveis = mostrarTodaAtencao ? alertas : alertas.slice(0, MAX_ATENCAO_VISIVEL);
+
+  // Seção 9 — explica a diferença entre "clientes em risco" (saúde
+  // atencao/critico) e "itens de atenção" (um alerta pode existir mesmo
+  // pra cliente com saúde normal/aguardando, ex: formulário sem resposta).
+  // Só uma leitura cruzada dos dois campos oficiais já existentes.
+  const resumoDaAtencao = useMemo(() => {
+    let criticos = 0;
+    let atencaoComRisco = 0;
+    let pendenciasOperacionais = 0;
+    for (const a of alertas) {
+      if (a.severidade === 'critico') {
+        criticos += 1;
+        continue;
+      }
+      const r = resumoPorCliente.get(a.clienteId);
+      if (r && (r.saude === 'atencao' || r.saude === 'critico')) atencaoComRisco += 1;
+      else pendenciasOperacionais += 1;
+    }
+    const partes: string[] = [];
+    if (criticos) partes.push(`${criticos} crítico`);
+    if (atencaoComRisco) partes.push(`${atencaoComRisco} atenção`);
+    if (pendenciasOperacionais) partes.push(`${pendenciasOperacionais} pendência(s) operacional(is)`);
+    return partes.join(' · ');
+  }, [alertas, resumoPorCliente]);
 
   // P1-A6: mesma fonte de agenda usada na página Agenda — nunca uma segunda
   // regra paralela pra "o que precisa ser feito hoje".
@@ -319,10 +417,17 @@ export function Dashboard() {
   const itensAmanha = itensPorBucket.get('amanha') ?? [];
   const itensProximos7 = itensPorBucket.get('proximos7') ?? [];
 
-  // "Precisa da sua decisão" (seção 11) — atas aguardando vínculo manual
-  // (já filtradas na query) mais atas já vinculadas com ações ainda não
-  // revisadas. Mesmas fontes/estados da seção "Ata" em ImplementacaoDetalhe,
-  // só agregadas aqui por cliente.
+  // Seção 24 — até 3 próximas reuniões já agendadas (fonte: módulo de
+  // Reuniões, igual já era usado antes da versão anterior deste redesenho).
+  const proximasReunioes = useMemo(
+    () =>
+      reunioes
+        .filter((r) => r.status === 'agendada' && r.data_hora && new Date(r.data_hora).getTime() >= hoje.getTime())
+        .sort((a, b) => new Date(a.data_hora!).getTime() - new Date(b.data_hora!).getTime())
+        .slice(0, MAX_PROXIMOS_COMPROMISSOS),
+    [reunioes, hoje],
+  );
+
   const [acoesPendentesComAta, setAcoesPendentesComAta] = useState<AcaoPendenteComAta[]>([]);
 
   useEffect(() => {
@@ -344,6 +449,11 @@ export function Dashboard() {
     };
   }, [user]);
 
+  // "Precisa da sua decisão" (seção 14) — situações que exigem uma decisão
+  // humana, não apenas um alerta automático: atas aguardando vínculo
+  // manual, atas já vinculadas com ações ainda não revisadas, e funis com
+  // ajustes solicitados pelo cliente (aguardando o time revisar). Todos já
+  // são estados oficiais existentes — nenhuma regra nova.
   const itensDecisao = useMemo(() => {
     const itens: ItemDecisao[] = [];
 
@@ -355,8 +465,11 @@ export function Dashboard() {
         id: `vinculo:${ata.id}`,
         clienteId: cliente.id,
         clienteNome: cliente.nome_empresa,
-        implementacaoId: ata.implementacao_id,
-        motivo: `Ata "${ata.titulo ?? 'sem título'}" — ${STATUS_ATA_LABELS[ata.status]}, precisa ser vinculada manualmente`,
+        motivo: `Ata "${ata.titulo ?? 'sem título'}" — ${STATUS_ATA_LABELS[ata.status]}`,
+        acaoLabel: 'Vincular ata',
+        to: ata.implementacao_id
+          ? `/implementacoes/${ata.implementacao_id}?aba=reunioes`
+          : `/clientes/${cliente.id}?aba=reunioes`,
       });
     }
 
@@ -377,27 +490,30 @@ export function Dashboard() {
         id: `revisao:${clienteId}`,
         clienteId,
         clienteNome: cliente.nome_empresa,
-        implementacaoId: info.implementacaoId,
         motivo: `${info.quantidade} ação(ões) de ata aguardando revisão`,
+        acaoLabel: 'Revisar ações',
+        to: info.implementacaoId
+          ? `/implementacoes/${info.implementacaoId}?aba=reunioes`
+          : `/clientes/${clienteId}?aba=reunioes`,
+      });
+    }
+
+    for (const mapa of mapeamentos) {
+      if (mapa.status !== 'ajustes_solicitados' || !mapa.cliente_id) continue;
+      const cliente = clientes.find((c) => c.id === mapa.cliente_id);
+      if (!cliente) continue;
+      itens.push({
+        id: `funil:${mapa.id}`,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome_empresa,
+        motivo: `Funil com ${MAPEAMENTO_STATUS_LABELS[mapa.status].toLowerCase()} pelo cliente`,
+        acaoLabel: 'Revisar funil',
+        to: `/mapeamento/${mapa.id}`,
       });
     }
 
     return itens;
-  }, [atasPendentes, acoesPendentesComAta, clientes]);
-
-  // P2-M9: antes esta seção era um texto fixo dizendo que não havia
-  // integração de agenda, mesmo quando já existiam reuniões cadastradas
-  // manualmente (módulo de Reuniões) — mantido como fonte das próximas
-  // reuniões, agora dentro de "Hoje" (que já inclui reunião como tipo).
-  const consultoresDisponiveis = useMemo(() => {
-    const nomes = new Set(resumos.map((r) => r.consultor).filter((c): c is string => !!c?.trim()));
-    return Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [resumos]);
-
-  const fasesDisponiveis = useMemo(() => {
-    const nomes = new Set(resumos.map((r) => r.faseAtual));
-    return Array.from(nomes).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [resumos]);
+  }, [atasPendentes, acoesPendentesComAta, mapeamentos, clientes]);
 
   const kpis = useMemo(
     () => ({
@@ -409,51 +525,15 @@ export function Dashboard() {
     [resumos, implementacoes, itensHoje],
   );
 
-  const meuEmail = (user?.email ?? '').toLowerCase();
+  const meuConsultor = useMemo(() => consultores.find((c) => c.user_id === user?.id) ?? null, [consultores, user]);
 
-  const meuConsultor = useMemo(
-    () => consultores.find((c) => c.user_id === user?.id) ?? null,
-    [consultores, user],
-  );
-
-  const resumosFiltrados = useMemo(() => {
-    const termo = busca.trim().toLowerCase();
-
-    const filtrados = resumos.filter((r) => {
-      if (termo) {
-        const alvo = `${r.cliente.nome_empresa} ${r.cliente.nome_contato ?? ''} ${r.cliente.segmento ?? ''}`.toLowerCase();
-        if (!alvo.includes(termo)) return false;
-      }
-      if (filtroFase && r.faseAtual !== filtroFase) return false;
-      if (filtroConsultor && r.consultor !== filtroConsultor) return false;
-      if (filtroSaude && r.saude !== filtroSaude) return false;
-      if (soAtrasados && !estaAtrasado(r)) return false;
-      if (soMeusClientes && (r.consultorEmail ?? '').toLowerCase() !== meuEmail) return false;
-      return true;
-    });
-
-    return [...filtrados].sort((a, b) => a.cliente.nome_empresa.localeCompare(b.cliente.nome_empresa, 'pt-BR'));
-  }, [resumos, busca, filtroFase, filtroConsultor, filtroSaude, soAtrasados, soMeusClientes, meuEmail]);
-
-  // "Minha carteira" (seção 14) — os clientes mais relevantes primeiro
-  // (risco → atraso → Trial perto de vencer), não a ordem alfabética da
-  // tabela completa logo abaixo.
+  // "Minha carteira" (seção 18/20) — os clientes mais relevantes primeiro
+  // (risco → atraso → Trial perto de vencer), vista reduzida; a lista
+  // completa com filtros vive em /clientes (seção 19).
   const carteiraResumida = useMemo(
     () => [...resumos].sort(compararPrioridadeCarteira).slice(0, MAX_CARTEIRA_VISIVEL),
     [resumos],
   );
-
-  function limparFiltros() {
-    setBusca('');
-    setFiltroFase('');
-    setFiltroConsultor('');
-    setFiltroSaude('');
-    setSoAtrasados(false);
-    setSoMeusClientes(false);
-  }
-
-  const filtrosAtivos =
-    !!busca || !!filtroFase || !!filtroConsultor || !!filtroSaude || soAtrasados || soMeusClientes;
 
   return (
     <div className="page">
@@ -518,9 +598,10 @@ export function Dashboard() {
                 <p className="ops-empty-hint">Tudo sob controle por enquanto.</p>
               ) : (
                 <>
+                  {resumoDaAtencao && <p className="ops-breakdown-line">{resumoDaAtencao}</p>}
                   <ul className="ops-alert-list ops-alert-list-static">
                     {alertasVisiveis.map((a) => (
-                      <AlertaCard key={`${a.clienteId}-${a.motivo}`} alerta={a} navigate={navigate} />
+                      <AlertaCard key={`${a.clienteId}-${a.motivo}`} alerta={a} resumo={resumoPorCliente.get(a.clienteId)} />
                     ))}
                   </ul>
                   {!mostrarTodaAtencao && alertas.length > MAX_ATENCAO_VISIVEL && (
@@ -544,15 +625,8 @@ export function Dashboard() {
                       <li key={d.id} className="ops-decision-item">
                         <Link to={`/clientes/${d.clienteId}`}>{d.clienteNome}</Link>
                         <p className="field-hint">{d.motivo}</p>
-                        <Link
-                          to={
-                            d.implementacaoId
-                              ? `/implementacoes/${d.implementacaoId}?aba=reunioes`
-                              : `/clientes/${d.clienteId}?aba=reunioes`
-                          }
-                          className="btn btn-secondary btn-auto"
-                        >
-                          Revisar
+                        <Link to={d.to} className="btn btn-secondary btn-auto">
+                          {d.acaoLabel}
                         </Link>
                       </li>
                     ))}
@@ -560,54 +634,72 @@ export function Dashboard() {
                 </section>
               )}
 
-              <section className="ops-section ops-today-section">
+              <section className="ops-section ops-agenda-rapida">
                 <div className="ops-section-head">
-                  <h2>Hoje</h2>
-                  <span className="ops-section-count">{itensHoje.length}</span>
+                  <h2>Agenda rápida</h2>
                 </div>
-                {itensHoje.length === 0 ? (
-                  <p className="ops-empty-hint">Nenhuma ação para hoje.</p>
-                ) : (
-                  <ul className="ops-today-list">
-                    {itensHoje.slice(0, 6).map((item) => (
-                      <li key={item.id}>
-                        <Link to={`/clientes/${item.clienteId}`}>{item.clienteNome}</Link>
-                        <span className="field-hint"> — {TIPO_ITEM_AGENDA_LABELS[item.tipo]}: {item.titulo}</span>
-                        {item.atrasado && <span className="ops-prazo-atrasado"> · atrasado</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {itensHoje.length > 6 && (
-                  <Link to="/agenda#hoje" className="btn btn-ghost btn-auto">
-                    Ver todos na Agenda
-                  </Link>
-                )}
-              </section>
 
-              {itensAmanha.length > 0 && (
-                <section className="ops-section ops-summary-section">
-                  <div className="ops-section-head">
-                    <h2>Amanhã</h2>
-                  </div>
-                  <p className="ops-summary-line">{resumoContagemPorTipo(itensAmanha).join(' · ')}</p>
-                  <Link to="/agenda#amanha" className="btn btn-ghost btn-auto">
-                    Ver na Agenda
-                  </Link>
-                </section>
-              )}
-
-              <section className="ops-section ops-summary-section">
-                <div className="ops-section-head">
-                  <h2>Próximos 7 dias</h2>
+                <div className="ops-agenda-bloco">
+                  <h3>Hoje</h3>
+                  {itensHoje.length === 0 ? (
+                    <p className="ops-empty-hint">Nenhuma ação para hoje.</p>
+                  ) : (
+                    <ul className="ops-today-list">
+                      {itensHoje.slice(0, 5).map((item) => (
+                        <li key={item.id}>
+                          <Link to={`/clientes/${item.clienteId}`}>{item.clienteNome}</Link>
+                          <span className="field-hint"> — {TIPO_ITEM_AGENDA_LABELS[item.tipo]}: {item.titulo}</span>
+                          {item.atrasado && <span className="ops-prazo-atrasado"> · atrasado</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-                {itensProximos7.length === 0 ? (
-                  <p className="ops-empty-hint">Nada previsto por enquanto.</p>
-                ) : (
-                  <p className="ops-summary-line">{resumoContagemPorTipo(itensProximos7).join(' · ')}</p>
-                )}
-                <Link to="/agenda#proximos7" className="btn btn-ghost btn-auto">
-                  Ver na Agenda
+
+                <div className="ops-agenda-bloco">
+                  <h3>Amanhã</h3>
+                  {itensAmanha.length === 0 ? (
+                    <p className="ops-empty-hint">Nada previsto para amanhã.</p>
+                  ) : (
+                    <p className="ops-summary-line">{resumoContagemPorTipo(itensAmanha).join(' · ')}</p>
+                  )}
+                </div>
+
+                <div className="ops-agenda-bloco">
+                  <h3>Próximos 7 dias</h3>
+                  {itensProximos7.length === 0 ? (
+                    <p className="ops-empty-hint">Nada previsto por enquanto.</p>
+                  ) : (
+                    <p className="ops-summary-line">{resumoContagemPorTipo(itensProximos7).join(' · ')}</p>
+                  )}
+                </div>
+
+                <div className="ops-agenda-bloco">
+                  <h3>Próximos compromissos</h3>
+                  {proximasReunioes.length === 0 ? (
+                    <p className="ops-empty-hint">Nada previsto nos próximos dias.</p>
+                  ) : (
+                    <ul className="ops-compromissos-list">
+                      {proximasReunioes.map((r) => {
+                        const cliente = clientes.find((c) => c.id === r.cliente_id);
+                        const data = new Date(r.data_hora!);
+                        return (
+                          <li key={r.id}>
+                            <span className="ops-compromisso-quando">
+                              {rotuloDiaRelativo(data, hoje)} ·{' '}
+                              {data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            <span className="ops-compromisso-tipo">{TIPO_REUNIAO_LABELS[r.tipo]}</span>
+                            <span className="ops-compromisso-cliente">{cliente?.nome_empresa ?? 'Cliente'}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+
+                <Link to="/agenda" className="btn btn-ghost btn-auto">
+                  Ver Agenda
                 </Link>
               </section>
             </aside>
@@ -616,118 +708,32 @@ export function Dashboard() {
           <section className="ops-section">
             <div className="ops-section-head">
               <h2>Minha carteira</h2>
-              <a href="#carteira-completa" className="btn btn-ghost btn-auto">
+              <Link to="/clientes" className="btn btn-ghost btn-auto">
                 Ver todos os clientes
-              </a>
+              </Link>
             </div>
 
             <div className="table-wrap" style={{ overflowX: 'auto' }}>
-              <table className="data-table ops-table">
+              <table className="data-table ops-table data-table-cards-mobile">
                 <thead>
                   <tr>
                     <th>Cliente</th>
-                    <th>Fase atual</th>
                     <th>Saúde</th>
-                    <th>Progresso</th>
+                    <th>Dia/Ciclo</th>
                     <th>Trial</th>
                     <th>Próxima ação</th>
                     <th>Prazo</th>
-                    <th>Consultor</th>
+                    {souAdministrador && <th>Consultor</th>}
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
                   {carteiraResumida.map((r) => (
-                    <LinhaCliente key={r.cliente.id} resumo={r} navigate={navigate} />
+                    <LinhaCarteira key={r.cliente.id} resumo={r} navigate={navigate} mostrarConsultor={souAdministrador} />
                   ))}
                 </tbody>
               </table>
             </div>
-          </section>
-
-          <section className="ops-section" id="carteira-completa">
-            <div className="ops-section-head">
-              <h2>Todos os clientes</h2>
-              <span className="ops-section-count">{resumosFiltrados.length}</span>
-            </div>
-
-            <div className="ops-filters-bar">
-              <input
-                type="text"
-                className="ops-search"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por empresa, contato ou segmento"
-              />
-              <select value={filtroFase} onChange={(e) => setFiltroFase(e.target.value)}>
-                <option value="">Todas as fases</option>
-                {fasesDisponiveis.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-              <select value={filtroConsultor} onChange={(e) => setFiltroConsultor(e.target.value)}>
-                <option value="">Todos os consultores</option>
-                {consultoresDisponiveis.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <select value={filtroSaude} onChange={(e) => setFiltroSaude(e.target.value)}>
-                <option value="">Toda saúde</option>
-                {SAUDE_ORDEM.map((s) => (
-                  <option key={s} value={s}>
-                    {SAUDE_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-              <label className="ops-filter-chip">
-                <input type="checkbox" checked={soAtrasados} onChange={(e) => setSoAtrasados(e.target.checked)} />
-                Só atrasados
-              </label>
-              <label className="ops-filter-chip">
-                <input
-                  type="checkbox"
-                  checked={soMeusClientes}
-                  onChange={(e) => setSoMeusClientes(e.target.checked)}
-                />
-                Meus clientes
-              </label>
-              {filtrosAtivos && (
-                <button type="button" className="btn btn-ghost" onClick={limparFiltros}>
-                  Limpar filtros
-                </button>
-              )}
-            </div>
-
-            {resumosFiltrados.length === 0 ? (
-              <div className="empty-state">
-                <p>Nenhum cliente encontrado com esses filtros.</p>
-              </div>
-            ) : (
-              <div className="table-wrap" style={{ overflowX: 'auto' }}>
-                <table className="data-table ops-table">
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Fase atual</th>
-                      <th>Saúde</th>
-                      <th>Progresso</th>
-                      <th>Trial</th>
-                      <th>Próxima ação</th>
-                      <th>Prazo</th>
-                      <th>Consultor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resumosFiltrados.map((r) => (
-                      <LinhaCliente key={r.cliente.id} resumo={r} navigate={navigate} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </section>
         </>
       )}
@@ -735,56 +741,51 @@ export function Dashboard() {
   );
 }
 
-function AlertaCard({
-  alerta,
-  navigate,
-}: {
-  alerta: AlertaOperacao;
-  navigate: ReturnType<typeof useNavigate>;
-}) {
-  const acao = acaoContextualDoAlerta(alerta);
+function AlertaCard({ alerta, resumo }: { alerta: AlertaOperacao; resumo: ClienteResumo | undefined }) {
+  const acao = acaoContextualDoAlerta(alerta, resumo);
+  const contexto = contextoPrazoAlerta(alerta, resumo);
+  const critico = alerta.severidade === 'critico';
+
   return (
     <li className={`ops-alert-card ops-alert-${alerta.severidade}`}>
-      <span className="ops-alert-dot" aria-hidden="true" />
-      <div className="ops-alert-body">
-        <div className="ops-alert-top">
-          <span className="ops-alert-cliente">{alerta.clienteNome}</span>
-          <span className={`status-badge status-tone-${alerta.severidade === 'critico' ? 'danger' : 'warning'}`}>
-            {alerta.severidade === 'critico' ? 'Crítico' : 'Atenção'}
-          </span>
-          {alerta.prazoLabel && <span className="ops-alert-prazo">{alerta.prazoLabel}</span>}
-        </div>
-        <p className="ops-alert-motivo">{alerta.motivo}</p>
-        <p className="ops-alert-meta">
-          Próxima ação: <strong>{alerta.proximaAcao}</strong>
-          {alerta.consultor && ` · ${alerta.consultor}`}
-        </p>
-      </div>
-      <button
-        type="button"
-        className="btn btn-secondary ops-alert-btn"
-        onClick={() => navigate(`/clientes/${alerta.clienteId}?aba=${acao.aba}`)}
-      >
+      <p className="ops-alert-cliente">{alerta.clienteNome}</p>
+      <p className="ops-alert-status-linha">
+        <span className="ops-severity-icon" aria-hidden="true">
+          {critico ? '▲' : '●'}
+        </span>
+        <span className={`status-badge status-tone-${critico ? 'danger' : 'warning'}`}>
+          {critico ? 'Crítico' : 'Atenção'}
+        </span>
+        {contexto && <span className="ops-alert-prazo"> · {contexto}</span>}
+      </p>
+      <p className="ops-alert-motivo">{alerta.motivo}</p>
+      <p className="ops-alert-meta">
+        Próxima ação: <strong>{alerta.proximaAcao}</strong>
+        {alerta.consultor && ` · ${alerta.consultor}`}
+      </p>
+      <Link to={acao.to} className="btn btn-secondary btn-auto ops-alert-cta">
         {acao.label}
-      </button>
+      </Link>
     </li>
   );
 }
 
-function LinhaCliente({
+function LinhaCarteira({
   resumo,
   navigate,
+  mostrarConsultor,
 }: {
   resumo: ClienteResumo;
   navigate: ReturnType<typeof useNavigate>;
+  mostrarConsultor: boolean;
 }) {
-  const { cliente, faseAtual, saude, progresso, trial, proximaAcao, consultor } = resumo;
-  const prazoLabel = prazoLabelDe(resumo);
+  const { cliente, saude, trial, proximaAcao, consultor } = resumo;
+  const prazoLabel = prazoHumanizado(resumo);
   const prazoAtrasado = estaAtrasado(resumo);
 
   return (
     <tr className="ops-table-row" onClick={() => navigate(`/clientes/${cliente.id}`)}>
-      <td>
+      <td data-label="Cliente">
         <Link to={`/clientes/${cliente.id}`} className="row-name-link">
           {cliente.nome_empresa}
         </Link>
@@ -794,29 +795,14 @@ function LinhaCliente({
           </span>
         )}
       </td>
-      <td>{faseAtual}</td>
-      <td>
+      <td data-label="Saúde">
         <span className={`status-badge status-tone-${SAUDE_TONE[saude]}`}>{SAUDE_LABELS[saude]}</span>
       </td>
-      <td>
-        {progresso == null ? (
-          <span className="dash">—</span>
-        ) : (
-          <span className="ops-progress" title={`${progresso}%`}>
-            <span className="ops-progress-track">
-              <span className="ops-progress-fill" style={{ width: `${progresso}%` }} />
-            </span>
-            <span className="ops-progress-value">{progresso}%</span>
-          </span>
-        )}
-      </td>
-      <td>
+      <td data-label="Dia/Ciclo">{diaCicloLabel(resumo)}</td>
+      <td data-label="Trial">
         {trial ? (
-          <span
-            className={`status-badge status-tone-${STATUS_TRIAL_TONE[trial.status]}`}
-            title={STATUS_TRIAL_LABELS[trial.status]}
-          >
-            {trial.diasRestantes}d
+          <span className={`status-badge status-tone-${STATUS_TRIAL_TONE[trial.status]}`}>
+            {trialHumanizado(trial.diasRestantes)}
           </span>
         ) : (
           <span className="dash" title="Sem Trial Kommo iniciado">
@@ -824,15 +810,20 @@ function LinhaCliente({
           </span>
         )}
       </td>
-      <td>{proximaAcao}</td>
-      <td>
+      <td data-label="Próxima ação">{proximaAcao}</td>
+      <td data-label="Prazo">
         {prazoLabel ? (
           <span className={prazoAtrasado ? 'ops-prazo-atrasado' : 'ops-prazo-ok'}>{prazoLabel}</span>
         ) : (
           <span className="dash">—</span>
         )}
       </td>
-      <td>{consultor ?? <span className="dash">—</span>}</td>
+      {mostrarConsultor && <td data-label="Consultor">{consultor ?? <span className="dash">—</span>}</td>}
+      <td data-label="">
+        <Link to={`/clientes/${cliente.id}`} className="btn btn-secondary btn-auto" onClick={(e) => e.stopPropagation()}>
+          Ver
+        </Link>
+      </td>
     </tr>
   );
 }

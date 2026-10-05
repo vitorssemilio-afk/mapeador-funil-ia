@@ -10,6 +10,7 @@ import { CentralNotificacoes } from './pages/CentralNotificacoes';
 import { CamposPadrao } from './pages/CamposPadrao';
 import { CheckpointAdocao } from './pages/CheckpointAdocao';
 import { ClienteDetalhe } from './pages/ClienteDetalhe';
+import { Clientes } from './pages/Clientes';
 import { Configuracoes } from './pages/Configuracoes';
 import { ConfiguracoesPipefy } from './pages/ConfiguracoesPipefy';
 import { Consultores } from './pages/Consultores';
@@ -82,6 +83,7 @@ function App() {
                   <Route path="/agenda" element={<Agenda />} />
                   <Route path="/notificacoes" element={<CentralNotificacoes />} />
                   <Route path="/cronograma" element={<Cronograma />} />
+                  <Route path="/clientes" element={<Clientes />} />
                   <Route path="/clientes/novo" element={<NovoCliente />} />
                   <Route path="/clientes/:id" element={<ClienteDetalhe />} />
                   <Route path="/mapeamento/:id" element={<Mapeamento />} />
