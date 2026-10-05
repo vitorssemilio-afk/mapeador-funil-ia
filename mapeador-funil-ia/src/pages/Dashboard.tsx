@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { resolverAcaoOperacional, type AcaoOperacional } from '../lib/acaoOperacional';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import {
   bucketDeItem,
@@ -23,7 +24,7 @@ import {
   type ClienteResumo,
   type SaudeCliente,
 } from '../lib/operacaoResumo';
-import { TIPO_REUNIAO_LABELS } from '../lib/reunioes';
+import { alertaReuniaoObrigatoria, TIPO_REUNIAO_LABELS, TIPOS_REUNIAO_OBRIGATORIOS } from '../lib/reunioes';
 import { MAPEAMENTO_STATUS_LABELS } from '../lib/statusFluxo';
 import { supabase } from '../lib/supabaseClient';
 import { STATUS_TRIAL_TONE } from '../lib/trialKommo';
@@ -35,11 +36,14 @@ import type {
   ClienteOcorrencia,
   ConfiguracaoImplementacao,
   Consultor,
+  EntregaAceite,
   ImplementacaoCrm,
   ImplementacaoSettingsSnapshot,
   ImplementacaoStatusHistorico,
   Mapeamento,
+  RelatorioImplementacao,
   Reuniao,
+  TipoReuniao,
 } from '../types/database';
 
 const MAX_ATENCAO_VISIVEL = 5;
@@ -53,47 +57,6 @@ const PESO_SAUDE: Record<SaudeCliente, number> = {
   normal: 3,
   concluido: 4,
 };
-
-type AcaoContextual = { to: string; label: string };
-
-// Deriva, do texto já produzido por construirAlertas (nenhuma regra nova —
-// só leitura do motivo) e do resumo oficial do cliente, qual destino e
-// rótulo de botão resolvem aquele alerta. Mesmo mecanismo de ?aba= já usado
-// pela Central de Notificações; deep link direto pro mapeamento quando
-// existe (seção 17 — "evitar mandar tudo só pra ficha geral").
-function acaoContextualDoAlerta(alerta: AlertaOperacao, resumo: ClienteResumo | undefined): AcaoContextual {
-  const m = alerta.motivo.toLowerCase();
-  const clienteId = alerta.clienteId;
-
-  if (m.includes('trial kommo')) {
-    return { to: `/clientes/${clienteId}?aba=trial`, label: 'Solicitar extensão' };
-  }
-  if (m.includes('reunião obrigatória')) {
-    return { to: `/clientes/${clienteId}?aba=reunioes`, label: 'Agendar reunião' };
-  }
-  if (m.includes('ocorrência aberta')) {
-    return {
-      to: `/clientes/${clienteId}?aba=resumo`,
-      label: alerta.severidade === 'critico' ? 'Resolver pendência' : 'Ver pendência',
-    };
-  }
-  if (m.includes('prazo geral') || m.includes('atividade')) {
-    return { to: `/clientes/${clienteId}?aba=implementacao`, label: 'Ver pendências' };
-  }
-  if (
-    m.includes('funil de vendas') ||
-    m.includes('mapeamento de vendas') ||
-    m.includes('formulário de vendas') ||
-    m.includes('pós-venda')
-  ) {
-    const mapeamentoId = m.includes('pós-venda') ? resumo?.posVenda?.id : resumo?.vendas?.id;
-    return {
-      to: mapeamentoId ? `/mapeamento/${mapeamentoId}` : `/clientes/${clienteId}?aba=mapeamento`,
-      label: 'Ver formulário',
-    };
-  }
-  return { to: `/clientes/${clienteId}?aba=resumo`, label: 'Ver detalhes' };
-}
 
 // Contexto de prazo pra cada alerta — evita o caso descrito na seção 11: um
 // prazo geral da implementação (ex: "32d restantes") ao lado de um alerta
@@ -221,6 +184,8 @@ export function Dashboard() {
   const [configGlobal, setConfigGlobal] = useState<ConfiguracaoImplementacao | null>(null);
   const [snapshots, setSnapshots] = useState<ImplementacaoSettingsSnapshot[]>([]);
   const [atasPendentes, setAtasPendentes] = useState<AtaReuniao[]>([]);
+  const [relatoriosEntrega, setRelatoriosEntrega] = useState<RelatorioImplementacao[]>([]);
+  const [aceitesEntrega, setAceitesEntrega] = useState<EntregaAceite[]>([]);
   const [souAdministrador, setSouAdministrador] = useState(false);
 
   const [mostrarTodaAtencao, setMostrarTodaAtencao] = useState(false);
@@ -250,6 +215,8 @@ export function Dashboard() {
         { data: configGlobalData },
         { data: snapshotsData },
         { data: atasData },
+        { data: relatoriosData },
+        { data: aceitesData },
       ] = await Promise.all([
         supabase.from('clientes').select('*'),
         supabase.from('mapeamentos').select('*'),
@@ -265,6 +232,10 @@ export function Dashboard() {
         // "Precisa da sua decisão" — mesma tabela/status já usados na seção
         // "Ata" da implementação (ImplementacaoDetalhe).
         supabase.from('atas_reuniao').select('*').in('status', ['requer_revisao', 'erro_vinculo']),
+        // Ação contextual de entrega (seções 18-20): mesmas tabelas oficiais
+        // já usadas no módulo de Relatórios/Entrega.
+        supabase.from('relatorios_implementacao').select('*').eq('tipo', 'entrega_final'),
+        supabase.from('entregas_aceite').select('*'),
       ]);
 
       if (cancelled) return;
@@ -287,6 +258,8 @@ export function Dashboard() {
       setConfigGlobal(configGlobalData ?? null);
       setSnapshots(snapshotsData ?? []);
       setAtasPendentes(atasData ?? []);
+      setRelatoriosEntrega(relatoriosData ?? []);
+      setAceitesEntrega(aceitesData ?? []);
       setLoading(false);
     }
 
@@ -330,6 +303,82 @@ export function Dashboard() {
     for (const r of resumos) mapa.set(r.cliente.id, r);
     return mapa;
   }, [resumos]);
+
+  const ocorrenciaPorCliente = useMemo(() => {
+    const mapa = new Map<string, ClienteOcorrencia>();
+    for (const o of ocorrenciasAbertas) if (!mapa.has(o.cliente_id)) mapa.set(o.cliente_id, o);
+    return mapa;
+  }, [ocorrenciasAbertas]);
+
+  // Qual tipo de reunião obrigatória está pendente pra cada cliente — mesma
+  // função oficial usada dentro de construirResumoClientes pra decidir o
+  // booleano reuniaoObrigatoriaPendente, só chamada de novo aqui (sem
+  // reimplementar a regra) pra descobrir QUAL tipo é, e poder pré-preencher
+  // o formulário de agendamento (seção 9/26).
+  const tipoReuniaoPendentePorCliente = useMemo(() => {
+    const mapa = new Map<string, TipoReuniao>();
+    for (const cliente of clientes) {
+      if (!cliente.kickoff_realizado_em) continue;
+      const config = configuracoesPorCliente.get(cliente.id);
+      const reunioesDoCliente = reunioes.filter((r) => r.cliente_id === cliente.id);
+      const tipoPendente = TIPOS_REUNIAO_OBRIGATORIOS.find(
+        (tipo) =>
+          alertaReuniaoObrigatoria({
+            tipo,
+            reunioesDoTipo: reunioesDoCliente.filter((r) => r.tipo === tipo),
+            kickoffRealizadoEm: cliente.kickoff_realizado_em,
+            hoje,
+            ciclos: config?.ciclos,
+          }) != null,
+      );
+      if (tipoPendente) mapa.set(cliente.id, tipoPendente);
+    }
+    return mapa;
+  }, [clientes, reunioes, hoje, configuracoesPorCliente]);
+
+  const relatorioEntregaFinalPorImplementacao = useMemo(() => {
+    const mapa = new Map<string, RelatorioImplementacao>();
+    for (const r of relatoriosEntrega) {
+      const atual = mapa.get(r.implementacao_id);
+      if (!atual || r.versao > atual.versao) mapa.set(r.implementacao_id, r);
+    }
+    return mapa;
+  }, [relatoriosEntrega]);
+
+  const aceitePorImplementacao = useMemo(() => {
+    const mapa = new Map<string, EntregaAceite>();
+    for (const a of aceitesEntrega) {
+      const atual = mapa.get(a.implementacao_id);
+      if (!atual || new Date(a.created_at).getTime() > new Date(atual.created_at).getTime()) {
+        mapa.set(a.implementacao_id, a);
+      }
+    }
+    return mapa;
+  }, [aceitesEntrega]);
+
+  // Resolvedor central (seção 3) — usado por todo CTA da Home: cards de
+  // atenção, "Precisa da sua decisão" (quando aplicável) e a coluna
+  // "Próxima ação" da carteira. Uma única árvore de prioridade, nenhuma
+  // regra nova — só traduz o que operacaoResumo.ts/trialKommo.ts/entrega já
+  // calcularam.
+  const acaoPorCliente = useMemo(() => {
+    const mapa = new Map<string, AcaoOperacional>();
+    for (const r of resumos) {
+      mapa.set(
+        r.cliente.id,
+        resolverAcaoOperacional({
+          resumo: r,
+          ocorrenciaDoCliente: ocorrenciaPorCliente.get(r.cliente.id) ?? null,
+          tipoReuniaoPendente: tipoReuniaoPendentePorCliente.get(r.cliente.id) ?? null,
+          relatorioEntregaFinal: r.implementacao
+            ? (relatorioEntregaFinalPorImplementacao.get(r.implementacao.id) ?? null)
+            : null,
+          aceiteEntrega: r.implementacao ? (aceitePorImplementacao.get(r.implementacao.id) ?? null) : null,
+        }),
+      );
+    }
+    return mapa;
+  }, [resumos, ocorrenciaPorCliente, tipoReuniaoPendentePorCliente, relatorioEntregaFinalPorImplementacao, aceitePorImplementacao]);
 
   // Fonte oficial de "atenção necessária" — já vem ordenada por severidade
   // (crítico primeiro). Nenhuma regra nova aqui.
@@ -512,8 +561,44 @@ export function Dashboard() {
       });
     }
 
+    // Entrega gerada mas ainda não marcada como final (seção 30 — "Entrega
+    // aguardando revisão → Revisar entrega") — mesmo estado oficial já lido
+    // acima pro resolvedor de "Próxima ação", só filtrado aqui por quem
+    // ainda não tem aceite registrado.
+    for (const relatorio of relatoriosEntrega) {
+      if (relatorio.status !== 'gerado' || !relatorio.cliente_id) continue;
+      if (aceitePorImplementacao.has(relatorio.implementacao_id)) continue;
+      const cliente = clientes.find((c) => c.id === relatorio.cliente_id);
+      if (!cliente) continue;
+      itens.push({
+        id: `entrega:${relatorio.id}`,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome_empresa,
+        motivo: 'Relatório de entrega final gerado, aguardando revisão antes de apresentar',
+        acaoLabel: 'Revisar entrega',
+        to: `/implementacoes/${relatorio.implementacao_id}/entrega`,
+      });
+    }
+
+    // Pendência sem responsável definido (seção 30 — "Pendência sem
+    // responsável → Definir responsável") — campo já existente
+    // (consultor_responsavel_id), nenhuma regra nova.
+    for (const ocorrencia of ocorrenciasAbertas) {
+      if (ocorrencia.consultor_responsavel_id) continue;
+      const cliente = clientes.find((c) => c.id === ocorrencia.cliente_id);
+      if (!cliente) continue;
+      itens.push({
+        id: `responsavel:${ocorrencia.id}`,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome_empresa,
+        motivo: `Pendência sem responsável: ${ocorrencia.descricao}`,
+        acaoLabel: 'Definir responsável',
+        to: `/clientes/${cliente.id}?aba=resumo`,
+      });
+    }
+
     return itens;
-  }, [atasPendentes, acoesPendentesComAta, mapeamentos, clientes]);
+  }, [atasPendentes, acoesPendentesComAta, mapeamentos, relatoriosEntrega, aceitePorImplementacao, ocorrenciasAbertas, clientes]);
 
   const kpis = useMemo(
     () => ({
@@ -601,7 +686,12 @@ export function Dashboard() {
                   {resumoDaAtencao && <p className="ops-breakdown-line">{resumoDaAtencao}</p>}
                   <ul className="ops-alert-list ops-alert-list-static">
                     {alertasVisiveis.map((a) => (
-                      <AlertaCard key={`${a.clienteId}-${a.motivo}`} alerta={a} resumo={resumoPorCliente.get(a.clienteId)} />
+                      <AlertaCard
+                        key={`${a.clienteId}-${a.motivo}`}
+                        alerta={a}
+                        resumo={resumoPorCliente.get(a.clienteId)}
+                        acao={acaoPorCliente.get(a.clienteId) ?? { label: 'Ver detalhes', to: `/clientes/${a.clienteId}?aba=resumo`, tipo: 'detalhes' }}
+                      />
                     ))}
                   </ul>
                   {!mostrarTodaAtencao && alertas.length > MAX_ATENCAO_VISIVEL && (
@@ -729,7 +819,13 @@ export function Dashboard() {
                 </thead>
                 <tbody>
                   {carteiraResumida.map((r) => (
-                    <LinhaCarteira key={r.cliente.id} resumo={r} navigate={navigate} mostrarConsultor={souAdministrador} />
+                    <LinhaCarteira
+                      key={r.cliente.id}
+                      resumo={r}
+                      navigate={navigate}
+                      mostrarConsultor={souAdministrador}
+                      acao={acaoPorCliente.get(r.cliente.id) ?? { label: 'Ver detalhes', to: `/clientes/${r.cliente.id}?aba=resumo`, tipo: 'detalhes' }}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -741,8 +837,15 @@ export function Dashboard() {
   );
 }
 
-function AlertaCard({ alerta, resumo }: { alerta: AlertaOperacao; resumo: ClienteResumo | undefined }) {
-  const acao = acaoContextualDoAlerta(alerta, resumo);
+function AlertaCard({
+  alerta,
+  resumo,
+  acao,
+}: {
+  alerta: AlertaOperacao;
+  resumo: ClienteResumo | undefined;
+  acao: AcaoOperacional;
+}) {
   const contexto = contextoPrazoAlerta(alerta, resumo);
   const critico = alerta.severidade === 'critico';
 
@@ -774,12 +877,14 @@ function LinhaCarteira({
   resumo,
   navigate,
   mostrarConsultor,
+  acao,
 }: {
   resumo: ClienteResumo;
   navigate: ReturnType<typeof useNavigate>;
   mostrarConsultor: boolean;
+  acao: AcaoOperacional;
 }) {
-  const { cliente, saude, trial, proximaAcao, consultor } = resumo;
+  const { cliente, saude, trial, consultor } = resumo;
   const prazoLabel = prazoHumanizado(resumo);
   const prazoAtrasado = estaAtrasado(resumo);
 
@@ -810,7 +915,11 @@ function LinhaCarteira({
           </span>
         )}
       </td>
-      <td data-label="Próxima ação">{proximaAcao}</td>
+      <td data-label="Próxima ação">
+        <Link to={acao.to} onClick={(e) => e.stopPropagation()}>
+          {acao.label}
+        </Link>
+      </td>
       <td data-label="Prazo">
         {prazoLabel ? (
           <span className={prazoAtrasado ? 'ops-prazo-atrasado' : 'ops-prazo-ok'}>{prazoLabel}</span>
