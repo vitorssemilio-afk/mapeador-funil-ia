@@ -1946,10 +1946,19 @@ export function ImplementacaoDetalhe() {
     try {
       const existente = reunioes.find((r) => r.tipo === tipo) ?? null;
 
+      // Participantes vem da ata (nada mais mostra essa informação) — o
+      // resto do conteúdo (resumo, decisões, ações) fica só no card "Ata"
+      // logo abaixo, pra não duplicar a mesma informação em dois lugares.
+      const participantesDaAta = ata.participantes
+        .map((p) => p.nome)
+        .filter((nome): nome is string => !!nome)
+        .join(', ');
+
       const payload = {
         titulo: existente?.titulo ?? TIPO_REUNIAO_LABELS[tipo],
         data_hora: data_hora ? new Date(data_hora).toISOString() : (existente?.data_hora ?? null),
         consultor_responsavel_id: consultor_responsavel_id || existente?.consultor_responsavel_id || null,
+        participantes: existente?.participantes || participantesDaAta || null,
         status,
       };
 
@@ -4298,26 +4307,32 @@ export function ImplementacaoDetalhe() {
                           )}
                         </p>
                       </div>
-                      <div className="form-grid">
-                        <p>
-                          <strong>Ata:</strong> {reuniao.ata ?? '—'}
-                        </p>
-                        <p>
-                          <strong>Resumo:</strong> {reuniao.resumo ?? '—'}
-                        </p>
-                        <p>
-                          <strong>Decisões:</strong> {reuniao.decisoes ?? '—'}
-                        </p>
-                        <p>
-                          <strong>Pendências do cliente:</strong> {reuniao.pendencias_cliente ?? '—'}
-                        </p>
-                        <p>
-                          <strong>Pendências internas:</strong> {reuniao.pendencias_internas ?? '—'}
-                        </p>
-                        <p>
-                          <strong>Próximos passos:</strong> {reuniao.proximos_passos ?? '—'}
-                        </p>
-                      </div>
+                      {/* Com ata integrada, esse conteúdo já aparece (melhor formatado) no
+                          card "Ata" logo abaixo — mostrar os dois juntos só duplicava
+                          informação e deixava os campos manuais com cara de "quebrado"
+                          (tudo em branco). */}
+                      {!atasIntegracao.some((a) => a.reuniao_id === reuniao.id) && (
+                        <div className="form-grid">
+                          <p>
+                            <strong>Ata:</strong> {reuniao.ata ?? '—'}
+                          </p>
+                          <p>
+                            <strong>Resumo:</strong> {reuniao.resumo ?? '—'}
+                          </p>
+                          <p>
+                            <strong>Decisões:</strong> {reuniao.decisoes ?? '—'}
+                          </p>
+                          <p>
+                            <strong>Pendências do cliente:</strong> {reuniao.pendencias_cliente ?? '—'}
+                          </p>
+                          <p>
+                            <strong>Pendências internas:</strong> {reuniao.pendencias_internas ?? '—'}
+                          </p>
+                          <p>
+                            <strong>Próximos passos:</strong> {reuniao.proximos_passos ?? '—'}
+                          </p>
+                        </div>
+                      )}
                       {podeRemarcar && remarcandoReuniaoId !== reuniao.id && (
                         <button
                           type="button"
