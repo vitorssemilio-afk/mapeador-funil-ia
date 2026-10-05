@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AplicarTemplateModal } from '../components/AplicarTemplateModal';
 import { GanttRuler } from '../components/GanttRuler';
@@ -1285,6 +1285,30 @@ export function ImplementacaoDetalhe() {
     // aprovação exige confirmação explícita (ver handleSalvarReuniao).
     setVersaoParaValidarKickoff(versoesMapeamentoOrigem[0] ? String(versoesMapeamentoOrigem[0].versao) : '');
   }
+
+  // Deep link da Home (seções 9/17/25/26 do resolvedor de ações
+  // contextuais): ?aba=reunioes&tipo=X&acao=agendar já abre o formulário de
+  // agendamento daquele tipo, em vez de só cair na aba — só uma vez por
+  // carregamento, pra não reabrir o formulário toda vez que o estado muda
+  // (ex: depois que o consultor fecha o form pra cancelar).
+  const deepLinkReuniaoAplicado = useRef(false);
+  useEffect(() => {
+    if (deepLinkReuniaoAplicado.current || loading || aba !== 'reunioes') return;
+    const tipoParam = searchParams.get('tipo');
+    const acaoParam = searchParams.get('acao');
+    if (acaoParam !== 'agendar' || !tipoParam) return;
+    const tipoValido = [...TIPOS_REUNIAO_ESTRUTURADOS, ...TIPOS_REUNIAO_AD_HOC].includes(tipoParam as TipoReuniao);
+    if (!tipoValido) return;
+    deepLinkReuniaoAplicado.current = true;
+    const tipo = tipoParam as TipoReuniao;
+    const existente = reunioes.find((r) => r.tipo === tipo) ?? null;
+    setEditandoReuniaoTipo(tipo);
+    setEditandoReuniaoId(existente?.id ?? null);
+    setFormReuniao(existente ? paraFormReuniao(existente) : formReuniaoVazio(tipo));
+    setStatusOriginalReuniaoEmEdicao(existente?.status ?? null);
+    setValidacaoFunilKickoff('');
+    setVersaoParaValidarKickoff(versoesMapeamentoOrigem[0] ? String(versoesMapeamentoOrigem[0].versao) : '');
+  }, [loading, aba, searchParams, reunioes, versoesMapeamentoOrigem]);
 
   function fecharFormReuniao() {
     setEditandoReuniaoTipo(null);
