@@ -9,6 +9,7 @@
 // ir e o que o botão deve dizer". Quando o estado não é reconhecido, cai em
 // "Ver detalhes" (nunca um botão quebrado ou sem destino).
 import type { ClienteResumo } from './operacaoResumo';
+import { TIPO_REUNIAO_LABELS } from './reunioes';
 import type {
   ClienteOcorrencia,
   EntregaAceite,
@@ -54,6 +55,15 @@ function linkMapeamento(mapeamentoId: string | undefined | null, clienteId: stri
   return mapeamentoId ? `/mapeamento/${mapeamentoId}` : `/clientes/${clienteId}?aba=mapeamento`;
 }
 
+// "Agendar reunião" genérico não diz qual — quando o tipo pendente já é
+// conhecido (seção 3), o botão nomeia o tipo certo. Reunião final usa um
+// rótulo mais curto que o nome completo da aba ("Reunião final / Entrega").
+function labelAgendarReuniao(tipo?: TipoReuniao | null): string {
+  if (!tipo) return 'Agendar reunião';
+  if (tipo === 'reuniao_final') return 'Agendar reunião final';
+  return `Agendar ${TIPO_REUNIAO_LABELS[tipo]}`;
+}
+
 // Reuniões só são de fato agendáveis/editáveis na aba "Reuniões" da
 // IMPLEMENTAÇÃO — a aba de mesmo nome na ficha do cliente é só leitura
 // (ver ClienteDetalhe.tsx). Mandar o CTA pro lugar errado deixaria o
@@ -77,6 +87,19 @@ function linkEntrega(resumo: ClienteResumo): string {
 // string oficial que ela já decidiu pro par {label, to} mais específico
 // possível. Cobre toda a progressão normal (formulário → funil → kickoff →
 // implementação → checklist) que não é, por si só, um "alerta".
+//
+// Exportada como "próximo passo da implementação" (seção 1) — representa
+// pra ONDE o cliente está indo na progressão normal, distinto da "ação
+// necessária" que resolverAcaoOperacional calcula pra resolver um alerta
+// específico. Os dois podem apontar pro mesmo lugar (nesse caso o card não
+// repete os dois) ou pra lugares diferentes (um cliente pode estar com
+// "Confirmar pré-requisitos" como próximo passo normal e, ao mesmo tempo,
+// com uma reunião obrigatória atrasada — as duas coisas são reais e não são
+// contraditórias).
+export function resolverProximoPassoGeral(resumo: ClienteResumo): AcaoOperacional {
+  return acaoDoTextoOficial(resumo);
+}
+
 function acaoDoTextoOficial(resumo: ClienteResumo): AcaoOperacional {
   const { cliente, vendas, posVenda, proximaAcao } = resumo;
   const texto = proximaAcao;
@@ -162,7 +185,11 @@ export function resolverAcaoOperacional(ctx: ContextoAcaoOperacional): AcaoOpera
 
   // 4) Reunião obrigatória (treinamento/check-ins/entrega) ainda não agendada.
   if (resumo.reuniaoObrigatoriaPendente) {
-    return { label: 'Agendar reunião', to: linkReuniao(resumo, tipoReuniaoPendente), tipo: 'reuniao' };
+    return {
+      label: labelAgendarReuniao(tipoReuniaoPendente),
+      to: linkReuniao(resumo, tipoReuniaoPendente),
+      tipo: 'reuniao',
+    };
   }
 
   // 5) Entrega final — aceite pendente > entrega preparada aguardando
