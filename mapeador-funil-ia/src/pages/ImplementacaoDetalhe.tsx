@@ -346,7 +346,12 @@ export function ImplementacaoDetalhe() {
   } | null>(null);
   const [salvandoPendenciaDeAcao, setSalvandoPendenciaDeAcao] = useState(false);
   const [vinculandoAtaId, setVinculandoAtaId] = useState<string | null>(null);
-  const [reuniaoParaVinculo, setReuniaoParaVinculo] = useState('');
+  const [formVinculoReuniao, setFormVinculoReuniao] = useState<{
+    tipo: TipoReuniao | '';
+    data_hora: string;
+    consultor_responsavel_id: string;
+    status: StatusReuniao;
+  } | null>(null);
   const [formImportarAta, setFormImportarAta] = useState<{
     reuniao_id: string;
     titulo: string;
@@ -1552,7 +1557,7 @@ export function ImplementacaoDetalhe() {
           <label className="field">
             <span>Link</span>
             <input
-              type="url"
+              type="text"
               placeholder="https://..."
               value={formReuniao.link}
               onChange={(e) => setFormReuniao({ ...formReuniao, link: e.target.value })}
@@ -1919,13 +1924,50 @@ export function ImplementacaoDetalhe() {
     if (implementacao) await carregar(implementacao.id);
   }
 
+  // Vincular manualmente nunca exige que a reunião já tenha sido agendada
+  // antes: se não existir uma reunião desse tipo ainda, criamos uma aqui
+  // mesmo (só com os campos essenciais) — se já existir, atualizamos ela em
+  // vez de duplicar.
   async function handleVincularAtaManualmente(ata: AtaReuniao) {
-    if (!reuniaoParaVinculo) return;
+    if (!formVinculoReuniao?.tipo || !implementacao || !cliente) return;
+    const { tipo, data_hora, consultor_responsavel_id, status } = formVinculoReuniao;
+    const existente = reunioes.find((r) => r.tipo === tipo) ?? null;
+
+    const payload = {
+      titulo: existente?.titulo ?? TIPO_REUNIAO_LABELS[tipo],
+      data_hora: data_hora ? new Date(data_hora).toISOString() : (existente?.data_hora ?? null),
+      consultor_responsavel_id: consultor_responsavel_id || existente?.consultor_responsavel_id || null,
+      status,
+    };
+
+    const { data: reuniaoSalva, error: reuniaoError } = existente
+      ? await supabase.from('reunioes').update(payload).eq('id', existente.id).select().single()
+      : await supabase
+          .from('reunioes')
+          .insert({ ...payload, cliente_id: cliente.id, implementacao_id: implementacao.id, tipo })
+          .select()
+          .single();
+
+    if (reuniaoError) {
+      setError(reuniaoError.message);
+      return;
+    }
+
+    setReunioes((prev) => {
+      const idx = prev.findIndex((r) => r.id === reuniaoSalva.id);
+      if (idx === -1) return [...prev, reuniaoSalva];
+      const copia = [...prev];
+      copia[idx] = reuniaoSalva;
+      return copia;
+    });
+
+    await sincronizarMarcoCliente(reuniaoSalva, cliente);
+
     const { error: rpcError } = await supabase.rpc('vincular_ata_manualmente', {
       p_ata_id: ata.id,
-      p_cliente_id: cliente?.id ?? null,
-      p_implementacao_id: implementacao?.id ?? null,
-      p_reuniao_id: reuniaoParaVinculo,
+      p_cliente_id: cliente.id,
+      p_implementacao_id: implementacao.id,
+      p_reuniao_id: reuniaoSalva.id,
     });
 
     if (rpcError) {
@@ -1935,8 +1977,8 @@ export function ImplementacaoDetalhe() {
 
     mostrarToast('Ata vinculada.');
     setVinculandoAtaId(null);
-    setReuniaoParaVinculo('');
-    if (implementacao) await carregar(implementacao.id);
+    setFormVinculoReuniao(null);
+    await carregar(implementacao.id);
   }
 
   // Seção 37 — fallback manual: serve tanto pra quando o webhook falhar
@@ -4036,16 +4078,65 @@ export function ImplementacaoDetalhe() {
                     {ata.erro_mensagem ? ` (${ata.erro_mensagem})` : ''}
                   </p>
                   {ata.resumo && <p className="field-hint">{ata.resumo}</p>}
-                  {vinculandoAtaId === ata.id ? (
+                  {vinculandoAtaId === ata.id && formVinculoReuniao ? (
                     <div className="form-grid">
                       <label className="field">
-                        <span>Vincular à reunião</span>
-                        <select value={reuniaoParaVinculo} onChange={(e) => setReuniaoParaVinculo(e.target.value)}>
+                        <span>Tipo de reunião</span>
+                        <select
+                          value={formVinculoReuniao.tipo}
+                          onChange={(e) =>
+                            setFormVinculoReuniao({ ...formVinculoReuniao, tipo: e.target.value as TipoReuniao })
+                          }
+                        >
                           <option value="">Selecione</option>
-                          {reunioes.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {TIPO_REUNIAO_LABELS[r.tipo]}
-                              {r.data_hora ? ` — ${formatarDataHoraLocal(r.data_hora)}` : ''}
+                          {[...TIPOS_REUNIAO_ESTRUTURADOS, ...TIPOS_REUNIAO_AD_HOC].map((tipo) => (
+                            <option key={tipo} value={tipo}>
+                              {TIPO_REUNIAO_LABELS[tipo]}
+                            </option>
+                          ))}
+                        </select>
+                        {formVinculoReuniao.tipo && reunioes.some((r) => r.tipo === formVinculoReuniao.tipo) && (
+                          <span className="field-hint">
+                            Já existe uma reunião desse tipo cadastrada — os dados abaixo vão atualizá-la.
+                          </span>
+                        )}
+                      </label>
+                      <label className="field">
+                        <span>Data e horário</span>
+                        <input
+                          type="datetime-local"
+                          value={formVinculoReuniao.data_hora}
+                          onChange={(e) => setFormVinculoReuniao({ ...formVinculoReuniao, data_hora: e.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>Consultor responsável</span>
+                        <select
+                          value={formVinculoReuniao.consultor_responsavel_id}
+                          onChange={(e) =>
+                            setFormVinculoReuniao({ ...formVinculoReuniao, consultor_responsavel_id: e.target.value })
+                          }
+                        >
+                          <option value="">Selecione…</option>
+                          {consultores.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nome}
+                              {!c.ativo ? ' (inativo)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Status</span>
+                        <select
+                          value={formVinculoReuniao.status}
+                          onChange={(e) =>
+                            setFormVinculoReuniao({ ...formVinculoReuniao, status: e.target.value as StatusReuniao })
+                          }
+                        >
+                          {Object.entries(STATUS_REUNIAO_LABELS).map(([valor, rotulo]) => (
+                            <option key={valor} value={valor}>
+                              {rotulo}
                             </option>
                           ))}
                         </select>
@@ -4056,7 +4147,7 @@ export function ImplementacaoDetalhe() {
                           className="btn btn-secondary"
                           onClick={() => {
                             setVinculandoAtaId(null);
-                            setReuniaoParaVinculo('');
+                            setFormVinculoReuniao(null);
                           }}
                         >
                           Cancelar
@@ -4064,7 +4155,7 @@ export function ImplementacaoDetalhe() {
                         <button
                           type="button"
                           className="btn btn-primary"
-                          disabled={!reuniaoParaVinculo}
+                          disabled={!formVinculoReuniao.tipo}
                           onClick={() => handleVincularAtaManualmente(ata)}
                         >
                           Vincular
@@ -4072,7 +4163,24 @@ export function ImplementacaoDetalhe() {
                       </div>
                     </div>
                   ) : (
-                    <button type="button" className="btn btn-secondary btn-auto" onClick={() => setVinculandoAtaId(ata.id)}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-auto"
+                      onClick={() => {
+                        setVinculandoAtaId(ata.id);
+                        const tipoSugerido = (
+                          [...TIPOS_REUNIAO_ESTRUTURADOS, ...TIPOS_REUNIAO_AD_HOC] as string[]
+                        ).includes(ata.tipo_reuniao ?? '')
+                          ? (ata.tipo_reuniao as TipoReuniao)
+                          : '';
+                        setFormVinculoReuniao({
+                          tipo: tipoSugerido,
+                          data_hora: isoParaInputDatetime(ata.data_reuniao),
+                          consultor_responsavel_id: '',
+                          status: 'realizada',
+                        });
+                      }}
+                    >
                       Vincular manualmente
                     </button>
                   )}
