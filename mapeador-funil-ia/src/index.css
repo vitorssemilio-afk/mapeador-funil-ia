@@ -2410,6 +2410,100 @@ img.auth-logo {
   color: var(--color-text-muted);
 }
 
+/* ── Home como cockpit operacional ── */
+.ops-saudacao {
+  margin-top: 2px;
+}
+
+.ops-kpi-grid-compact {
+  margin-bottom: 4px;
+}
+
+.ops-kpi-card-compact {
+  padding: 12px 16px;
+  gap: 2px;
+}
+
+.ops-kpi-card-compact .ops-kpi-value {
+  font-size: 24px;
+}
+
+.ops-cockpit-grid {
+  display: grid;
+  grid-template-columns: 1.85fr 1fr;
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+@media (max-width: 1000px) {
+  .ops-cockpit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ops-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ops-alert-list-static {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.ops-alert-top {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.ops-decision-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ops-decision-item {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.ops-decision-item p {
+  margin: 0;
+}
+
+.ops-today-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ops-today-list li {
+  font-size: 13.5px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+
+.ops-summary-line {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-text);
+}
+
 /* ── Marcos / linha do tempo (ficha do cliente) ── */
 .timeline-marcos {
   list-style: none;
