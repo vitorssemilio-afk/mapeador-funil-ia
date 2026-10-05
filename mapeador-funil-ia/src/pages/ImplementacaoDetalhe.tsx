@@ -2055,7 +2055,7 @@ export function ImplementacaoDetalhe() {
     const selecionaveis = pendentes;
 
     return (
-      <div className="card" style={{ background: 'var(--color-surface-raised)' }}>
+      <div className="card form-card" style={{ background: 'var(--color-surface-raised)' }}>
         <div className="page-header-actions page-header-actions-split">
           <h3 style={{ marginBottom: 0 }}>Ata</h3>
           <span className={`status-badge status-tone-${STATUS_ATA_TONE[ata.status]}`}>
@@ -2076,8 +2076,8 @@ export function ImplementacaoDetalhe() {
         {ata.resumo && <p className="field-hint">{ata.resumo}</p>}
 
         {ata.decisoes.length > 0 && (
-          <>
-            <p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <p style={{ margin: 0 }}>
               <strong>Decisões</strong>
             </p>
             <ul className="observacoes-lista">
@@ -2088,11 +2088,11 @@ export function ImplementacaoDetalhe() {
                 </li>
               ))}
             </ul>
-          </>
+          </div>
         )}
 
         {acoes.length > 0 && (
-          <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div className="page-header-actions page-header-actions-split">
               <p style={{ margin: 0 }}>
                 <strong>Ações identificadas</strong> ({pendentes.length} aguardando revisão)
@@ -2110,7 +2110,7 @@ export function ImplementacaoDetalhe() {
             </div>
             <ul className="observacoes-lista">
               {acoes.map((acao) => (
-                <li key={acao.id} className="observacao-item">
+                <li key={acao.id} className="observacao-item" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <div className="observacao-item-header">
                     <span className="observacao-item-meta">
                       <span className={`status-badge status-tone-${STATUS_ACAO_ATA_TONE[acao.status]}`}>
@@ -2142,15 +2142,19 @@ export function ImplementacaoDetalhe() {
                       </Link>
                     )}
                   </div>
-                  {acao.descricao && <p className="field-hint">{acao.descricao}</p>}
-                  <p className="field-hint">
+                  {acao.descricao && (
+                    <p className="field-hint" style={{ margin: 0 }}>
+                      {acao.descricao}
+                    </p>
+                  )}
+                  <p className="field-hint" style={{ margin: 0 }}>
                     {acao.responsavel_nome ? `Responsável sugerido: ${acao.responsavel_nome}` : 'Responsável não definido'}
                     {acao.prazo_sugerido ? ` · Prazo sugerido: ${new Date(`${acao.prazo_sugerido}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}
                   </p>
                 </li>
               ))}
             </ul>
-          </>
+          </div>
         )}
 
         {ata.conteudo_original && (
