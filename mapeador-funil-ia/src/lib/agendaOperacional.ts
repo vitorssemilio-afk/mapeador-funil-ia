@@ -288,7 +288,7 @@ function itemDeProximidadePrazoGeral(
 // incidente/registro, não uma pendência de ninguém em especial, e continua
 // como 'alerta'. responsavel_impacto complementa pra pendências internas
 // (a categoria sozinha não distingue "interna" de "incidente").
-const CATEGORIAS_PENDENCIA_CLIENTE: CategoriaOcorrencia[] = ['pendencia_cliente', 'acesso_pendente'];
+export const CATEGORIAS_PENDENCIA_CLIENTE: CategoriaOcorrencia[] = ['pendencia_cliente', 'acesso_pendente'];
 
 function tipoItemDaOcorrencia(ocorrencia: ClienteOcorrencia): TipoItemAgenda {
   if (CATEGORIAS_PENDENCIA_CLIENTE.includes(ocorrencia.categoria)) return 'pendencia_cliente';
