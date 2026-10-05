@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { resolverAcaoOperacional, type AcaoOperacional } from '../lib/acaoOperacional';
+import { resolverAcaoOperacional, resolverProximoPassoGeral, type AcaoOperacional } from '../lib/acaoOperacional';
 import { inicioDoDia } from '../lib/agendaImplementacao';
 import {
   bucketDeItem,
@@ -380,6 +380,16 @@ export function Dashboard() {
     return mapa;
   }, [resumos, ocorrenciaPorCliente, tipoReuniaoPendentePorCliente, relatorioEntregaFinalPorImplementacao, aceitePorImplementacao]);
 
+  // "Próximo passo da implementação" (seção 1) — progressão normal do
+  // cliente, independente de qual alerta eventualmente esteja ativo. Serve
+  // só pra exibição no card de atenção, pra não confundir com a "ação
+  // necessária" acima (que resolve o alerta específico mostrado no card).
+  const proximoPassoGeralPorCliente = useMemo(() => {
+    const mapa = new Map<string, AcaoOperacional>();
+    for (const r of resumos) mapa.set(r.cliente.id, resolverProximoPassoGeral(r));
+    return mapa;
+  }, [resumos]);
+
   // Fonte oficial de "atenção necessária" — já vem ordenada por severidade
   // (crítico primeiro). Nenhuma regra nova aqui.
   const alertas = useMemo(
@@ -691,6 +701,7 @@ export function Dashboard() {
                         alerta={a}
                         resumo={resumoPorCliente.get(a.clienteId)}
                         acao={acaoPorCliente.get(a.clienteId) ?? { label: 'Ver detalhes', to: `/clientes/${a.clienteId}?aba=resumo`, tipo: 'detalhes' }}
+                        proximoPassoGeral={proximoPassoGeralPorCliente.get(a.clienteId)}
                       />
                     ))}
                   </ul>
@@ -837,17 +848,47 @@ export function Dashboard() {
   );
 }
 
+// "Enviar link do formulário" (o texto oficial de proximaAcaoLabel pra
+// vendas em_preenchimento) deixa de fazer sentido quando o alerta já diz
+// que o formulário está parado há dias — nesse caso específico o próximo
+// passo da implementação é cobrar, não enviar de novo. Só reformula o
+// texto de exibição (nenhuma rota/regra muda); baseado no motivo que
+// construirAlertas já produz pra esse caso exato ("não respondido há Xd").
+// `forcarExibicao` marca os casos em que o texto foi reescrito pra dizer
+// algo mais específico que o rótulo curto da ação (seção 4) — mesmo que a
+// ação aponte pro mesmo destino do CTA, o texto em si ainda agrega
+// informação e não deve ser escondido pela deduplicação da seção 2.
+function textoProximoPasso(
+  alerta: AlertaOperacao,
+  proximoPassoGeral: AcaoOperacional | undefined,
+): { texto: string; forcarExibicao: boolean } | null {
+  if (!proximoPassoGeral) return null;
+  if (alerta.motivo.includes('não respondido há')) {
+    return { texto: 'Cobrar resposta do cliente', forcarExibicao: true };
+  }
+  return { texto: alerta.proximaAcao, forcarExibicao: false };
+}
+
 function AlertaCard({
   alerta,
   resumo,
   acao,
+  proximoPassoGeral,
 }: {
   alerta: AlertaOperacao;
   resumo: ClienteResumo | undefined;
   acao: AcaoOperacional;
+  proximoPassoGeral: AcaoOperacional | undefined;
 }) {
   const contexto = contextoPrazoAlerta(alerta, resumo);
   const critico = alerta.severidade === 'critico';
+  const textoPasso = textoProximoPasso(alerta, proximoPassoGeral);
+  // Seção 2: não repetir quando o próximo passo geral da implementação e a
+  // ação que resolve este alerta são, na prática, a mesma coisa (mesmo
+  // rótulo curto) — nesse caso mostrar os dois seria a mesma informação
+  // duas vezes. Textos reescritos pra agregar contexto (forcarExibicao)
+  // sempre aparecem, mesmo quando o destino é o mesmo do CTA.
+  const mostrarProximoPasso = !!textoPasso && (textoPasso.forcarExibicao || proximoPassoGeral?.label !== acao.label);
 
   return (
     <li className={`ops-alert-card ops-alert-${alerta.severidade}`}>
@@ -862,10 +903,13 @@ function AlertaCard({
         {contexto && <span className="ops-alert-prazo"> · {contexto}</span>}
       </p>
       <p className="ops-alert-motivo">{alerta.motivo}</p>
-      <p className="ops-alert-meta">
-        Próxima ação: <strong>{alerta.proximaAcao}</strong>
-        {alerta.consultor && ` · ${alerta.consultor}`}
-      </p>
+      {mostrarProximoPasso && textoPasso && (
+        <p className="ops-alert-meta">
+          Próximo passo da implementação: <strong>{textoPasso.texto}</strong>
+        </p>
+      )}
+      {alerta.consultor && <p className="ops-alert-meta">{alerta.consultor}</p>}
+      <p className="ops-alert-meta ops-alert-acao-label">Ação necessária</p>
       <Link to={acao.to} className="btn btn-secondary btn-auto ops-alert-cta">
         {acao.label}
       </Link>

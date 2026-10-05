@@ -2266,9 +2266,17 @@ img.auth-logo {
   color: var(--color-text-muted);
 }
 
+.ops-alert-acao-label {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .ops-alert-cta {
   align-self: flex-start;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .ops-breakdown-line {
