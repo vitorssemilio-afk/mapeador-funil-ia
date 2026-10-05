@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabaseClient';
+import { Breadcrumbs } from './Breadcrumbs';
 import { GlobalSearch } from './GlobalSearch';
+import { IconMenu, IconX } from './icons';
 import { NotificationBell } from './NotificationBell';
+import { Sidebar } from './Sidebar';
+import { UserMenu } from './UserMenu';
 
-function navLinkClass({ isActive }: { isActive: boolean }): string {
-  return `topbar-nav-link${isActive ? ' active' : ''}`;
+const CHAVE_SIDEBAR_COLAPSADA = 'crmflow.sidebar.colapsada';
+
+function lerPreferenciaSidebar(): boolean {
+  try {
+    return localStorage.getItem(CHAVE_SIDEBAR_COLAPSADA) === '1';
+  } catch {
+    return false;
+  }
 }
 
 function ThemeToggle() {
@@ -43,8 +52,15 @@ function ThemeToggle() {
 }
 
 export function Layout() {
-  const { user, signOut } = useAuth();
+  const { pathname } = useLocation();
   const [nomeProduto, setNomeProduto] = useState('CRM Flow');
+  const [sidebarColapsada, setSidebarColapsada] = useState(lerPreferenciaSidebar);
+  const [drawerAberta, setDrawerAberta] = useState(false);
+  // Só decide o que a sidebar mostra (módulo de Sistema) — o backend
+  // (RLS/RPC) continua sendo quem de fato protege rotas e dados; mesmo
+  // sinal já usado em Consultores.tsx/ObservabilidadeIA.tsx/Dashboard.tsx,
+  // resolvido aqui uma única vez em vez de em cada página.
+  const [souAdministrador, setSouAdministrador] = useState(false);
 
   useEffect(() => {
     supabase
@@ -55,65 +71,60 @@ export function Layout() {
       .then(({ data }) => {
         if (data?.nome_produto) setNomeProduto(data.nome_produto);
       });
+    supabase.rpc('sou_administrador').then(({ data }) => setSouAdministrador(data === true));
   }, []);
 
+  useEffect(() => {
+    setDrawerAberta(false);
+  }, [pathname]);
+
+  function alternarColapso() {
+    setSidebarColapsada((atual) => {
+      const novo = !atual;
+      try {
+        localStorage.setItem(CHAVE_SIDEBAR_COLAPSADA, novo ? '1' : '0');
+      } catch {
+        // localStorage indisponível (modo privado etc.) — preferência só
+        // não persiste entre sessões, a sidebar continua funcionando.
+      }
+      return novo;
+    });
+  }
+
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="topbar-left">
-          <NavLink to="/" end className="topbar-brand">
-            <img src="/favicon.svg" alt="" className="brand-mark" />
-            {nomeProduto}
-          </NavLink>
-          <nav className="topbar-nav">
-            <NavLink to="/agenda" className={navLinkClass}>
-              Agenda
-            </NavLink>
-            <NavLink to="/campos-padrao" className={navLinkClass}>
-              Campos Padrão
-            </NavLink>
-            <NavLink to="/configuracoes" className={navLinkClass}>
-              Configurações
-            </NavLink>
-            <NavLink to="/consultores" className={navLinkClass}>
-              Consultores
-            </NavLink>
-            <NavLink to="/cronograma" className={navLinkClass}>
-              Cronograma
-            </NavLink>
-            <NavLink to="/formulario" className={navLinkClass}>
-              Formulário
-            </NavLink>
-            <NavLink to="/gestao" className={navLinkClass}>
-              Gestão
-            </NavLink>
-            <NavLink to="/implementacoes" className={navLinkClass}>
-              Implementações
-            </NavLink>
-            <NavLink to="/observabilidade-ia" className={navLinkClass}>
-              Observabilidade de IA
-            </NavLink>
-            <NavLink to="/relatorio-respostas" className={navLinkClass}>
-              Relatório de Respostas
-            </NavLink>
-            <NavLink to="/templates" className={navLinkClass}>
-              Templates
-            </NavLink>
-          </nav>
-        </div>
-        <div className="topbar-user">
-          <GlobalSearch />
-          <NotificationBell />
-          <span className="topbar-email">{user?.email}</span>
-          <ThemeToggle />
-          <button type="button" className="btn btn-ghost" onClick={signOut}>
-            Sair
-          </button>
-        </div>
-      </header>
-      <main className="app-main">
-        <Outlet />
-      </main>
+    <div className="dashboard-shell">
+      <Sidebar
+        colapsada={sidebarColapsada}
+        onAlternarColapso={alternarColapso}
+        souAdministrador={souAdministrador}
+        drawerAberta={drawerAberta}
+        onFecharDrawer={() => setDrawerAberta(false)}
+        nomeProduto={nomeProduto}
+      />
+      <div className="app-content">
+        <header className="topbar">
+          <div className="topbar-left">
+            <button
+              type="button"
+              className="hamburger-btn"
+              onClick={() => setDrawerAberta((v) => !v)}
+              aria-label={drawerAberta ? 'Fechar menu' : 'Abrir menu'}
+            >
+              {drawerAberta ? <IconX /> : <IconMenu />}
+            </button>
+            <Breadcrumbs />
+          </div>
+          <div className="topbar-user">
+            <GlobalSearch />
+            <NotificationBell />
+            <ThemeToggle />
+            <UserMenu />
+          </div>
+        </header>
+        <main className="app-main">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

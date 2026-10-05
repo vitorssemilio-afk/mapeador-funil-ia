@@ -123,6 +123,22 @@ a {
   flex-direction: column;
 }
 
+/* Shell logado (sidebar lateral + topbar simplificada) — classe própria,
+   não reaproveita ".app-shell": FormularioPublico/CheckpointAdocao usam
+   ".app-shell" como coluna simples (header + main, sem sidebar) e
+   quebrariam se essa classe virasse um flex-row aqui. */
+.dashboard-shell {
+  min-height: 100%;
+  display: flex;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .topbar {
   display: flex;
   align-items: center;
@@ -139,9 +155,31 @@ a {
 .topbar-left {
   display: flex;
   align-items: center;
-  gap: 28px;
+  gap: 16px;
+  min-width: 0;
 }
 
+.hamburger-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.hamburger-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Rótulo de marca usado pelas páginas públicas (sem sidebar/layout
+   logado): FormularioPublico, CheckpointAdocao, RelatorioFunil. ── */
 .topbar-brand {
   display: inline-flex;
   align-items: center;
@@ -176,42 +214,10 @@ img.brand-mark {
   object-fit: cover;
 }
 
-.topbar-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.topbar-nav-link {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  text-decoration: none;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  transition: background-color 0.15s ease, color 0.15s ease;
-}
-
-.topbar-nav-link:hover {
-  color: var(--color-text);
-  background: var(--color-surface-raised);
-}
-
-.topbar-nav-link.active {
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
-  font-weight: 600;
-}
-
 .topbar-user {
   display: flex;
   align-items: center;
   gap: 14px;
-}
-
-.topbar-email {
-  font-size: 13px;
-  color: var(--color-text-muted);
 }
 
 .theme-toggle {
@@ -244,6 +250,389 @@ img.brand-mark {
   max-width: 1760px;
   margin: 0 auto;
   padding: 36px 28px 72px;
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  width: 248px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  transition: width 0.15s ease;
+}
+
+.sidebar-collapsed {
+  width: 64px;
+}
+
+.sidebar-drawer-backdrop {
+  display: none;
+}
+
+.sidebar-top {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.sidebar-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  text-decoration: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sidebar-logo-mark {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.sidebar-logo-nome {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-collapsed .sidebar-logo-nome,
+.sidebar-collapsed .sidebar-group-titulo,
+.sidebar-collapsed .sidebar-link-label,
+.sidebar-collapsed .sidebar-collapse-toggle-label {
+  display: none;
+}
+
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-group-titulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-placeholder);
+  padding: 0 10px 6px;
+}
+
+.sidebar-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-link:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.sidebar-link.active {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  font-weight: 600;
+}
+
+/* Seção 16 do prompt: item ativo não pode depender só da cor do texto —
+   barra lateral à esquerda do item como reforço visual adicional. */
+.sidebar-link.active::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--color-accent);
+}
+
+.sidebar-collapsed .sidebar-link {
+  justify-content: center;
+  padding: 9px;
+}
+
+.sidebar-link-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.sidebar-link-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-tooltip {
+  display: none;
+}
+
+/* Tooltip só existe de fato quando a sidebar está recolhida — é nesse
+   estado que o nome do item deixa de estar visível (seção 12). */
+.sidebar-collapsed .sidebar-tooltip {
+  display: block;
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+  z-index: 20;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.sidebar-collapsed .sidebar-link:hover .sidebar-tooltip,
+.sidebar-collapsed .sidebar-link:focus-visible .sidebar-tooltip {
+  opacity: 1;
+}
+
+.sidebar-collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px;
+  padding: 9px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-collapse-toggle:hover {
+  color: var(--color-text);
+  background: var(--color-surface-raised);
+}
+
+.sidebar-collapse-toggle svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* ── Breadcrumbs ── */
+.breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.breadcrumb-segmento {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb-segmento a {
+  color: var(--color-text-muted);
+  text-decoration: none;
+}
+
+.breadcrumb-segmento a:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
+.breadcrumb-segmento:last-child span {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.breadcrumb-separador {
+  color: var(--color-placeholder);
+}
+
+/* ── Menu do usuário ── */
+.user-menu {
+  position: relative;
+}
+
+.user-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  padding: 6px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.user-menu-trigger:hover {
+  background: var(--color-surface-raised);
+}
+
+.user-menu-email {
+  font-size: 13px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.user-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 200px;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+  overflow: hidden;
+}
+
+.user-menu-panel-email {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-menu-panel-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.user-menu-panel-item:hover {
+  background: var(--color-border);
+}
+
+/* Sidebar: desktop fixo (expandida ou recolhida) até 900px; abaixo disso
+   vira drawer (seção 24/25 do prompt) — tablet e mobile compartilham o
+   mesmo comportamento de overlay pra não manter três larguras fixas
+   diferentes sem necessidade real. */
+@media (max-width: 900px) {
+  .hamburger-btn {
+    display: inline-flex;
+  }
+
+  .sidebar,
+  .sidebar-collapsed {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 260px;
+    height: 100vh;
+    z-index: 30;
+    transform: translateX(-100%);
+    transition: transform 0.15s ease;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .sidebar-drawer-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-collapse-toggle {
+    display: none;
+  }
+
+  /* No drawer mobile a preferência de "recolhida" do desktop não se
+     aplica — o drawer sempre mostra ícone + nome (não faz sentido um
+     drawer de ícones só, que é overlay de qualquer forma). */
+  .sidebar-collapsed .sidebar-logo-nome,
+  .sidebar-collapsed .sidebar-group-titulo,
+  .sidebar-collapsed .sidebar-link-label {
+    display: block;
+  }
+
+  .sidebar-collapsed .sidebar-link {
+    justify-content: flex-start;
+    padding: 9px 10px;
+  }
+
+  .sidebar-collapsed .sidebar-tooltip {
+    display: none;
+  }
+
+  .sidebar-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    border: none;
+    padding: 0;
+    z-index: 25;
+    cursor: pointer;
+  }
+
+  .app-content {
+    width: 100%;
+  }
 }
 
 /* ── Page ── */
@@ -2008,23 +2397,24 @@ img.auth-logo {
   }
 
   .topbar-left {
-    gap: 14px;
-    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
   }
 
   .topbar-brand {
     font-size: 13px;
   }
 
-  .topbar-nav {
-    flex-wrap: wrap;
+  .breadcrumbs {
+    min-width: 0;
   }
 
   .topbar-user {
     gap: 8px;
   }
 
-  .topbar-email {
+  .user-menu-email {
     display: none;
   }
 
