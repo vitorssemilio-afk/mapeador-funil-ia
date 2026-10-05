@@ -1,0 +1,7 @@
+# webhook-atas é chamado servidor-a-servidor pelo App de Atas com um
+# segredo próprio (Authorization: Bearer <ATAS_WEBHOOK_SECRET>), não com
+# um JWT de usuário do Supabase — por isso a verificação de JWT da
+# plataforma precisa ficar desligada aqui (a função já autentica sozinha
+# conferindo o secret).
+[functions.webhook-atas]
+verify_jwt = false
