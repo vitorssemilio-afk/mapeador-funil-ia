@@ -4221,3 +4221,43 @@ img.auth-logo {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Onboarding de primeiro acesso ── */
+.onboarding-modal {
+  max-width: 520px;
+}
+
+.onboarding-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.onboarding-checklist li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.onboarding-progresso {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.onboarding-ponto {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+}
+
+.onboarding-ponto-atual {
+  background: var(--color-accent);
+}

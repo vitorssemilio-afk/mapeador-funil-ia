@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { OnboardingProvider } from '../contexts/OnboardingContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { supabase } from '../lib/supabaseClient';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -92,39 +93,41 @@ export function Layout() {
   }
 
   return (
-    <div className="dashboard-shell">
-      <Sidebar
-        colapsada={sidebarColapsada}
-        onAlternarColapso={alternarColapso}
-        souAdministrador={souAdministrador}
-        drawerAberta={drawerAberta}
-        onFecharDrawer={() => setDrawerAberta(false)}
-        nomeProduto={nomeProduto}
-      />
-      <div className="app-content">
-        <header className="topbar">
-          <div className="topbar-left">
-            <button
-              type="button"
-              className="hamburger-btn"
-              onClick={() => setDrawerAberta((v) => !v)}
-              aria-label={drawerAberta ? 'Fechar menu' : 'Abrir menu'}
-            >
-              {drawerAberta ? <IconX /> : <IconMenu />}
-            </button>
-            <Breadcrumbs />
-          </div>
-          <div className="topbar-user">
-            <GlobalSearch />
-            <NotificationBell />
-            <ThemeToggle />
-            <UserMenu />
-          </div>
-        </header>
-        <main className="app-main">
-          <Outlet />
-        </main>
+    <OnboardingProvider>
+      <div className="dashboard-shell">
+        <Sidebar
+          colapsada={sidebarColapsada}
+          onAlternarColapso={alternarColapso}
+          souAdministrador={souAdministrador}
+          drawerAberta={drawerAberta}
+          onFecharDrawer={() => setDrawerAberta(false)}
+          nomeProduto={nomeProduto}
+        />
+        <div className="app-content">
+          <header className="topbar">
+            <div className="topbar-left">
+              <button
+                type="button"
+                className="hamburger-btn"
+                onClick={() => setDrawerAberta((v) => !v)}
+                aria-label={drawerAberta ? 'Fechar menu' : 'Abrir menu'}
+              >
+                {drawerAberta ? <IconX /> : <IconMenu />}
+              </button>
+              <Breadcrumbs />
+            </div>
+            <div className="topbar-user">
+              <GlobalSearch />
+              <NotificationBell />
+              <ThemeToggle />
+              <UserMenu />
+            </div>
+          </header>
+          <main className="app-main">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </OnboardingProvider>
   );
 }
