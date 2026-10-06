@@ -64,6 +64,13 @@ export type Cliente = MarcosCliente & {
   site: string | null;
   cidade: string | null;
   uf: string | null;
+  // Canais previstos pra este cliente (prompt 54) — null = ainda não
+  // definido (clientes antigos; o checklist trata como "sim", nunca gera
+  // pendência falsa por omissão). false = explicitamente fora do escopo
+  // desta implementação, então as atividades de conexão desse canal somem
+  // do checklist em vez de aparecerem como pendentes.
+  canal_whatsapp_business: boolean | null;
+  canal_instagram: boolean | null;
   // Preenchido automaticamente por trigger com quem cria o cliente (ver
   // migration 0051) — controla o acesso por vínculo (fase 2 de segurança).
   consultor_responsavel_id: string | null;
