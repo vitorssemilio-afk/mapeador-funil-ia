@@ -130,6 +130,31 @@ export function Consultores() {
 
   async function handleAlternarAtivo(consultor: Consultor) {
     setError(null);
+
+    // Só avisa ao DESATIVAR — reativar nunca precisa dessa checagem (seção
+    // 50 do pedido: "não deixar clientes sem responsável silenciosamente",
+    // mas isso é um aviso, não um bloqueio — desativar não limpa
+    // consultor_responsavel_id/apoio em lugar nenhum, então a implementação
+    // continua com o vínculo intacto; o aviso só existe pra lembrar de
+    // transferir antes, se fizer sentido).
+    if (consultor.ativo) {
+      const { count } = await supabase
+        .from('implementacoes_crm')
+        .select('id', { count: 'exact', head: true })
+        .not('status', 'in', '(concluida,cancelada)')
+        .or(`consultor_responsavel_id.eq.${consultor.id},consultor_apoio_id.eq.${consultor.id}`);
+
+      if (count && count > 0) {
+        const confirmado = await confirmar({
+          titulo: `Desativar ${consultor.nome}?`,
+          descricao: `${consultor.nome} possui ${count} implementação(ões) ativa(s). Os vínculos continuam os mesmos depois de desativar — considere transferir a responsabilidade antes, em cada implementação, se for o caso.`,
+          confirmarLabel: 'Desativar mesmo assim',
+          destrutivo: true,
+        });
+        if (!confirmado) return;
+      }
+    }
+
     const { error: updateError } = await supabase
       .from('consultores')
       .update({ ativo: !consultor.ativo })
@@ -139,6 +164,20 @@ export function Consultores() {
       setError(updateError.message);
       return;
     }
+    carregar();
+  }
+
+  async function handleVincularConta(consultor: Consultor) {
+    setError(null);
+    const { error: vincularError } = await supabase.rpc('vincular_consultor_a_conta_existente', {
+      p_consultor_id: consultor.id,
+    });
+
+    if (vincularError) {
+      mostrarToast(vincularError.message, 'error');
+      return;
+    }
+    mostrarToast(`Conta vinculada a ${consultor.nome}.`);
     carregar();
   }
 
@@ -173,6 +212,14 @@ export function Consultores() {
             exclusão) — use "Desativar" para tirá-lo de circulação sem perder o histórico.
             {!souAdministrador && ' Gerenciar o time (criar, editar, desativar, excluir e definir papel) é restrito a administradores.'}
           </p>
+          {souAdministrador && (
+            <p className="field-hint">
+              Para dar acesso a alguém novo: cadastre aqui com o e-mail da pessoa e peça para ela entrar em{' '}
+              <strong>/login</strong> e criar a própria senha (cadastro aberto só para e-mails @v4company.com) — o
+              vínculo com a conta acontece sozinho no primeiro login. Cada um só vê a própria carteira (clientes onde é
+              responsável ou apoio); administrador vê tudo.
+            </p>
+          )}
         </div>
         {!mostrarForm && souAdministrador && (
           <button type="button" className="btn btn-primary" onClick={abrirNovo}>
@@ -290,6 +337,7 @@ export function Consultores() {
                 <th>Cargo</th>
                 <th>Papel</th>
                 <th>Status</th>
+                <th>Conta</th>
                 {souAdministrador && <th />}
               </tr>
             </thead>
@@ -309,11 +357,35 @@ export function Consultores() {
                       {c.ativo ? 'Ativo' : 'Inativo'}
                     </span>
                   </td>
+                  <td>
+                    {c.user_id ? (
+                      <span className="status-badge status-tone-success">Vinculada</span>
+                    ) : (
+                      <span
+                        className="status-badge status-tone-warning"
+                        title="Ninguém logou ainda com este e-mail. Peça para a pessoa se cadastrar em /login — o vínculo acontece sozinho ao primeiro login. Se ela já tinha conta antes de virar consultor(a), use 'Vincular' ao lado."
+                      >
+                        Não criada
+                      </span>
+                    )}
+                  </td>
                   {souAdministrador && (
                     <td className="table-actions">
                       <button type="button" className="btn btn-secondary" onClick={() => abrirEdicao(c)}>
                         Editar
                       </button>{' '}
+                      {!c.user_id && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => handleVincularConta(c)}
+                            title="Procura uma conta de login já existente com este e-mail e vincula."
+                          >
+                            Vincular
+                          </button>{' '}
+                        </>
+                      )}
                       <button type="button" className="btn btn-ghost" onClick={() => handleAlternarAtivo(c)}>
                         {c.ativo ? 'Desativar' : 'Ativar'}
                       </button>{' '}

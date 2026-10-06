@@ -65,7 +65,7 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
   {
     titulo: 'Gestão',
     itens: [
-      { label: 'Dashboard Gerencial', to: '/gestao', icon: IconBarChart },
+      { label: 'Dashboard Gerencial', to: '/gestao', icon: IconBarChart, somenteAdministrador: true },
       { label: 'Notificações', to: '/notificacoes', icon: IconBell },
     ],
   },

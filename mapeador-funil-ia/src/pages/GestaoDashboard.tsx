@@ -100,6 +100,16 @@ function CardIndicador({
 export function GestaoDashboard() {
   const { user } = useAuth();
   const meuEmail = (user?.email ?? '').toLowerCase();
+  // Dashboard Gerencial é visão de operação inteira — não faz sentido pra
+  // quem só enxerga a própria carteira (seção 13 do pedido de isolamento
+  // por consultor). RLS já restringiria os dados de qualquer jeito se a
+  // tela ficasse visível, mas aqui a opção escolhida foi ocultar de vez,
+  // mesmo padrão já usado em Observabilidade de IA/Checklist padrão.
+  const [souAdministrador, setSouAdministrador] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    supabase.rpc('sou_administrador').then(({ data }) => setSouAdministrador(data === true));
+  }, []);
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [mapeamentos, setMapeamentos] = useState<Mapeamento[]>([]);
@@ -341,6 +351,14 @@ export function GestaoDashboard() {
 
   function abrirPainel(titulo: string, clientesDoPainel: Cliente[]) {
     setPainel({ titulo, clientes: clientesDoPainel });
+  }
+
+  if (souAdministrador === false) {
+    return (
+      <div className="page">
+        <p className="form-error">Esta tela é restrita a administradores.</p>
+      </div>
+    );
   }
 
   if (loading) {

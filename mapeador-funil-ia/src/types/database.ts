@@ -1971,6 +1971,10 @@ export type Database = {
         };
         Returns: undefined;
       };
+      vincular_consultor_a_conta_existente: {
+        Args: { p_consultor_id: string };
+        Returns: Consultor;
+      };
     };
     Enums: {
       mapeamento_status: MapeamentoStatus;
