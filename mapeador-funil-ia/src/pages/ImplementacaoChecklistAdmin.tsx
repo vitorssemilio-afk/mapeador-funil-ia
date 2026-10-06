@@ -12,9 +12,14 @@ export function ImplementacaoChecklistAdmin() {
   const confirmar = useConfirm();
   const { mostrarToast } = useToast();
   const [atividades, setAtividades] = useState<AtividadeCronograma[]>([]);
+  const [souAdministrador, setSouAdministrador] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    supabase.rpc('sou_administrador').then(({ data }) => setSouAdministrador(data === true));
+  }, []);
 
   const [mostrarFormCiclo, setMostrarFormCiclo] = useState(false);
   const [nomeNovoCiclo, setNomeNovoCiclo] = useState('');
@@ -224,6 +229,14 @@ export function ImplementacaoChecklistAdmin() {
       mostrarToast('Atividade excluída.');
       carregar();
     }
+  }
+
+  if (souAdministrador === false) {
+    return (
+      <div className="page">
+        <p className="form-error">Esta tela é restrita a administradores.</p>
+      </div>
+    );
   }
 
   return (
