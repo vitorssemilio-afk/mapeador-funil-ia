@@ -27,6 +27,7 @@ import { Login } from './pages/Login';
 import { Mapeamento } from './pages/Mapeamento';
 import { NovoCliente } from './pages/NovoCliente';
 import { ObservabilidadeIA } from './pages/ObservabilidadeIA';
+import { RedefinirSenha } from './pages/RedefinirSenha';
 import { RelatorioFunil } from './pages/RelatorioFunil';
 import { RelatorioImplementacaoView } from './pages/RelatorioImplementacaoView';
 import { RelatorioRespostas } from './pages/RelatorioRespostas';
@@ -44,6 +45,7 @@ function App() {
             <ConfirmProvider>
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/redefinir-senha" element={<RedefinirSenha />} />
                 <Route path="/f/:codigo" element={<FormularioPublico />} />
                 <Route path="/formulario/:id" element={<FormularioPublico />} />
                 <Route path="/checkpoint/:codigo" element={<CheckpointAdocao />} />

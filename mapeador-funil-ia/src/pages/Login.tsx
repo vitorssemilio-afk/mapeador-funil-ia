@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 
 export function Login() {
   const { user, signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'entrar' | 'cadastrar'>('entrar');
+  const [mode, setMode] = useState<'entrar' | 'cadastrar' | 'recuperar'>('entrar');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +22,13 @@ export function Login() {
 
   if (user) return <Navigate to="/" replace />;
 
+  function trocarModo(novoModo: typeof mode) {
+    setMode(novoModo);
+    setError(null);
+    setInfo(null);
+    setPassword('');
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -34,6 +41,23 @@ export function Login() {
 
     setSubmitting(true);
 
+    if (mode === 'recuperar') {
+      // Nunca confirma se o e-mail existe ou não (seção 6/7 do pedido) —
+      // a mensagem é sempre a mesma, com sucesso ou erro de rede/validação
+      // do próprio Supabase à parte (esses sim são mostrados, pois não
+      // revelam nada sobre a existência da conta).
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo: `${window.location.origin}/redefinir-senha`,
+      });
+      setSubmitting(false);
+      if (resetError) {
+        setError(resetError.message);
+        return;
+      }
+      setInfo('Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.');
+      return;
+    }
+
     const result = mode === 'entrar' ? await signIn(email, password) : await signUp(email, password);
 
     if (result.error) {
@@ -44,14 +68,15 @@ export function Login() {
     setSubmitting(false);
   }
 
+  const titulo =
+    mode === 'entrar' ? 'Entre na sua conta' : mode === 'cadastrar' ? 'Crie sua conta' : 'Recuperar senha';
+
   return (
     <div className="auth-screen">
       <div className="auth-card">
         <img src="/favicon.svg" alt="" className="auth-logo" />
         <h1 className="auth-title">{nomeProduto}</h1>
-        <p className="auth-subtitle">
-          {mode === 'entrar' ? 'Entre na sua conta' : 'Crie sua conta'}
-        </p>
+        <p className="auth-subtitle">{titulo}</p>
 
         <form onSubmit={handleSubmit} className="auth-form">
           <label className="field">
@@ -65,34 +90,44 @@ export function Login() {
             />
           </label>
 
-          <label className="field">
-            <span>Senha</span>
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === 'entrar' ? 'current-password' : 'new-password'}
-            />
-          </label>
+          {mode !== 'recuperar' && (
+            <label className="field">
+              <span>Senha</span>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === 'entrar' ? 'current-password' : 'new-password'}
+              />
+            </label>
+          )}
 
           {error && <p className="form-error">{error}</p>}
           {info && <p className="form-info">{info}</p>}
 
           <button type="submit" className="btn btn-primary" disabled={submitting}>
-            {submitting ? 'Aguarde…' : mode === 'entrar' ? 'Entrar' : 'Cadastrar'}
+            {submitting
+              ? 'Aguarde…'
+              : mode === 'entrar'
+                ? 'Entrar'
+                : mode === 'cadastrar'
+                  ? 'Cadastrar'
+                  : 'Enviar link de recuperação'}
           </button>
         </form>
+
+        {mode === 'entrar' && (
+          <button type="button" className="link-button" onClick={() => trocarModo('recuperar')}>
+            Esqueci minha senha
+          </button>
+        )}
 
         <button
           type="button"
           className="link-button"
-          onClick={() => {
-            setMode(mode === 'entrar' ? 'cadastrar' : 'entrar');
-            setError(null);
-            setInfo(null);
-          }}
+          onClick={() => trocarModo(mode === 'cadastrar' ? 'entrar' : mode === 'recuperar' ? 'entrar' : 'cadastrar')}
         >
           {mode === 'entrar' ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Entrar'}
         </button>
