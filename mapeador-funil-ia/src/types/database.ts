@@ -1975,6 +1975,14 @@ export type Database = {
         Args: { p_consultor_id: string };
         Returns: Consultor;
       };
+      concluir_atividade_com_data: {
+        Args: { p_atividade_id: string; p_implementacao_id: string; p_data_real: string | null };
+        Returns: AtividadeStatusRow;
+      };
+      atualizar_data_marco_cliente: {
+        Args: { p_cliente_id: string; p_marco: string; p_nova_data: string | null };
+        Returns: Cliente;
+      };
     };
     Enums: {
       mapeamento_status: MapeamentoStatus;

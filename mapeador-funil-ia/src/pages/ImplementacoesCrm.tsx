@@ -17,14 +17,25 @@ export function ImplementacoesCrm() {
     async function carregar() {
       setLoading(true);
       const [{ data, error: fetchError }, { data: consultoresData }] = await Promise.all([
-        supabase.from('implementacoes_crm').select('*').order('created_at', { ascending: false }),
+        supabase.from('implementacoes_crm').select('*'),
         supabase.from('consultores').select('*'),
       ]);
 
       if (cancelled) return;
 
       if (fetchError) setError(fetchError.message);
-      else setImplementacoes(data ?? []);
+      // Ordem alfabética pelo nome do cliente (A → Z, sem acento/caixa
+      // importar) — nunca por data de criação/status/ID. A ordenação só
+      // acontece dentro do que a RLS já devolveu (toda a operação pro
+      // admin, só a própria carteira pro consultor): o .select('*') acima
+      // não tem nenhum filtro de escopo porque esse filtro já é automático
+      // no banco (ver supabase/migrations/0084_isolamento_carteira_consultor.sql).
+      else {
+        const ordenadas = [...(data ?? [])].sort((a, b) =>
+          a.nome_cliente.localeCompare(b.nome_cliente, 'pt-BR', { sensitivity: 'base' }),
+        );
+        setImplementacoes(ordenadas);
+      }
       setConsultores(consultoresData ?? []);
       setLoading(false);
     }

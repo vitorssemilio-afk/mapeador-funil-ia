@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AplicarTemplateModal } from '../components/AplicarTemplateModal';
+import { ConcluirAtividadeModal } from '../components/ConcluirAtividadeModal';
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { useAuth } from '../contexts/AuthContext';
@@ -398,9 +399,13 @@ export function ImplementacaoDetalhe() {
   } | null>(null);
   const [salvandoCriterio, setSalvandoCriterio] = useState(false);
   const [confirmandoCampo, setConfirmandoCampo] = useState<
-    'conta_kommo_solicitada_em' | 'contratacao_kommo_solicitada_em' | null
+    'conta_kommo_solicitada_em' | 'conta_kommo_criada_em' | 'contratacao_kommo_solicitada_em' | null
   >(null);
   const [valorConfirmacao, setValorConfirmacao] = useState('');
+  // Modal "Concluir atividade" (prompt 51, seções 4-9) — null quando
+  // fechado; guarda a atividade pra saber o nome/valor atual a pré-preencher.
+  const [modalConclusao, setModalConclusao] = useState<AtividadeResolvida | null>(null);
+  const [salvandoConclusao, setSalvandoConclusao] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -551,6 +556,7 @@ export function ImplementacaoDetalhe() {
           dependenciaLabel: 'Kickoff realizado',
           kickoffRealizadoEm: cliente.kickoff_realizado_em,
           diaLimiteCiclo: diaFimCiclo1,
+          provaDeConclusaoPosteriorIso: cliente.conta_kommo_criada_em,
         }),
       );
       resolvidas.push(
@@ -1060,7 +1066,54 @@ export function ImplementacaoDetalhe() {
       return next;
     });
 
-    await upsertAtividadeStatus(atividade.id, { data_real: concluido ? new Date().toISOString() : null });
+    if (!concluido) {
+      // Desmarcar apaga uma data histórica já registrada — confirma antes
+      // em vez de apagar silenciosamente (seção 17 do pedido de datas
+      // históricas).
+      const confirmado = await confirmarAcao({
+        titulo: `Desmarcar "${atividade.nome}"?`,
+        descricao: atividade.dataReal
+          ? `A data de conclusão registrada (${atividade.dataReal.toLocaleDateString('pt-BR')}) será removida.`
+          : 'Isso remove a conclusão registrada.',
+        confirmarLabel: 'Desmarcar',
+        destrutivo: true,
+      });
+      if (!confirmado) return;
+      await handleConfirmarDataConclusao(atividade.id, null);
+      return;
+    }
+
+    // Marcar concluído nunca grava a data de HOJE direto — abre o modal pra
+    // confirmar/corrigir a data real, porque é comum estar registrando hoje
+    // algo que aconteceu dias ou semanas atrás (seções 3-5 do pedido).
+    setModalConclusao(atividade);
+  }
+
+  async function handleConfirmarDataConclusao(atividadeId: string, dataIsoLocal: string | null) {
+    if (!implementacao) return;
+    setSalvandoConclusao(true);
+
+    const { data, error: rpcError } = await supabase.rpc('concluir_atividade_com_data', {
+      p_atividade_id: atividadeId,
+      p_implementacao_id: implementacao.id,
+      p_data_real: dataIsoLocal ? new Date(dataIsoLocal).toISOString() : null,
+    });
+
+    setSalvandoConclusao(false);
+
+    if (rpcError) {
+      mostrarToast(rpcError.message, 'error');
+      return;
+    }
+
+    setAtividadesStatus((prev) => {
+      const idx = prev.findIndex((s) => s.atividade_id === atividadeId);
+      if (idx === -1) return [...prev, data];
+      const copia = [...prev];
+      copia[idx] = data;
+      return copia;
+    });
+    setModalConclusao(null);
   }
 
   async function handleAgendar(atividadeId: string, data: string) {
@@ -1235,9 +1288,7 @@ export function ImplementacaoDetalhe() {
   }
 
   function agoraParaInputDatetime(): string {
-    const agora = new Date();
-    const local = new Date(agora.getTime() - agora.getTimezoneOffset() * 60000);
-    return local.toISOString().slice(0, 16);
+    return isoParaInputDatetime(new Date().toISOString());
   }
 
   // CTA do Pipefy: abre o link (se cadastrado) e revela o painel pra
@@ -1252,22 +1303,32 @@ export function ImplementacaoDetalhe() {
     setValorConfirmacao(agoraParaInputDatetime());
   }
 
-  async function handleConfirmarSolicitacaoPipefy() {
+  // Abre o mesmo painel, mas pra CORRIGIR uma data de marco já registrada
+  // (seção 6/10) — pré-preenche com o valor atual em vez de "agora".
+  function handleEditarDataMarco(campo: typeof confirmandoCampo, valorAtualIso: string | null) {
+    setConfirmandoCampo(campo);
+    setValorConfirmacao(valorAtualIso ? isoParaInputDatetime(valorAtualIso) : agoraParaInputDatetime());
+  }
+
+  // Confirmação do painel de marco (Conta Kommo solicitada/criada,
+  // contratação definitiva) — passa pela RPC atualizar_data_marco_cliente
+  // em vez de update direto: ela valida (nunca no futuro; solicitação nunca
+  // depois da criação da conta) e registra auditoria de quem mudou o quê
+  // (seções 8/14/15/25 do pedido de datas históricas).
+  async function handleConfirmarDataMarco() {
     if (!cliente || !confirmandoCampo || !valorConfirmacao) return;
     setSalvandoTrial(true);
 
-    const atualizacao: Partial<Cliente> = { [confirmandoCampo]: new Date(valorConfirmacao).toISOString() };
-    const { data, error: updateError } = await supabase
-      .from('clientes')
-      .update(atualizacao)
-      .eq('id', cliente.id)
-      .select()
-      .single();
+    const { data, error: rpcError } = await supabase.rpc('atualizar_data_marco_cliente', {
+      p_cliente_id: cliente.id,
+      p_marco: confirmandoCampo,
+      p_nova_data: new Date(valorConfirmacao).toISOString(),
+    });
 
     setSalvandoTrial(false);
 
-    if (updateError) {
-      setError(updateError.message);
+    if (rpcError) {
+      mostrarToast(rpcError.message, 'error');
       return;
     }
 
@@ -2699,13 +2760,38 @@ export function ImplementacaoDetalhe() {
         </div>
       )}
 
-      {cliente && !cliente.conta_kommo_criada_em && (
+      {cliente && (
         <section className="card form-card">
           <h2>Conta Kommo</h2>
+
+          {/* Solicitada: se já existe data real, mostra com "editar data". Se
+              não existe data MAS a conta já foi criada, a criação prova que a
+              solicitação necessariamente aconteceu antes — mostra como
+              concluída sem data em vez de nunca ter sido solicitada (seções
+              25-38/48 do pedido de consistência entre etapas dependentes),
+              com ação pra completar o histórico se alguém souber a data. */}
           {cliente.conta_kommo_solicitada_em ? (
             <p className="field-hint">
-              Solicitada em {new Date(cliente.conta_kommo_solicitada_em).toLocaleString('pt-BR')} — aguardando
-              criação (o Trial começa a contar quando isso acontecer).
+              Solicitada em {new Date(cliente.conta_kommo_solicitada_em).toLocaleString('pt-BR')}
+              {!cliente.conta_kommo_criada_em && ' — aguardando criação (o Trial começa a contar quando isso acontecer).'}{' '}
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => handleEditarDataMarco('conta_kommo_solicitada_em', cliente.conta_kommo_solicitada_em)}
+              >
+                editar data
+              </button>
+            </p>
+          ) : cliente.conta_kommo_criada_em ? (
+            <p className="field-hint">
+              Concluído — data não informada.{' '}
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => handleEditarDataMarco('conta_kommo_solicitada_em', null)}
+              >
+                Adicionar data da solicitação
+              </button>
             </p>
           ) : (
             <button
@@ -2722,6 +2808,7 @@ export function ImplementacaoDetalhe() {
                 <span>Solicitação enviada em</span>
                 <input
                   type="datetime-local"
+                  max={agoraParaInputDatetime()}
                   value={valorConfirmacao}
                   onChange={(e) => setValorConfirmacao(e.target.value)}
                 />
@@ -2733,7 +2820,47 @@ export function ImplementacaoDetalhe() {
                 type="button"
                 className="btn btn-primary"
                 disabled={salvandoTrial}
-                onClick={handleConfirmarSolicitacaoPipefy}
+                onClick={handleConfirmarDataMarco}
+              >
+                Confirmar
+              </button>
+            </div>
+          )}
+
+          {/* Criada: continua marcada pelo checkbox "Conta Kommo criada via V4
+              Company" (aba Dados gerais) — aqui só mostra a data real já
+              registrada e permite corrigi-la, sem duplicar o controle. */}
+          {cliente.conta_kommo_criada_em && (
+            <p className="field-hint">
+              Criada em {new Date(cliente.conta_kommo_criada_em).toLocaleString('pt-BR')}{' '}
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => handleEditarDataMarco('conta_kommo_criada_em', cliente.conta_kommo_criada_em)}
+              >
+                editar data
+              </button>
+            </p>
+          )}
+          {confirmandoCampo === 'conta_kommo_criada_em' && (
+            <div className="form-info form-info-com-acao">
+              <label className="field">
+                <span>Conta criada em</span>
+                <input
+                  type="datetime-local"
+                  max={agoraParaInputDatetime()}
+                  value={valorConfirmacao}
+                  onChange={(e) => setValorConfirmacao(e.target.value)}
+                />
+              </label>
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmandoCampo(null)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={salvandoTrial}
+                onClick={handleConfirmarDataMarco}
               >
                 Confirmar
               </button>
@@ -2855,6 +2982,7 @@ export function ImplementacaoDetalhe() {
                 <span>Solicitação enviada em</span>
                 <input
                   type="datetime-local"
+                  max={agoraParaInputDatetime()}
                   value={valorConfirmacao}
                   onChange={(e) => setValorConfirmacao(e.target.value)}
                 />
@@ -2866,7 +2994,7 @@ export function ImplementacaoDetalhe() {
                 type="button"
                 className="btn btn-primary"
                 disabled={salvandoTrial}
-                onClick={handleConfirmarSolicitacaoPipefy}
+                onClick={handleConfirmarDataMarco}
               >
                 Confirmar
               </button>
@@ -3129,7 +3257,21 @@ export function ImplementacaoDetalhe() {
               <input
                 type="checkbox"
                 checked={formGeral.conta_criada_via_v4}
-                onChange={(e) => setFormGeral({ ...formGeral, conta_criada_via_v4: e.target.checked })}
+                onChange={(e) => {
+                  setFormGeral({ ...formGeral, conta_criada_via_v4: e.target.checked });
+                  // Existe um trigger no banco que grava conta_kommo_criada_em
+                  // = now() na primeira vez que isso é marcado — bom pro
+                  // fluxo do dia a dia, mas errado pra quando estamos
+                  // atualizando um cliente que já estava em andamento antes
+                  // (seção 18 do pedido de datas históricas). Abrir o painel
+                  // de data aqui garante que a data REAL seja informada antes
+                  // de salvar; a RPC chamada ao confirmar grava o valor
+                  // escolhido, tornando o now() do trigger um no-op (só
+                  // atualiza se ainda estiver null).
+                  if (e.target.checked && cliente && !cliente.conta_kommo_criada_em) {
+                    handleEditarDataMarco('conta_kommo_criada_em', null);
+                  }
+                }}
               />
               <span>Conta Kommo criada via V4 Company</span>
             </label>
@@ -3477,7 +3619,35 @@ export function ImplementacaoDetalhe() {
                                 </span>
                               )}
                             </td>
-                            <td>{atividade.dataReal?.toLocaleDateString('pt-BR') ?? '—'}</td>
+                            <td>
+                              {atividade.dataReal ? (
+                                <>
+                                  {atividade.dataReal.toLocaleDateString('pt-BR')}
+                                  {!virtual && (
+                                    <>
+                                      {' '}
+                                      <button
+                                        type="button"
+                                        className="btn-link"
+                                        onClick={() => setModalConclusao(atividade)}
+                                      >
+                                        editar data
+                                      </button>
+                                    </>
+                                  )}
+                                </>
+                              ) : atividade.status === 'concluido' ? (
+                                // Concluído pela lógica de dependência (ex: "Conta
+                                // Kommo criada" prova que "solicitada" já
+                                // aconteceu), mas sem data própria conhecida —
+                                // nunca mostrar "—" aqui, que pareceria "não
+                                // aconteceu" (seções 30/42 do pedido de datas
+                                // históricas/dependências).
+                                'Data não informada'
+                              ) : (
+                                '—'
+                              )}
+                            </td>
                             <td>{atividade.atrasoDias > 0 ? `${atividade.atrasoDias}d` : '—'}</td>
                             <td>
                               <span className={`status-badge status-tone-${STATUS_ATIVIDADE_TONE[atividade.status]}`}>
@@ -4479,6 +4649,16 @@ export function ImplementacaoDetalhe() {
             })}
           </>
         ))}
+
+      {modalConclusao && (
+        <ConcluirAtividadeModal
+          nomeAtividade={modalConclusao.nome}
+          valorInicialIso={modalConclusao.dataReal ? modalConclusao.dataReal.toISOString() : null}
+          salvando={salvandoConclusao}
+          onCancelar={() => setModalConclusao(null)}
+          onConfirmar={(dataIso) => handleConfirmarDataConclusao(modalConclusao.id!, dataIso)}
+        />
+      )}
 
       {formPendenciaDeAcao && (
         <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Criar pendência a partir da ata">
