@@ -1,6 +1,20 @@
 // Conteúdo do onboarding de primeiro acesso — curto de propósito (4 passos
 // + checklist), sem curso extenso. Linguagem operacional, sem termos
 // técnicos de banco/implementação (trigger, migration, RLS, enum...).
+import type { Consultor } from '../types/database';
+
+// Decide se o onboarding deve abrir sozinho ao carregar a página — nunca
+// um popup recorrente. Única fonte de verdade: os dois campos persistidos
+// no próprio consultor (onboarding_concluido_em/onboarding_pulado). Não
+// depende de state React, sessionStorage ou qualquer coisa que se perca
+// num F5 — por isso é função pura, testável sem montar componente.
+export function deveAbrirOnboardingAutomaticamente(
+  consultor: Pick<Consultor, 'onboarding_concluido_em' | 'onboarding_pulado'> | null,
+): boolean {
+  if (!consultor) return false;
+  return !consultor.onboarding_concluido_em && !consultor.onboarding_pulado;
+}
+
 export type PassoOnboarding = {
   titulo: string;
   texto: string;

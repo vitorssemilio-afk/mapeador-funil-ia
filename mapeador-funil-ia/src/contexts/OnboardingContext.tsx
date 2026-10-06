@@ -7,7 +7,8 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { buscarMeuConsultor } from '../lib/consultores';
-import { ITENS_PRIMEIROS_PASSOS, PASSOS_ONBOARDING } from '../lib/onboarding';
+import { deveAbrirOnboardingAutomaticamente, ITENS_PRIMEIROS_PASSOS, PASSOS_ONBOARDING } from '../lib/onboarding';
+import { useToast } from './ToastContext';
 import type { Consultor } from '../types/database';
 
 type OnboardingContextValue = {
@@ -23,6 +24,7 @@ const OnboardingContext = createContext<OnboardingContextValue | undefined>(unde
 
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { mostrarToast } = useToast();
   const [consultor, setConsultor] = useState<Consultor | null>(null);
   const [souAdministrador, setSouAdministrador] = useState(false);
   const [aberto, setAberto] = useState(false);
@@ -41,7 +43,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!consultor || jaOfereceu) return;
     setJaOfereceu(true);
-    if (!consultor.onboarding_concluido_em && !consultor.onboarding_pulado) {
+    if (deveAbrirOnboardingAutomaticamente(consultor)) {
       setEtapa(consultor.onboarding_etapa ?? 0);
       setAberto(true);
       if (!consultor.onboarding_iniciado_em) {
@@ -53,13 +55,19 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
   async function atualizarConsultor(patch: Partial<Consultor>) {
     if (!consultor) return;
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('consultores')
       .update(patch)
       .eq('id', consultor.id)
       .select()
       .single();
     if (data) setConsultor(data);
+    if (error) {
+      // Se isso falhar silenciosamente, o estado de conclusão/pulado não
+      // persiste e o onboarding volta a abrir sozinho no próximo reload —
+      // por isso avisa em vez de só fechar o modal como se tivesse salvo.
+      mostrarToast('Não foi possível salvar o progresso do onboarding. Tente novamente.', 'error');
+    }
   }
 
   const continuarOnboarding = useCallback(() => {
@@ -67,12 +75,17 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     setAberto(true);
   }, [consultor]);
 
+  // Reabre a experiência manualmente (menu "Refazer onboarding") SEM
+  // zerar onboarding_concluido_em/onboarding_pulado — esses dois campos
+  // são a única coisa que decide se o onboarding reabre sozinho. Zerá-los
+  // aqui e o usuário fechar a aba antes de terminar o refazer faria o
+  // onboarding voltar a abrir automaticamente em todo F5 dali em diante,
+  // mesmo já tendo concluído antes. `handleConcluir` sobrescreve
+  // onboarding_concluido_em normalmente quando o refazer é finalizado.
   const refazerOnboarding = useCallback(() => {
     setEtapa(0);
     setAberto(true);
-    atualizarConsultor({ onboarding_concluido_em: null, onboarding_pulado: false, onboarding_etapa: 0 });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [consultor]);
+  }, []);
 
   function irPara(novaEtapa: number) {
     setEtapa(novaEtapa);
