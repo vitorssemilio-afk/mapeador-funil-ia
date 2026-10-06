@@ -10,6 +10,7 @@ import { useToast } from '../contexts/ToastContext';
 import { buscarMeuConsultor, PAPEL_LABELS, primeiroNome } from '../lib/consultores';
 import { supabase } from '../lib/supabaseClient';
 import type { PapelConsultor } from '../types/database';
+import { AlterarSenhaModal } from './AlterarSenhaModal';
 import { Avatar } from './Avatar';
 import { IconChevronDown } from './icons';
 
@@ -26,6 +27,7 @@ export function UserMenu() {
   const { mostrarToast } = useToast();
   const confirmar = useConfirm();
   const [aberto, setAberto] = useState(false);
+  const [mostrarModalSenha, setMostrarModalSenha] = useState(false);
   const [consultorId, setConsultorId] = useState<string | null>(null);
   const [nome, setNome] = useState<string | null>(null);
   const [role, setRole] = useState<PapelConsultor | null>(null);
@@ -197,6 +199,20 @@ export function UserMenu() {
             </div>
           )}
 
+          <div className="user-menu-panel-foto-acoes">
+            <button
+              type="button"
+              className="user-menu-panel-item"
+              role="menuitem"
+              onClick={() => {
+                setAberto(false);
+                setMostrarModalSenha(true);
+              }}
+            >
+              Alterar senha
+            </button>
+          </div>
+
           <button
             type="button"
             className="user-menu-panel-item user-menu-panel-item-sair"
@@ -210,6 +226,8 @@ export function UserMenu() {
           </button>
         </div>
       )}
+
+      {mostrarModalSenha && <AlterarSenhaModal onFechar={() => setMostrarModalSenha(false)} />}
     </div>
   );
 }
