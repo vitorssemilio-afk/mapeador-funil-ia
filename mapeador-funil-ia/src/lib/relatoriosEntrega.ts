@@ -41,6 +41,7 @@ export const TIPO_RELATORIO_LABELS: Record<TipoRelatorioImplementacao, string> =
   funil_pos_venda: 'Documento do Funil de Pós-Venda',
   entrega_final: 'Relatório de Entrega Final',
   adocao: 'Relatório de Adoção',
+  playbook: 'Playbook Final de Implementação',
 };
 
 export const STATUS_RELATORIO_LABELS: Record<StatusRelatorioImplementacao, string> = {
@@ -48,13 +49,18 @@ export const STATUS_RELATORIO_LABELS: Record<StatusRelatorioImplementacao, strin
   gerado: 'Gerado',
   final: 'Final',
   arquivado: 'Arquivado',
+  entregue: 'Entregue',
 };
 
-export const STATUS_RELATORIO_TONE: Record<StatusRelatorioImplementacao, 'neutral' | 'info' | 'success' | 'warning'> = {
+export const STATUS_RELATORIO_TONE: Record<
+  StatusRelatorioImplementacao,
+  'neutral' | 'info' | 'success' | 'warning'
+> = {
   rascunho: 'neutral',
   gerado: 'info',
   final: 'success',
   arquivado: 'warning',
+  entregue: 'success',
 };
 
 export const VISAO_RELATORIO_LABELS: Record<VisaoRelatorio, string> = {

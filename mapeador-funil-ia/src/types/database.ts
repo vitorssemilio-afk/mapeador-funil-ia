@@ -799,11 +799,12 @@ export type TipoRelatorioImplementacao =
   | 'funil_vendas'
   | 'funil_pos_venda'
   | 'entrega_final'
-  | 'adocao';
+  | 'adocao'
+  | 'playbook';
 
 export type VisaoRelatorio = 'executiva' | 'tecnica';
 
-export type StatusRelatorioImplementacao = 'rascunho' | 'gerado' | 'final' | 'arquivado';
+export type StatusRelatorioImplementacao = 'rascunho' | 'gerado' | 'final' | 'arquivado' | 'entregue';
 
 export type RelatorioImplementacao = {
   id: string;
@@ -821,6 +822,8 @@ export type RelatorioImplementacao = {
   gerado_em: string | null;
   finalizado_em: string | null;
   arquivado_em: string | null;
+  entregue_em: string | null;
+  entregue_por_email: string | null;
   created_at: string;
   updated_at: string;
 };
