@@ -5,6 +5,7 @@ import { inicioDoDia } from '../lib/agendaImplementacao';
 import { construirMapaConfiguracoes } from '../lib/configuracaoImplementacao';
 import {
   construirResumoClientes,
+  diaCicloLabel,
   estaAtrasado,
   prazoLabelDe,
   SAUDE_LABELS,
@@ -264,7 +265,7 @@ export function Clientes() {
                     <th>Cliente</th>
                     <th>Fase atual</th>
                     <th>Saúde</th>
-                    <th>Progresso</th>
+                    <th>Dia/Ciclo</th>
                     <th>Trial</th>
                     <th>Próxima ação</th>
                     <th>Prazo</th>
@@ -292,7 +293,7 @@ function LinhaCliente({
   resumo: ClienteResumo;
   navigate: ReturnType<typeof useNavigate>;
 }) {
-  const { cliente, faseAtual, saude, progresso, trial, proximaAcao, consultor } = resumo;
+  const { cliente, faseAtual, saude, trial, proximaAcao, consultor } = resumo;
   const prazoLabel = prazoLabelDe(resumo);
   const prazoAtrasado = estaAtrasado(resumo);
 
@@ -312,18 +313,7 @@ function LinhaCliente({
       <td>
         <span className={`status-badge status-tone-${SAUDE_TONE[saude]}`}>{SAUDE_LABELS[saude]}</span>
       </td>
-      <td>
-        {progresso == null ? (
-          <span className="dash">—</span>
-        ) : (
-          <span className="ops-progress" title={`${progresso}%`}>
-            <span className="ops-progress-track">
-              <span className="ops-progress-fill" style={{ width: `${progresso}%` }} />
-            </span>
-            <span className="ops-progress-value">{progresso}%</span>
-          </span>
-        )}
-      </td>
+      <td>{diaCicloLabel(resumo)}</td>
       <td>
         {trial ? (
           <span

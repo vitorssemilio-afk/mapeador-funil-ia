@@ -16,6 +16,7 @@ import { construirMapaConfiguracoes } from '../lib/configuracaoImplementacao';
 import {
   construirAlertas,
   construirResumoClientes,
+  diaCicloLabel,
   estaAtrasado,
   prazoLabelDe,
   SAUDE_LABELS,
@@ -132,13 +133,6 @@ function trialHumanizado(diasRestantes: number): string {
   if (diasRestantes === 0) return 'Expira hoje';
   if (diasRestantes === 1) return 'Expira amanhã';
   return `${diasRestantes}d`;
-}
-
-function diaCicloLabel(resumo: ClienteResumo): string {
-  if (!resumo.diaCiclo) return 'Kickoff pendente';
-  return resumo.diaCiclo.ciclo
-    ? `Dia ${resumo.diaCiclo.dia}/${resumo.duracaoTotalDias} · ${resumo.diaCiclo.ciclo.nome}`
-    : `Dia ${resumo.diaCiclo.dia}/${resumo.duracaoTotalDias}`;
 }
 
 function diferencaEmDiasLocal(depois: Date, antes: Date): number {

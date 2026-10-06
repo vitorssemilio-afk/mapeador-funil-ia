@@ -43,7 +43,10 @@ import type {
 import { resolverResumoCriteriosEntrega } from './criteriosEntrega';
 import { resolverDiagnosticoAdocao, type StatusDiagnosticoAdocao } from './diagnosticoAdocao';
 
-function diasEntre(inicio: string | null, fim: string | null): number | null {
+// Exportada só pra teste direto da conta A→B (ver dashboardGerencial.test.ts)
+// — nenhum outro arquivo deveria importar isso em vez de usar
+// construirTemposProcesso ou marcosCliente.ts, que são as fontes oficiais.
+export function diasEntre(inicio: string | null, fim: string | null): number | null {
   if (!inicio || !fim) return null;
   const MS_POR_DIA = 24 * 60 * 60 * 1000;
   return Math.round((new Date(fim).getTime() - new Date(inicio).getTime()) / MS_POR_DIA);
@@ -213,6 +216,18 @@ export type TempoProcesso = {
   mediaDias: number | null;
   medianaDias: number | null;
   amostras: number;
+  // Quantas amostras desse marco tinham a data final ANTERIOR à inicial
+  // (ordem cronológica impossível pro processo — ex: kickoff registrado
+  // antes da geração do funil) e por isso foram excluídas da média/
+  // mediana acima, em vez de entrarem como número negativo ou com
+  // Math.abs() escondendo o problema (Prompt 48, seções 5/6). Cada uma é
+  // um sinal de dado incorreto/backfill antigo, não uma duração real.
+  amostrasInconsistentes: number;
+  // true quando amostras === 1 — base estatística baixa demais pra uma
+  // média/mediana confiável (seção 8/9); a UI mostra isso junto do valor
+  // em vez de apresentar como se fosse tão confiável quanto uma métrica
+  // com dezenas de amostras.
+  baseBaixa: boolean;
 };
 
 // As mesmas 8 métricas já calculadas por cliente em marcosCliente.ts
@@ -242,33 +257,58 @@ const MARCOS_NULOS: MarcosCliente = {
   implementacao_concluida_em: null,
 };
 
+const LABEL_TRIAL_CONCLUSAO = 'Início do Trial → conclusão';
+
+// Única porta de entrada pra alimentar uma métrica de tempo — nenhum
+// `dias` negativo entra na lista usada por média/mediana (seção 6: só é
+// amostra válida quando a data final é igual ou posterior à inicial).
+// Em vez de descartar silenciosamente, conta à parte em
+// `inconsistentesPorLabel` pra aparecer na UI e no relatório (seção 7).
+function registrarAmostra(
+  porLabel: Map<string, number[]>,
+  inconsistentesPorLabel: Map<string, number>,
+  label: string,
+  dias: number | null,
+) {
+  if (dias == null) return;
+  if (dias < 0) {
+    inconsistentesPorLabel.set(label, (inconsistentesPorLabel.get(label) ?? 0) + 1);
+    return;
+  }
+  const lista = porLabel.get(label) ?? [];
+  lista.push(dias);
+  porLabel.set(label, lista);
+}
+
 export function construirTemposProcesso(clientes: Cliente[]): TempoProcesso[] {
   const porLabel = new Map<string, number[]>();
+  const inconsistentesPorLabel = new Map<string, number>();
   for (const { label } of calcularMetricas(MARCOS_NULOS)) {
     porLabel.set(label, []);
+    inconsistentesPorLabel.set(label, 0);
   }
+  porLabel.set(LABEL_TRIAL_CONCLUSAO, []);
+  inconsistentesPorLabel.set(LABEL_TRIAL_CONCLUSAO, 0);
 
   for (const cliente of clientes) {
     for (const metrica of calcularMetricas(cliente)) {
-      if (metrica.dias == null) continue;
-      const lista = porLabel.get(metrica.label) ?? [];
-      lista.push(metrica.dias);
-      porLabel.set(metrica.label, lista);
+      registrarAmostra(porLabel, inconsistentesPorLabel, metrica.label, metrica.dias);
     }
+    registrarAmostra(
+      porLabel,
+      inconsistentesPorLabel,
+      LABEL_TRIAL_CONCLUSAO,
+      diasEntre(cliente.conta_kommo_criada_em, cliente.implementacao_concluida_em),
+    );
   }
-
-  const inicioTrialConclusao: number[] = [];
-  for (const cliente of clientes) {
-    const dias = diasEntre(cliente.conta_kommo_criada_em, cliente.implementacao_concluida_em);
-    if (dias != null) inicioTrialConclusao.push(dias);
-  }
-  porLabel.set('Início do Trial → conclusão', inicioTrialConclusao);
 
   return Array.from(porLabel.entries()).map(([label, dias]) => ({
     label,
     mediaDias: media(dias),
     medianaDias: mediana(dias),
     amostras: dias.length,
+    amostrasInconsistentes: inconsistentesPorLabel.get(label) ?? 0,
+    baseBaixa: dias.length === 1,
   }));
 }
 
