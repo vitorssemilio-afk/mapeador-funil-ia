@@ -502,10 +502,26 @@ export function resolverMarcoSimples(params: {
   dependenciaLabel?: string | null;
   kickoffRealizadoEm: string | null;
   diaLimiteCiclo?: number;
+  // Marco:valor de uma etapa POSTERIOR que só pode existir se esta já
+  // aconteceu (ex: "Conta Kommo criada" prova que "Conta Kommo solicitada"
+  // já ocorreu, mesmo sem data própria registrada) — nunca inventa a data
+  // desta etapa, só evita ela aparecer como "aguardando etapa anterior"
+  // quando logicamente já foi superada. Ver seções 25-38/48 do pedido de
+  // consistência entre etapas dependentes.
+  provaDeConclusaoPosteriorIso?: string | null;
 }): AtividadeResolvida {
-  const { nome, ciclo, valorIso, dependenciaLabel = null, kickoffRealizadoEm, diaLimiteCiclo } = params;
+  const {
+    nome,
+    ciclo,
+    valorIso,
+    dependenciaLabel = null,
+    kickoffRealizadoEm,
+    diaLimiteCiclo,
+    provaDeConclusaoPosteriorIso = null,
+  } = params;
 
   const dataReal = valorIso ? new Date(valorIso) : null;
+  const concluidaSemData = !dataReal && !!provaDeConclusaoPosteriorIso;
   const janela = calcularJanelaCiclo(dataReal, kickoffRealizadoEm, diaLimiteCiclo);
 
   return {
@@ -520,7 +536,7 @@ export function resolverMarcoSimples(params: {
     dataReal,
     agendadoPara: null,
     atrasoDias: 0,
-    status: dataReal ? 'concluido' : 'aguardando_etapa_anterior',
+    status: dataReal || concluidaSemData ? 'concluido' : 'aguardando_etapa_anterior',
     bloqueadoPeloCliente: false,
     ...janela,
     deslocamentoDias: null,
