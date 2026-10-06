@@ -29,6 +29,7 @@ export function ImplementacaoChecklistAdmin() {
     ciclo: string;
     nome: string;
     chave: string;
+    categoria: string;
     responsavel_padrao: string;
     depende_de: string;
     prazo_dias: string;
@@ -86,6 +87,7 @@ export function ImplementacaoChecklistAdmin() {
       ciclo: nomeNovoCiclo.trim(),
       nome: '',
       chave: '',
+      categoria: '',
       responsavel_padrao: '',
       depende_de: '',
       prazo_dias: '',
@@ -137,6 +139,7 @@ export function ImplementacaoChecklistAdmin() {
       ciclo,
       nome: '',
       chave: '',
+      categoria: '',
       responsavel_padrao: '',
       depende_de: '',
       prazo_dias: '',
@@ -150,6 +153,7 @@ export function ImplementacaoChecklistAdmin() {
       ciclo: atividade.ciclo,
       nome: atividade.nome,
       chave: atividade.chave ?? '',
+      categoria: atividade.categoria ?? '',
       responsavel_padrao: atividade.responsavel_padrao ?? '',
       depende_de: atividade.depende_de ?? '',
       prazo_dias: atividade.prazo_dias != null ? String(atividade.prazo_dias) : '',
@@ -171,6 +175,7 @@ export function ImplementacaoChecklistAdmin() {
     const payload = {
       nome: formAtividade.nome.trim(),
       chave: formAtividade.chave.trim() || null,
+      categoria: formAtividade.categoria.trim() || null,
       responsavel_padrao: formAtividade.responsavel_padrao.trim() || null,
       depende_de: formAtividade.depende_de.trim() || null,
       prazo_dias: prazoDias,
@@ -325,6 +330,7 @@ export function ImplementacaoChecklistAdmin() {
                 <thead>
                   <tr>
                     <th>Atividade</th>
+                    <th>Grupo</th>
                     <th>Dependência</th>
                     <th>Prazo</th>
                     <th>Responsável</th>
@@ -340,6 +346,7 @@ export function ImplementacaoChecklistAdmin() {
                           <span className="requer-evidencia-badge"> · exige evidência</span>
                         )}
                       </td>
+                      <td>{atividade.categoria ?? '—'}</td>
                       <td>{atividade.depende_de ?? '—'}</td>
                       <td>{atividade.prazo_dias != null ? `${atividade.prazo_dias}d` : '—'}</td>
                       <td>{atividade.responsavel_padrao ?? '—'}</td>
@@ -377,7 +384,7 @@ export function ImplementacaoChecklistAdmin() {
                   ))}
                   {atividadesDoCiclo(ciclo).length === 0 && (
                     <tr>
-                      <td colSpan={5} className="field-hint">
+                      <td colSpan={6} className="field-hint">
                         Nenhuma atividade neste ciclo ainda.
                       </td>
                     </tr>
@@ -399,6 +406,27 @@ export function ImplementacaoChecklistAdmin() {
                     onChange={(e) => setFormAtividade({ ...formAtividade, nome: e.target.value })}
                     placeholder="Ex: Configuração dos relatórios de desempenho de vendas"
                   />
+                </label>
+                <label className="field">
+                  <span>Grupo (opcional)</span>
+                  <input
+                    type="text"
+                    list="grupos-atividade-sugeridos"
+                    value={formAtividade.categoria}
+                    onChange={(e) => setFormAtividade({ ...formAtividade, categoria: e.target.value })}
+                    placeholder="Ex: Estruturação do CRM"
+                  />
+                  <span className="field-hint">
+                    Agrupa esta atividade com outras de mesma finalidade na tela da implementação (ex: "Pré-requisitos
+                    e Acessos", "Estruturação do CRM", "Treinamento e Orientação", "Automações Iniciais"). Em branco =
+                    aparece numa lista única, sem grupo.
+                  </span>
+                  <datalist id="grupos-atividade-sugeridos">
+                    <option value="Pré-requisitos e Acessos" />
+                    <option value="Estruturação do CRM" />
+                    <option value="Treinamento e Orientação" />
+                    <option value="Automações Iniciais" />
+                  </datalist>
                 </label>
                 <label className="field">
                   <span>Dependência (opcional)</span>
