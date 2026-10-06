@@ -449,6 +449,12 @@ export type Consultor = {
   ativo: boolean;
   user_id: string | null;
   role: PapelConsultor;
+  // Onboarding de primeiro acesso — nunca compartilhado entre usuários.
+  onboarding_iniciado_em: string | null;
+  onboarding_concluido_em: string | null;
+  onboarding_pulado: boolean;
+  onboarding_etapa: number;
+  primeiros_passos_concluidos: string[];
   created_at: string;
   updated_at: string;
 };

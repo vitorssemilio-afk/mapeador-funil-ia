@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useConfirm } from '../contexts/ConfirmContext';
+import { useOnboarding } from '../contexts/OnboardingContext';
 import { useToast } from '../contexts/ToastContext';
 import { buscarMeuConsultor, PAPEL_LABELS, primeiroNome } from '../lib/consultores';
 import { supabase } from '../lib/supabaseClient';
@@ -26,6 +27,7 @@ export function UserMenu() {
   const { user, signOut } = useAuth();
   const { mostrarToast } = useToast();
   const confirmar = useConfirm();
+  const { consultor: consultorOnboarding, continuarOnboarding, refazerOnboarding } = useOnboarding();
   const [aberto, setAberto] = useState(false);
   const [mostrarModalSenha, setMostrarModalSenha] = useState(false);
   const [consultorId, setConsultorId] = useState<string | null>(null);
@@ -210,6 +212,18 @@ export function UserMenu() {
               }}
             >
               Alterar senha
+            </button>
+            <button
+              type="button"
+              className="user-menu-panel-item"
+              role="menuitem"
+              onClick={() => {
+                setAberto(false);
+                if (consultorOnboarding?.onboarding_concluido_em) refazerOnboarding();
+                else continuarOnboarding();
+              }}
+            >
+              {consultorOnboarding?.onboarding_concluido_em ? 'Refazer onboarding' : 'Continuar onboarding'}
             </button>
           </div>
 
