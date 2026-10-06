@@ -761,7 +761,20 @@ img.brand-mark {
   }
 }
 
-/* ── Page ── */
+/* ── Page (= "PageContainer" global, Prompt 48 seção 2) ──
+   Toda página autenticada usa ".page" como wrapper de primeiro nível
+   (confirmado nas 14+ páginas listadas no pedido — nenhuma define o
+   próprio max-width/margin/padding por conta própria). A largura em
+   si não é resolvida aqui: ".page" só empilha o conteúdo em coluna;
+   quem decide largura/max-width/padding/gutter e reage a
+   sidebar expandida/recolhida é ".app-main" (Layout.tsx), que todo
+   ".page" herda por estar sempre dentro dele. Ou seja, o container
+   global já É consistente porque só existe UM lugar que define
+   largura (".app-main") e todas as páginas moram dentro dele — não
+   precisa de um componente React novo pra isso, só manter esse
+   contrato (nunca declarar max-width/width própria num wrapper de
+   página; limites específicos ficam em componentes internos, como
+   ".page-narrow" logo abaixo, quando o conteúdo pede). */
 .page {
   display: flex;
   flex-direction: column;
@@ -1950,6 +1963,13 @@ img.auth-logo {
   text-align: left;
   font-family: inherit;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+  /* Grid dos indicadores agora tem muito mais largura disponível
+     (Prompt 48) — "repeat(auto-fit, minmax(150px, 1fr))" estica o
+     único item até preencher a fileira inteira quando a seção tem só
+     1 indicador (ex: "Critérios de entrega"). Sem isso o card fica
+     gigante e esvaziado, o oposto de "aproveitar bem o espaço". Não
+     afeta grids com vários cards — eles já ficam bem abaixo disso. */
+  max-width: 320px;
 }
 
 .stat-card::before {
@@ -2909,36 +2929,6 @@ img.auth-logo {
 .ops-table-carteira th:nth-child(5),
 .ops-table-carteira td:nth-child(5) {
   width: 20%;
-}
-
-.ops-progress {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 110px;
-}
-
-.ops-progress-track {
-  flex: 1;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--color-surface-raised);
-  overflow: hidden;
-}
-
-.ops-progress-fill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: var(--color-accent);
-}
-
-.ops-progress-value {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  font-variant-numeric: tabular-nums;
-  width: 34px;
-  text-align: right;
 }
 
 .ops-prazo-atrasado {

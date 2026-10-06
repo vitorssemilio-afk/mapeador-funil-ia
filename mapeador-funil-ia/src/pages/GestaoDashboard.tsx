@@ -71,24 +71,26 @@ function CardIndicador({
   tone,
   ativo,
   onClick,
+  title,
 }: {
   titulo: string;
   valor: string | number;
   tone?: 'warning' | 'success' | 'info' | 'danger';
   ativo?: boolean;
   onClick?: () => void;
+  title?: string;
 }) {
   const classe = `stat-card${tone ? ` stat-card-${tone}` : ''}${ativo ? ' stat-card-active' : ''}`;
   if (!onClick) {
     return (
-      <div className={classe}>
+      <div className={classe} title={title}>
         <span className="stat-value">{valor}</span>
         <span className="stat-label">{titulo}</span>
       </div>
     );
   }
   return (
-    <button type="button" className={classe} onClick={onClick}>
+    <button type="button" className={classe} onClick={onClick} title={title}>
       <span className="stat-value">{valor}</span>
       <span className="stat-label">{titulo}</span>
     </button>
@@ -608,7 +610,27 @@ export function GestaoDashboard() {
                     <td data-label="Etapa">{t.label}</td>
                     <td data-label="Média">{t.mediaDias != null ? `${t.mediaDias}d` : '—'}</td>
                     <td data-label="Mediana">{t.medianaDias != null ? `${t.medianaDias}d` : '—'}</td>
-                    <td data-label="Amostras">{t.amostras}</td>
+                    <td data-label="Amostras">
+                      {t.amostras === 0 ? '—' : t.amostras}
+                      {t.baseBaixa && (
+                        <span
+                          className="field-hint"
+                          title="Baseado em apenas 1 implementação — pouca base estatística pra representar a etapa."
+                        >
+                          {' '}
+                          (base baixa)
+                        </span>
+                      )}
+                      {t.amostrasInconsistentes > 0 && (
+                        <span
+                          className="field-hint"
+                          title="Implementações em que a data final está registrada antes da inicial (ordem cronológica impossível pra essa etapa — dado incorreto ou corrigido depois). Excluídas da média/mediana, não contam como tempo negativo."
+                        >
+                          {' '}
+                          · {t.amostrasInconsistentes} inconsistente{t.amostrasInconsistentes > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -853,8 +875,9 @@ export function GestaoDashboard() {
         <h2>Entrega</h2>
         <div className="stats-grid">
           <CardIndicador
-            titulo="Critérios concluídos"
+            titulo="Critérios concluídos na carteira filtrada"
             valor={entrega.criteriosTotal > 0 ? `${entrega.criteriosConcluidos}/${entrega.criteriosTotal}` : '—'}
+            title="Soma de todos os critérios de entrega aplicáveis de cada implementação filtrada acima (critérios marcados 'Não se aplica' não entram nem no total nem nos concluídos)."
           />
           <CardIndicador
             titulo="Clientes com critérios pendentes"

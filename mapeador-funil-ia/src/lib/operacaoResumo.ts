@@ -365,6 +365,20 @@ export function prazoLabelDe(resumo: ClienteResumo): string | null {
   return restantes < 0 ? `${Math.abs(restantes)}d atrasado` : `${restantes}d restantes`;
 }
 
+// Único texto de "Dia/Ciclo" mostrado em qualquer tela (extraído de
+// Dashboard.tsx — Prompt 48 seção 13/14: Clientes.tsx passou a usar o
+// mesmo, em vez de duplicar a condição "sem diaCiclo" com um texto
+// diferente). Sem kickoff ainda, `resumo.diaCiclo` é null por construção
+// (calcularDiaCiclo precisa de kickoff_realizado_em) — "Kickoff
+// pendente" é sempre o motivo real desse null, nunca "0/40" fingindo que
+// a implementação já começou.
+export function diaCicloLabel(resumo: ClienteResumo): string {
+  if (!resumo.diaCiclo) return 'Kickoff pendente';
+  return resumo.diaCiclo.ciclo
+    ? `Dia ${resumo.diaCiclo.dia}/${resumo.duracaoTotalDias} · ${resumo.diaCiclo.ciclo.nome}`
+    : `Dia ${resumo.diaCiclo.dia}/${resumo.duracaoTotalDias}`;
+}
+
 // Único critério de "está atrasado" — prazo geral vencido (passou do dia
 // final da duração configurada pra este cliente) ou pelo menos uma
 // atividade do cronograma atrasada agora.
