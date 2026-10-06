@@ -15,6 +15,17 @@ import { fasesImplementacao } from '../lib/cronograma';
 import { resolverResumoCriteriosEntrega } from '../lib/criteriosEntrega';
 import { nomeConsultor } from '../lib/operacaoResumo';
 import {
+  construirSnapshotPlaybook,
+  ordemPlaybook,
+  SECOES_PLAYBOOK,
+  statusSecaoPlaybook,
+  TEXTO_SUGERIDO_SECAO_MANUAL,
+  textoEditavelInicial,
+  type PlaybookTextoEditavel,
+  type SecaoPlaybookChave,
+  type SnapshotPlaybook,
+} from '../lib/playbook';
+import {
   calcularChecklistEntrega,
   construirSnapshotConsolidadoImplementacao,
   construirSnapshotDocumentoFunil,
@@ -126,6 +137,15 @@ export function EntregaImplementacao() {
   const [novoProximoPasso, setNovoProximoPasso] = useState('');
   const [motivoNovaVersao, setMotivoNovaVersao] = useState('');
   const [gerando, setGerando] = useState(false);
+
+  // Playbook Final — cópia local editável de texto_editavel do relatório
+  // mais recente (tipo='playbook'), sincronizada ao carregar/trocar de
+  // versão. Editar aqui nunca toca em conteudo_snapshot nem nos dados
+  // oficiais da implementação (seção 37 do pedido) — só Salvar grava, e só
+  // na própria linha do relatório.
+  const [playbookEditavel, setPlaybookEditavel] = useState<PlaybookTextoEditavel | null>(null);
+  const [salvandoPlaybook, setSalvandoPlaybook] = useState(false);
+  const [gerandoPlaybook, setGerandoPlaybook] = useState(false);
 
   const [formAceite, setFormAceite] = useState<{
     status: StatusAceiteEntrega;
@@ -356,6 +376,157 @@ export function EntregaImplementacao() {
   );
 
   const statusPreparoEntrega = useMemo(() => resolverStatusPreparoEntrega(reunioes), [reunioes]);
+
+  // relatorios já vem ordenado por versão desc (ver carregar) — o primeiro
+  // tipo='playbook' é sempre a versão mais recente, mesmo padrão já usado
+  // pra 'entrega_final' em handleSalvarAceite.
+  const playbookAtual = useMemo(() => relatorios.find((r) => r.tipo === 'playbook') ?? null, [relatorios]);
+  const playbookSnapshot = playbookAtual?.conteudo_snapshot as unknown as SnapshotPlaybook | undefined;
+
+  useEffect(() => {
+    if (!playbookAtual) {
+      setPlaybookEditavel(null);
+      return;
+    }
+    const te = playbookAtual.texto_editavel as unknown as Partial<PlaybookTextoEditavel>;
+    setPlaybookEditavel({
+      ordem: te.ordem?.length ? te.ordem : textoEditavelInicial().ordem,
+      ocultas: te.ocultas ?? [],
+      overrides: te.overrides ?? {},
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playbookAtual?.id]);
+
+  async function handleGerarPlaybook() {
+    if (!implementacao) return;
+    const jaExiste = !!playbookAtual;
+    let motivo: string | null = null;
+    if (jaExiste) {
+      motivo = window.prompt('O que mudou desde a última versão do Playbook?');
+      if (!motivo || !motivo.trim()) return;
+    }
+
+    setGerandoPlaybook(true);
+    setError(null);
+
+    const snapshot = construirSnapshotPlaybook({
+      implementacao,
+      cliente,
+      consultores,
+      versaoFunilVendasAprovada,
+      funisVendas,
+      versaoFunilPosVendaAprovada,
+      funisPosVenda,
+      reunioes,
+      criterios,
+      criteriosStatus,
+      ressalvas,
+      aceite,
+      checkpointAdocao,
+    });
+
+    const { data, error: insertError } = await supabase
+      .from('relatorios_implementacao')
+      .insert({
+        implementacao_id: implementacao.id,
+        cliente_id: implementacao.cliente_id,
+        tipo: 'playbook',
+        status: 'gerado',
+        titulo: `${TIPO_RELATORIO_LABELS.playbook} — ${implementacao.nome_cliente}`,
+        conteudo_snapshot: snapshot,
+        texto_editavel: textoEditavelInicial(),
+        motivo_nova_versao: motivo,
+        gerado_por_email: user?.email ?? null,
+        gerado_em: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    setGerandoPlaybook(false);
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    await registrarHistorico('playbook_gerado', data.id, { versao: data.versao });
+    mostrarToast(`Playbook gerado (v${data.versao}).`);
+    await carregar(implementacao.id);
+  }
+
+  function handleAlternarSecaoPlaybookOculta(chave: SecaoPlaybookChave) {
+    setPlaybookEditavel(
+      (atual) =>
+        atual && {
+          ...atual,
+          ocultas: atual.ocultas.includes(chave)
+            ? atual.ocultas.filter((c) => c !== chave)
+            : [...atual.ocultas, chave],
+        },
+    );
+  }
+
+  function handleMoverSecaoPlaybook(chave: SecaoPlaybookChave, direcao: -1 | 1) {
+    setPlaybookEditavel((atual) => {
+      if (!atual) return atual;
+      const ordem = ordemPlaybook(atual);
+      const indice = ordem.indexOf(chave);
+      const alvo = indice + direcao;
+      if (alvo < 0 || alvo >= ordem.length) return atual;
+      const nova = [...ordem];
+      [nova[indice], nova[alvo]] = [nova[alvo], nova[indice]];
+      return { ...atual, ordem: nova };
+    });
+  }
+
+  function handleEditarTextoSecaoPlaybook(chave: SecaoPlaybookChave, texto: string) {
+    setPlaybookEditavel((atual) => atual && { ...atual, overrides: { ...atual.overrides, [chave]: texto } });
+  }
+
+  function handleRestaurarSecaoPlaybook(chave: SecaoPlaybookChave) {
+    setPlaybookEditavel((atual) => {
+      if (!atual) return atual;
+      const overrides = { ...atual.overrides };
+      if (TEXTO_SUGERIDO_SECAO_MANUAL[chave] != null) overrides[chave] = TEXTO_SUGERIDO_SECAO_MANUAL[chave]!;
+      else delete overrides[chave];
+      return { ...atual, overrides };
+    });
+  }
+
+  async function handleSalvarPlaybookEditavel() {
+    if (!playbookAtual || !playbookEditavel) return;
+    setSalvandoPlaybook(true);
+    const { error: updateError } = await supabase
+      .from('relatorios_implementacao')
+      .update({ texto_editavel: playbookEditavel })
+      .eq('id', playbookAtual.id);
+    setSalvandoPlaybook(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    mostrarToast('Playbook atualizado.');
+    if (implementacao) await carregar(implementacao.id);
+  }
+
+  async function handleMarcarPlaybookEntregue() {
+    if (!playbookAtual || !implementacao) return;
+    const { error: updateError } = await supabase
+      .from('relatorios_implementacao')
+      .update({
+        status: 'entregue',
+        entregue_em: new Date().toISOString(),
+        entregue_por_email: user?.email ?? null,
+      })
+      .eq('id', playbookAtual.id);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    await registrarHistorico('playbook_entregue', playbookAtual.id, { versao: playbookAtual.versao });
+    mostrarToast('Playbook marcado como entregue.');
+    await carregar(implementacao.id);
+  }
 
   async function registrarHistorico(acao: string, entidadeId: string | null, detalhes: Record<string, unknown> = {}) {
     if (!implementacao) return;
@@ -848,6 +1019,153 @@ export function EntregaImplementacao() {
                   </button>
                 </div>
               </form>
+            )}
+          </section>
+
+          <section className="card">
+            <div className="page-header-actions page-header-actions-split">
+              <h2 style={{ marginBottom: 0 }}>Playbook Final de Implementação</h2>
+              <button
+                type="button"
+                className="btn btn-secondary btn-auto"
+                onClick={handleGerarPlaybook}
+                disabled={gerandoPlaybook}
+              >
+                {gerandoPlaybook
+                  ? 'Gerando…'
+                  : playbookAtual
+                    ? 'Gerar nova versão'
+                    : 'Gerar rascunho do Playbook'}
+              </button>
+            </div>
+            <p className="field-hint">
+              Documento pra entregar ao cliente — consolida funil, campos, automações, responsabilidades,
+              treinamentos e entregas já registrados nesta implementação. Pode começar a ser preparado antes da
+              entrega oficial; nada aqui altera o funil ou os dados oficiais.
+            </p>
+
+            {!playbookAtual && (
+              <p className="field-hint">Nenhuma versão gerada ainda.</p>
+            )}
+
+            {playbookAtual && playbookSnapshot && playbookEditavel && (
+              <>
+                <p className="field-hint">
+                  Versão {playbookAtual.versao} ·{' '}
+                  <span className={`status-badge status-tone-${STATUS_RELATORIO_TONE[playbookAtual.status]}`}>
+                    {STATUS_RELATORIO_LABELS[playbookAtual.status]}
+                  </span>
+                  {playbookAtual.entregue_em && (
+                    <> · entregue em {new Date(playbookAtual.entregue_em).toLocaleString('pt-BR')}</>
+                  )}
+                </p>
+
+                <div className="table-wrap">
+                  <table className="data-table data-table-cards-mobile">
+                    <thead>
+                      <tr>
+                        <th>Seção</th>
+                        <th>Status</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ordemPlaybook(playbookEditavel).map((chave, indice, lista) => {
+                        const manifesto = SECOES_PLAYBOOK.find((s) => s.chave === chave)!;
+                        const status = statusSecaoPlaybook(chave, playbookSnapshot, playbookEditavel);
+                        const oculta = status === 'Oculta';
+                        return (
+                          <tr key={chave}>
+                            <td data-label="Seção">{manifesto.titulo}</td>
+                            <td data-label="Status">
+                              <span
+                                className={`status-badge status-tone-${status === 'Completa' ? 'success' : status === 'Oculta' ? 'neutral' : 'warning'}`}
+                              >
+                                {status}
+                              </span>
+                            </td>
+                            <td className="table-actions">
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => handleMoverSecaoPlaybook(chave, -1)}
+                                disabled={indice === 0}
+                                title="Mover para cima"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost"
+                                onClick={() => handleMoverSecaoPlaybook(chave, 1)}
+                                disabled={indice === lista.length - 1}
+                                title="Mover para baixo"
+                              >
+                                ↓
+                              </button>{' '}
+                              <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => handleAlternarSecaoPlaybookOculta(chave)}
+                              >
+                                {oculta ? 'Mostrar' : 'Ocultar'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {ordemPlaybook(playbookEditavel)
+                  .filter((chave) => !playbookEditavel.ocultas.includes(chave))
+                  .map((chave) => {
+                    const manifesto = SECOES_PLAYBOOK.find((s) => s.chave === chave)!;
+                    if (manifesto.origem !== 'manual') return null;
+                    return (
+                    <label className="field" key={chave}>
+                      <span>{manifesto.titulo}</span>
+                      <textarea
+                        rows={3}
+                        value={playbookEditavel.overrides[chave] ?? ''}
+                        onChange={(e) => handleEditarTextoSecaoPlaybook(chave, e.target.value)}
+                      />
+                      {TEXTO_SUGERIDO_SECAO_MANUAL[chave] != null && (
+                        <button
+                          type="button"
+                          className="btn-link"
+                          onClick={() => handleRestaurarSecaoPlaybook(chave)}
+                        >
+                          Restaurar sugestão
+                        </button>
+                      )}
+                    </label>
+                  );
+                })}
+
+                <div className="wizard-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleSalvarPlaybookEditavel}
+                    disabled={salvandoPlaybook}
+                  >
+                    {salvandoPlaybook ? 'Salvando…' : 'Salvar alterações'}
+                  </button>
+                  <Link
+                    to={`/implementacoes/${implementacao.id}/relatorios/${playbookAtual.id}`}
+                    className="btn btn-secondary"
+                  >
+                    Visualizar / Baixar PDF
+                  </Link>
+                  {playbookAtual.status !== 'entregue' && (
+                    <button type="button" className="btn btn-secondary" onClick={handleMarcarPlaybookEntregue}>
+                      Marcar como entregue
+                    </button>
+                  )}
+                </div>
+              </>
             )}
           </section>
 

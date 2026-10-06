@@ -9,6 +9,13 @@ import {
   STATUS_DIAGNOSTICO_TONE,
 } from '../lib/diagnosticoAdocao';
 import {
+  ordemPlaybook,
+  SECOES_PLAYBOOK,
+  type PlaybookTextoEditavel,
+  type SecaoPlaybookChave,
+  type SnapshotPlaybook,
+} from '../lib/playbook';
+import {
   STATUS_RELATORIO_LABELS,
   STATUS_RELATORIO_TONE,
   TIPO_RELATORIO_LABELS,
@@ -250,8 +257,14 @@ function RelatorioAdocaoDoc({ snapshot }: { snapshot: SnapshotRelatorioAdocao })
 }
 
 function DocumentoFunilDoc({ relatorio, snapshot }: { relatorio: RelatorioImplementacao; snapshot: SnapshotDocumentoFunil }) {
-  const tecnica = relatorio.visao === 'tecnica';
+  return <FunilEtapasDoc tecnica={relatorio.visao === 'tecnica'} snapshot={snapshot} />;
+}
 
+// Extraído de DocumentoFunilDoc pra ser reaproveitado pelo Playbook (seção
+// "Funil de vendas"/"Pós-venda" — seção 44 do pedido: "usar o mesmo funil
+// visual já existente, não gerar um diferente"), que sempre mostra a visão
+// técnica completa (não tem o conceito de visão executiva/técnica à parte).
+function FunilEtapasDoc({ tecnica, snapshot }: { tecnica: boolean; snapshot: SnapshotDocumentoFunil }) {
   return (
     <>
       <Secao titulo="Processo">
@@ -334,6 +347,191 @@ function DocumentoFunilDoc({ relatorio, snapshot }: { relatorio: RelatorioImplem
   );
 }
 
+// Conteúdo de cada seção 'automatica' do Playbook — só formata o que já
+// está no snapshot (nunca inventa um texto novo). Seções sem dado nenhum
+// retornam null — o chamador decide a mensagem de "sem dados" caso precise.
+function conteudoSecaoPlaybook(chave: SecaoPlaybookChave, snapshot: SnapshotPlaybook): ReactNode {
+  switch (chave) {
+    case 'visaoGeral':
+      return (
+        <table className="doc-tabela">
+          <thead>
+            <tr>
+              <th>Componente</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshot.visaoGeral.map((v, i) => (
+              <tr key={i}>
+                <td>{v.componente}</td>
+                <td>{v.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      );
+    case 'jornadaComercial':
+      return snapshot.jornadaComercial.length > 0 ? (
+        <p className="doc-paragrafo">{snapshot.jornadaComercial.join(' → ')}</p>
+      ) : null;
+    case 'funilVendas':
+      return snapshot.funilVendas ? <FunilEtapasDoc tecnica snapshot={snapshot.funilVendas} /> : null;
+    case 'funilPosVenda':
+      return snapshot.funilPosVenda ? <FunilEtapasDoc tecnica snapshot={snapshot.funilPosVenda} /> : null;
+    case 'camposPersonalizados':
+      return snapshot.camposPersonalizados.length > 0 ? (
+        <table className="doc-tabela">
+          <thead>
+            <tr>
+              <th>Campo</th>
+              <th>Etapa</th>
+              <th>Obrigatório?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshot.camposPersonalizados.map((c, i) => (
+              <tr key={i}>
+                <td>{c.campo}</td>
+                <td>{c.etapa}</td>
+                <td>{c.obrigatorio ? 'Sim' : 'Não'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null;
+    case 'automacoes':
+      return snapshot.automacoes.length > 0 ? (
+        <table className="doc-tabela">
+          <thead>
+            <tr>
+              <th>Automação</th>
+              <th>Etapa</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshot.automacoes.map((a, i) => (
+              <tr key={i}>
+                <td>{a.automacao}</td>
+                <td>{a.etapa}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null;
+    case 'responsabilidades':
+      return snapshot.responsabilidades.length > 0 ? (
+        <table className="doc-tabela">
+          <thead>
+            <tr>
+              <th>Atividade</th>
+              <th>Responsável</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshot.responsabilidades.map((r, i) => (
+              <tr key={i}>
+                <td>{r.atividade}</td>
+                <td>{r.responsavel}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null;
+    case 'usuarios':
+      return snapshot.usuarios.length > 0 ? (
+        <table className="doc-tabela">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>Papel</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshot.usuarios.map((u, i) => (
+              <tr key={i}>
+                <td>{u.nome}</td>
+                <td>{u.papel}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null;
+    case 'treinamentos':
+      return snapshot.treinamentos.length > 0 ? (
+        <ListaOuVazio
+          itens={snapshot.treinamentos.map((t) => `${formatarDataHora(t.dataHoraIso)} — ${t.status}`)}
+          vazio=""
+        />
+      ) : null;
+    case 'entregasRealizadas':
+      return snapshot.entregasRealizadas.length > 0 ? (
+        <ListaOuVazio itens={snapshot.entregasRealizadas.map((e) => `${e.item} — ${e.status}`)} vazio="" />
+      ) : null;
+    case 'pendenciasRessalvas':
+      return snapshot.pendenciasRessalvas.length > 0 ? (
+        <ListaOuVazio itens={snapshot.pendenciasRessalvas.map((p) => `${p.item} — ${p.status}`)} vazio="" />
+      ) : null;
+    case 'aceite':
+      return snapshot.aceite.status ? (
+        <>
+          <p>
+            <strong>Status:</strong> {snapshot.aceite.status}
+          </p>
+          {snapshot.aceite.ressalvas.length > 0 && <ListaOuVazio itens={snapshot.aceite.ressalvas} vazio="" />}
+        </>
+      ) : null;
+    default:
+      return null;
+  }
+}
+
+function PlaybookDoc({
+  snapshot,
+  textoEditavel,
+}: {
+  snapshot: SnapshotPlaybook;
+  textoEditavel: PlaybookTextoEditavel;
+}) {
+  const ordem = ordemPlaybook(textoEditavel).filter((chave) => !textoEditavel.ocultas.includes(chave));
+
+  return (
+    <>
+      {ordem.map((chave) => {
+        const manifesto = SECOES_PLAYBOOK.find((s) => s.chave === chave);
+        if (!manifesto) return null;
+
+        if (manifesto.origem === 'manual') {
+          const texto = textoEditavel.overrides[chave];
+          if (!texto?.trim()) return null;
+          return (
+            <Secao key={chave} titulo={manifesto.titulo}>
+              <p className="doc-paragrafo" style={{ whiteSpace: 'pre-wrap' }}>
+                {texto}
+              </p>
+            </Secao>
+          );
+        }
+
+        const override = textoEditavel.overrides[chave];
+        const conteudoAutomatico = conteudoSecaoPlaybook(chave, snapshot);
+        if (!override && !conteudoAutomatico) return null;
+
+        return (
+          <Secao key={chave} titulo={manifesto.titulo}>
+            {override && (
+              <p className="doc-paragrafo" style={{ whiteSpace: 'pre-wrap' }}>
+                {override}
+              </p>
+            )}
+            {conteudoAutomatico}
+          </Secao>
+        );
+      })}
+    </>
+  );
+}
+
 export function RelatorioImplementacaoView() {
   const { id, relatorioId } = useParams<{ id: string; relatorioId: string }>();
   const [relatorio, setRelatorio] = useState<RelatorioImplementacao | null>(null);
@@ -394,6 +592,11 @@ export function RelatorioImplementacaoView() {
           <DocumentoFunilDoc relatorio={relatorio} snapshot={relatorio.conteudo_snapshot as unknown as SnapshotDocumentoFunil} />
         ) : relatorio.tipo === 'adocao' ? (
           <RelatorioAdocaoDoc snapshot={relatorio.conteudo_snapshot as unknown as SnapshotRelatorioAdocao} />
+        ) : relatorio.tipo === 'playbook' ? (
+          <PlaybookDoc
+            snapshot={relatorio.conteudo_snapshot as unknown as SnapshotPlaybook}
+            textoEditavel={relatorio.texto_editavel as unknown as PlaybookTextoEditavel}
+          />
         ) : (
           <RelatorioConsolidadoDoc
             relatorio={relatorio}
