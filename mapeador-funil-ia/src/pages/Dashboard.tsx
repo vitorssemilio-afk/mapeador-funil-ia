@@ -901,7 +901,7 @@ export function Dashboard() {
             </div>
 
             <div className="table-wrap" style={{ overflowX: 'auto' }}>
-              <table className="data-table ops-table data-table-cards-mobile">
+              <table className="data-table ops-table ops-table-carteira data-table-cards-mobile">
                 <thead>
                   <tr>
                     <th>Cliente</th>
