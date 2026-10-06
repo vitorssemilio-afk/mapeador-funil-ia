@@ -68,6 +68,9 @@ import {
   TIPOS_REUNIAO_OBRIGATORIOS,
 } from '../lib/reunioes';
 import {
+  DIAS_EXTENSAO_7,
+  DIAS_EXTENSAO_14,
+  DIAS_TRIAL_INICIAL,
   resolverResumoTrialKommo,
   STATUS_TRIAL_LABELS,
   STATUS_TRIAL_TONE,
@@ -2892,8 +2895,15 @@ export function ImplementacaoDetalhe() {
         </section>
       )}
 
-      {/* Indicador totalmente separado do "Dia X/40" acima — o Trial conta a
-          partir da conta Kommo criada, a implementação a partir do Kickoff. */}
+      {/* Redesign do Trial Kommo (prompt 54, parte B) — era um card de 3
+          stat-cards + duas faixas coloridas cheias (extensão, contratação) +
+          mais um stats-grid à parte só pra "prazo da implementação" (que
+          esticava virando um card gigante quando tempoReuniao não existia —
+          ver comentário de .stat-card em index.css). Nenhum cálculo mudou:
+          resumoTrial/diaCiclo continuam vindo exatamente de antes, só a
+          apresentação ficou mais compacta. "Implementação" entra como uma
+          linha dentro deste mesmo card (são contadores independentes, só
+          compartilham o contexto visual — seção 19 do pedido). */}
       {resumoTrial && (
         <section className="card form-card">
           <div className="page-header">
@@ -2903,93 +2913,120 @@ export function ImplementacaoDetalhe() {
             </span>
           </div>
 
-          <div className="stats-grid">
-            <div className="stat-card">
-              <span className="stat-value">{resumoTrial.periodoAtual}</span>
-              <span className="stat-label">
-                Dia {resumoTrial.diaAtualPeriodo}/{resumoTrial.duracaoPeriodoAtual}
+          <div className="trial-resumo-compacto">
+            <div>
+              <span className="resumo-destaque-valor">
+                Dia {resumoTrial.usoTotalDias}/{resumoTrial.usoTotalMaximo}
               </span>
+              <div className="checklist-progresso">
+                <div
+                  className="checklist-progresso-barra"
+                  style={{ width: `${Math.min(100, Math.round((resumoTrial.usoTotalDias / resumoTrial.usoTotalMaximo) * 100))}%` }}
+                />
+              </div>
             </div>
-            <div className="stat-card">
-              <span className="stat-value">
-                {resumoTrial.usoTotalDias}/{resumoTrial.usoTotalMaximo}
-              </span>
-              <span className="stat-label">Uso total</span>
-            </div>
-            <div className={`stat-card${resumoTrial.diasRestantes < 0 ? ' stat-card-danger' : ''}`}>
-              <span className="stat-value">
+            <div>
+              <span className={`resumo-destaque-valor${resumoTrial.diasRestantes < 0 ? ' texto-danger' : ''}`}>
                 {resumoTrial.diasRestantes < 0
                   ? `${-resumoTrial.diasRestantes}d vencido`
                   : `${resumoTrial.diasRestantes}d restantes`}
               </span>
-              <span className="stat-label">Vence em {resumoTrial.vencimento.toLocaleDateString('pt-BR')}</span>
+              <span className="field-hint">Vence em {resumoTrial.vencimento.toLocaleDateString('pt-BR')}</span>
             </div>
           </div>
 
-          {resumoTrial.proximaExtensao ? (
-            <div className="form-info form-info-com-acao">
-              <span>
-                Próxima extensão: <strong>{resumoTrial.proximaExtensao.rotulo}</strong>
-                {' — '}
-                {resumoTrial.proximaExtensao.aprovadaEm
-                  ? `aprovada em ${new Date(`${resumoTrial.proximaExtensao.aprovadaEm}T12:00:00`).toLocaleDateString('pt-BR')}`
-                  : resumoTrial.proximaExtensao.solicitadaEm
-                    ? `solicitada em ${new Date(`${resumoTrial.proximaExtensao.solicitadaEm}T12:00:00`).toLocaleDateString('pt-BR')}, aguardando aprovação`
-                    : 'Não solicitada'}
-              </span>
-              {!resumoTrial.proximaExtensao.solicitadaEm && (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={salvandoTrial}
-                  onClick={() => {
-                    const campo =
-                      resumoTrial.proximaExtensao!.rotulo === '+14 dias'
-                        ? 'extensao_14_solicitada_em'
-                        : 'extensao_7_solicitada_em';
-                    const url =
-                      campo === 'extensao_14_solicitada_em'
-                        ? pipefyConfig?.url_extensao_14
-                        : pipefyConfig?.url_extensao_7;
-                    if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                    handleRegistrarEventoTrial(campo);
-                  }}
-                >
-                  Solicitar extensão {resumoTrial.proximaExtensao.rotulo}
-                </button>
-              )}
-              {resumoTrial.proximaExtensao.solicitadaEm && !resumoTrial.proximaExtensao.aprovadaEm && (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={salvandoTrial}
-                  onClick={() =>
-                    handleRegistrarEventoTrial(
-                      resumoTrial.proximaExtensao!.rotulo === '+14 dias'
-                        ? 'extensao_14_aprovada_em'
-                        : 'extensao_7_aprovada_em',
-                    )
-                  }
-                >
-                  Registrar aprovação
-                </button>
-              )}
-            </div>
-          ) : (
-            <p className="field-hint">As duas extensões já foram usadas — não há mais prorrogação possível.</p>
-          )}
+          <div className="trial-fases-linha">
+            {(
+              [
+                { nome: 'Trial inicial', dias: DIAS_TRIAL_INICIAL, chave: 'Trial inicial' as const },
+                { nome: '1ª extensão', dias: DIAS_EXTENSAO_7, chave: 'Primeira extensão' as const },
+                { nome: '2ª extensão', dias: DIAS_EXTENSAO_14, chave: 'Segunda extensão' as const },
+              ] as const
+            ).map((fase, index) => {
+              const indiceAtual = ['Trial inicial', 'Primeira extensão', 'Segunda extensão'].indexOf(
+                resumoTrial.periodoAtual,
+              );
+              const atual = fase.chave === resumoTrial.periodoAtual;
+              const jaPassou = index < indiceAtual;
+              return (
+                <div key={fase.chave} className={`trial-fase${atual ? ' trial-fase-atual' : ''}`}>
+                  <span className="trial-fase-icone" aria-hidden="true">
+                    {atual ? '●' : jaPassou ? '✓' : '○'}
+                  </span>
+                  <span className="trial-fase-nome">{fase.nome}</span>
+                  <span className="field-hint">
+                    {atual ? `${resumoTrial.diaAtualPeriodo}/${resumoTrial.duracaoPeriodoAtual}` : `+${fase.dias}d`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
 
-          <div className="form-info form-info-com-acao">
-            <span>
-              Contratação definitiva:{' '}
+          <div className="trial-acao-compacta">
+            <span className="etapa-card-label">Próxima ação</span>
+            {resumoTrial.proximaExtensao ? (
+              <>
+                <p className="field-hint">
+                  {resumoTrial.proximaExtensao.aprovadaEm
+                    ? `Extensão ${resumoTrial.proximaExtensao.rotulo} aprovada em ${new Date(`${resumoTrial.proximaExtensao.aprovadaEm}T12:00:00`).toLocaleDateString('pt-BR')}`
+                    : resumoTrial.proximaExtensao.solicitadaEm
+                      ? `Extensão ${resumoTrial.proximaExtensao.rotulo} solicitada em ${new Date(`${resumoTrial.proximaExtensao.solicitadaEm}T12:00:00`).toLocaleDateString('pt-BR')}, aguardando aprovação`
+                      : 'Não há ação necessária no momento.'}
+                </p>
+                {!resumoTrial.proximaExtensao.solicitadaEm && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-auto"
+                    disabled={salvandoTrial}
+                    onClick={() => {
+                      const campo =
+                        resumoTrial.proximaExtensao!.rotulo === '+14 dias'
+                          ? 'extensao_14_solicitada_em'
+                          : 'extensao_7_solicitada_em';
+                      const url =
+                        campo === 'extensao_14_solicitada_em'
+                          ? pipefyConfig?.url_extensao_14
+                          : pipefyConfig?.url_extensao_7;
+                      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                      handleRegistrarEventoTrial(campo);
+                    }}
+                  >
+                    Solicitar extensão {resumoTrial.proximaExtensao.rotulo}
+                  </button>
+                )}
+                {resumoTrial.proximaExtensao.solicitadaEm && !resumoTrial.proximaExtensao.aprovadaEm && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-auto"
+                    disabled={salvandoTrial}
+                    onClick={() =>
+                      handleRegistrarEventoTrial(
+                        resumoTrial.proximaExtensao!.rotulo === '+14 dias'
+                          ? 'extensao_14_aprovada_em'
+                          : 'extensao_7_aprovada_em',
+                      )
+                    }
+                  >
+                    Registrar aprovação
+                  </button>
+                )}
+              </>
+            ) : (
+              <p className="field-hint">As duas extensões já foram usadas — não há mais prorrogação possível.</p>
+            )}
+          </div>
+
+          <div className="trial-acao-compacta">
+            <span className="etapa-card-label">Contratação</span>
+            <p className="field-hint">
               {cliente?.contratacao_kommo_solicitada_em
-                ? `solicitada em ${new Date(cliente.contratacao_kommo_solicitada_em).toLocaleString('pt-BR')}`
+                ? `Solicitada em ${new Date(cliente.contratacao_kommo_solicitada_em).toLocaleString('pt-BR')}`
                 : 'Não solicitada'}
-            </span>
+            </p>
             {!cliente?.contratacao_kommo_solicitada_em && (
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn btn-secondary btn-auto"
                 onClick={() =>
                   handleAbrirLinkPipefy(pipefyConfig?.url_contratacao_definitiva, 'contratacao_kommo_solicitada_em')
                 }
@@ -3023,36 +3060,29 @@ export function ImplementacaoDetalhe() {
               </button>
             </div>
           )}
-        </section>
-      )}
 
-      {(diaCiclo || tempoReuniao) && (
-        <div className="stats-grid">
           {diaCiclo && (
-            <div className={`stat-card${diaCiclo.dia > configuracao.duracaoTotalDias ? ' stat-card-danger' : ''}`}>
-              <span className="stat-value">
+            <div className="trial-acao-compacta">
+              <span className="etapa-card-label">Implementação</span>
+              <p className="field-hint">
+                Dia {diaCiclo.dia}/{configuracao.duracaoTotalDias}
+                {diaCiclo.ciclo ? ` · ${diaCiclo.ciclo.nome}` : ''} ·{' '}
                 {diaCiclo.dia > configuracao.duracaoTotalDias
                   ? `${diaCiclo.dia - configuracao.duracaoTotalDias}d atrasado`
                   : `${configuracao.duracaoTotalDias - diaCiclo.dia}d restantes`}
-              </span>
-              <span className="stat-label">
-                Prazo geral da implementação — Dia {diaCiclo.dia}/{configuracao.duracaoTotalDias}
-                {diaCiclo.ciclo ? ` (${diaCiclo.ciclo.nome})` : ''}
-              </span>
+              </p>
             </div>
           )}
+        </section>
+      )}
 
-          {tempoReuniao && (
-            <div className="stat-card">
-              <span className="stat-value">{tempoReuniao.dias}d</span>
-              <span className="stat-label">
-                {tempoReuniao.concluido
-                  ? 'Da resposta do formulário até a 1ª reunião'
-                  : 'Desde a resposta do formulário, ainda sem 1ª reunião'}
-              </span>
-            </div>
-          )}
-        </div>
+      {tempoReuniao && (
+        <p className="field-hint">
+          {tempoReuniao.dias}d —{' '}
+          {tempoReuniao.concluido
+            ? 'da resposta do formulário até a 1ª reunião'
+            : 'desde a resposta do formulário, ainda sem 1ª reunião'}
+        </p>
       )}
 
       {(implementacao.status === 'automacoes' ||
@@ -3060,27 +3090,26 @@ export function ImplementacaoDetalhe() {
         implementacao.status === 'adocao' ||
         implementacao.status === 'concluida') &&
         (posVendaMapeamento ? (
-          <div className="form-info form-info-com-acao">
-            <span>O formulário de pós-venda já foi gerado para este cliente.</span>
-            <button type="button" className="btn btn-secondary" onClick={handleCopiarLinkPosVenda}>
-              {linkPosVendaCopiado ? 'Link copiado!' : 'Copiar link de pós-venda'}
+          <section className="card trial-acao-compacta">
+            <span className="etapa-card-label">Pós-venda</span>
+            <p className="field-hint">Formulário gerado</p>
+            <button type="button" className="btn btn-secondary btn-auto" onClick={handleCopiarLinkPosVenda}>
+              {linkPosVendaCopiado ? 'Link copiado!' : 'Copiar link'}
             </button>
-          </div>
+          </section>
         ) : (
-          <div className="form-info form-info-com-acao">
-            <span>
-              A implementação chegou na Semana 3 — hora de oferecer o formulário de pós-venda pro
-              cliente.
-            </span>
+          <section className="card trial-acao-compacta">
+            <span className="etapa-card-label">Pós-venda</span>
+            <p className="field-hint">A implementação chegou na Semana 3 — hora de oferecer o formulário.</p>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary btn-auto"
               onClick={handleGerarPosVenda}
               disabled={criandoPosVenda || !mapeamentoOrigem || !user}
             >
               {criandoPosVenda ? 'Gerando…' : 'Gerar link de pós-venda'}
             </button>
-          </div>
+          </section>
         ))}
 
       <div className="tabs">
@@ -3575,7 +3604,17 @@ export function ImplementacaoDetalhe() {
           .filter(([ciclo]) => ciclo !== 'Trial Kommo')
           .map(([ciclo, atividadesDoCiclo]) => {
             const marcos = atividadesDoCiclo.filter((a) => a.id === null);
-            const reais = atividadesDoCiclo.filter((a) => a.id !== null);
+            // Canal explicitamente fora do escopo deste cliente (prompt 54,
+            // seções 23/28/29) — a atividade de conexão correspondente nem
+            // aparece, nunca gera atraso falso. null (ainda não definido,
+            // clientes antigos) continua mostrando normalmente.
+            const reais = atividadesDoCiclo.filter((a) => {
+              if (a.id === null) return false;
+              const chave = atividadesTemplate.find((t) => t.id === a.id)?.chave;
+              if (chave === 'conectar_whatsapp_business' && cliente?.canal_whatsapp_business === false) return false;
+              if (chave === 'conectar_instagram' && cliente?.canal_instagram === false) return false;
+              return true;
+            });
             const janelaCiclo = configuracao.ciclos.find((c) => c.nome === ciclo);
 
             const marcosChecklist: MarcoChecklist[] = marcos.map((atividade) => {

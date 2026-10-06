@@ -10,6 +10,7 @@ import { calcularMetricas, MARCOS_ORDENADOS, type CampoMarco } from '../lib/marc
 import { funilValidado } from '../lib/statusFluxo';
 import { CICLOS_OPERACIONAIS, calcularDiaCiclo, IMPACTO_RESPONSAVEL_LABELS } from '../lib/atividadesCronograma';
 import { CATEGORIAS_PENDENCIA_CLIENTE } from '../lib/agendaOperacional';
+import { resolverProximoPassoGeral } from '../lib/acaoOperacional';
 import { resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import { CATEGORIA_OCORRENCIA_LABELS } from '../lib/ocorrencias';
 import { construirResumoClientes, nomeConsultor, prazoLabelDe, SAUDE_LABELS, SAUDE_TONE } from '../lib/operacaoResumo';
@@ -159,6 +160,13 @@ type FormInfoCliente = {
   site: string;
   cidade: string;
   uf: string;
+  // null = ainda não definido (clientes antigos) — trata como "sim" no
+  // formulário pra não mudar o comportamento de quem nunca mexeu nisso; só
+  // vira "não" quando alguém desmarca e salva de propósito (prompt 54,
+  // seções 23/28/29/55 — canal só é condicional depois de uma decisão
+  // explícita, nunca por omissão).
+  canal_whatsapp_business: boolean;
+  canal_instagram: boolean;
 };
 
 function paraFormInfo(cliente: Cliente): FormInfoCliente {
@@ -169,6 +177,8 @@ function paraFormInfo(cliente: Cliente): FormInfoCliente {
     site: cliente.site ?? '',
     cidade: cliente.cidade ?? '',
     uf: cliente.uf ?? '',
+    canal_whatsapp_business: cliente.canal_whatsapp_business ?? true,
+    canal_instagram: cliente.canal_instagram ?? true,
   };
 }
 
@@ -888,6 +898,8 @@ export function ClienteDetalhe() {
         site: formInfo.site.trim() || null,
         cidade: formInfo.cidade.trim() || null,
         uf: formInfo.uf.trim() || null,
+        canal_whatsapp_business: formInfo.canal_whatsapp_business,
+        canal_instagram: formInfo.canal_instagram,
       })
       .eq('id', cliente.id)
       .select()
@@ -1337,6 +1349,19 @@ export function ClienteDetalhe() {
     return MARCOS_ORDENADOS.filter(({ campo }) => !cliente[campo]).slice(0, 3);
   }, [cliente]);
 
+  // CTA da "Próxima ação" na aba Resumo (prompt 54, seção 5) — reaproveita o
+  // mesmo resolvedor já usado na Home/carteira, nunca recalcula pra onde
+  // mandar o consultor.
+  const proximoPasso = useMemo(() => (resumo ? resolverProximoPassoGeral(resumo) : null), [resumo]);
+
+  // Adoção só ganha destaque visual quando o checkpoint de 30 dias está
+  // perto/pendente ou o diagnóstico já não está saudável (prompt 54, seção
+  // 11) — nunca um cálculo novo, só decide se este card chama mais atenção.
+  const adocaoPrecisaAtencao = useMemo(() => {
+    if (checkpointAdocao) return resolverDiagnosticoAdocao(checkpointAdocao).status !== 'saudavel';
+    return diaCiclo != null && diaCiclo.dia >= 25;
+  }, [checkpointAdocao, diaCiclo]);
+
   const arquivosPorCategoria = useMemo(() => {
     const grupos: { nome: string; itens: ClienteArquivo[] }[] = [
       { nome: 'Apresentações', itens: [] },
@@ -1520,73 +1545,131 @@ export function ClienteDetalhe() {
         </button>
       </div>
 
+      {/* Redesign da aba Resumo (prompt 54) — Status geral, Saúde, Dia/Ciclo,
+          Trial e Prazo saíram daqui porque já aparecem na faixa sempre
+          visível acima das abas (resumo-revisao-card, logo depois do
+          cabeçalho); repeti-los aqui seria a mesma duplicação que o pedido
+          pede pra evitar (seção 35). O que resta nesta aba é o que a faixa
+          de cima não mostra: ação, compromissos, marco, pendências, riscos,
+          ocorrências e adoção — organizados por prioridade, não em grade
+          uniforme de cards do mesmo tamanho. */}
       {aba === 'resumo' && resumo && (
-        <div className="form-grid">
-          <section className="card">
-            <span className="etapa-card-label">Status geral</span>
-            <p>
-              {implementacao && <ImplementacaoStatusBadge status={implementacao.status} />} {resumo.faseAtual}
-            </p>
-          </section>
-
-          <section className="card">
-            <span className="etapa-card-label">Saúde da implementação</span>
-            <p>
-              <span className={`status-badge status-tone-${SAUDE_TONE[resumo.saude]}`}>
-                {SAUDE_LABELS[resumo.saude]}
-              </span>
-            </p>
-          </section>
-
-          <section className="card">
+        <div className="resumo-tab">
+          <section className="card resumo-proxima-acao-card">
             <span className="etapa-card-label">Próxima ação</span>
-            <p>{resumo.proximaAcao}</p>
+            <p className="resumo-destaque-valor">{resumo.proximaAcao}</p>
             <p className="field-hint">{prazoLabelDe(resumo) ?? 'Sem prazo calculado'}</p>
-          </section>
-
-          <section className="card">
-            <span className="etapa-card-label">Próximos marcos</span>
-            {proximosMarcos.length === 0 ? (
-              <p className="field-hint">Todos os marcos já foram registrados.</p>
-            ) : (
-              <ul className="observacoes-lista">
-                {proximosMarcos.map(({ campo, label }) => (
-                  <li key={campo} className="field-hint">
-                    Aguardando: {label}
-                  </li>
-                ))}
-              </ul>
+            {proximoPasso && (
+              <Link to={proximoPasso.to} className="btn btn-primary btn-auto">
+                {proximoPasso.label}
+              </Link>
             )}
           </section>
 
+          <div className="resumo-linha-dupla">
+            <section className="card">
+              <span className="etapa-card-label">Próximo marco</span>
+              {proximosMarcos.length === 0 ? (
+                <p className="field-hint">Todos os marcos já foram registrados.</p>
+              ) : (
+                <>
+                  <p className="resumo-destaque-valor">{proximosMarcos[0].label}</p>
+                  {proximosMarcos.length > 1 && (
+                    <p className="field-hint">+ {proximosMarcos.length - 1} marco(s) seguinte(s)</p>
+                  )}
+                </>
+              )}
+              {implementacao && (
+                <Link to={`/implementacoes/${implementacao.id}?aba=cronograma`} className="btn-link">
+                  Ver cronograma
+                </Link>
+              )}
+            </section>
+
+            <section className="card">
+              <span className="etapa-card-label">Próximos compromissos</span>
+              {proximosCompromissos.length === 0 ? (
+                <>
+                  <p className="field-hint">Nenhuma reunião agendada.</p>
+                  {implementacao && (
+                    <Link to={`/implementacoes/${implementacao.id}?aba=reunioes`} className="btn-link">
+                      Agendar reunião
+                    </Link>
+                  )}
+                </>
+              ) : (
+                <ul className="observacoes-lista">
+                  {proximosCompromissos.map((r) => (
+                    <li key={r.id} className="field-hint">
+                      {new Date(r.data_hora!).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ·{' '}
+                      {TIPO_REUNIAO_LABELS[r.tipo]}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+
+          <div className="resumo-linha-dupla">
+            <section className="card">
+              <span className="etapa-card-label">Pendências</span>
+              <div className="resumo-kpi-par">
+                <div>
+                  <span className="resumo-kpi-valor">{pendenciasClienteAbertas.length}</span>
+                  <span className="field-hint">Cliente</span>
+                </div>
+                <div>
+                  <span className="resumo-kpi-valor">{pendenciasInternasCount}</span>
+                  <span className="field-hint">Internas</span>
+                </div>
+              </div>
+              {(pendenciasClienteAbertas.length > 0 || pendenciasInternasCount > 0) && (
+                <button type="button" className="btn-link" onClick={() => setAba('historico')}>
+                  Ver pendências
+                </button>
+              )}
+            </section>
+
+            <section className="card">
+              <span className="etapa-card-label">Riscos</span>
+              {riscosAbertos.length === 0 ? (
+                <p className="field-hint">Nenhum risco relevante.</p>
+              ) : (
+                <ul className="observacoes-lista">
+                  {riscosAbertos.slice(0, 3).map((o) => (
+                    <li key={o.id} className="field-hint">
+                      {o.descricao} — {o.dias_impacto ?? 0}d de impacto
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+
           <section className="card">
-            <span className="etapa-card-label">Próximos compromissos</span>
-            {proximosCompromissos.length === 0 ? (
-              <p className="field-hint">Nenhuma reunião agendada.</p>
+            <span className="etapa-card-label">Ocorrências abertas</span>
+            {outrasOcorrenciasAbertas.length === 0 ? (
+              <p className="field-hint">Nenhuma ocorrência aberta.</p>
             ) : (
-              <ul className="observacoes-lista">
-                {proximosCompromissos.map((r) => (
-                  <li key={r.id} className="field-hint">
-                    {TIPO_REUNIAO_LABELS[r.tipo]} — {formatarDataHora(r.data_hora!)}
-                  </li>
-                ))}
-              </ul>
+              <>
+                <p className="resumo-destaque-valor">{outrasOcorrenciasAbertas.length} aberta(s)</p>
+                <ul className="observacoes-lista">
+                  {outrasOcorrenciasAbertas.slice(0, 3).map((o) => (
+                    <li key={o.id} className="field-hint">
+                      {CATEGORIA_OCORRENCIA_LABELS[o.categoria]} — {o.descricao}
+                    </li>
+                  ))}
+                </ul>
+                {outrasOcorrenciasAbertas.length > 3 && (
+                  <button type="button" className="btn-link" onClick={() => setAba('historico')}>
+                    Ver todas as {outrasOcorrenciasAbertas.length}
+                  </button>
+                )}
+              </>
             )}
           </section>
 
-          <section className="card">
-            <span className="etapa-card-label">Trial Kommo</span>
-            <p>
-              {resumoTrial
-                ? `${STATUS_TRIAL_LABELS[resumoTrial.status]} — ${resumoTrial.diasRestantes}d restantes`
-                : 'Sem Trial iniciado'}
-            </p>
-            <button type="button" className="btn btn-secondary btn-auto" onClick={() => setAba('trial')}>
-              Ver Trial Kommo
-            </button>
-          </section>
-
-          <section className="card">
+          <section className={`card${adocaoPrecisaAtencao ? ' resumo-card-atencao' : ''}`}>
             <span className="etapa-card-label">Adoção</span>
             {checkpointAdocao ? (
               (() => {
@@ -1598,80 +1681,28 @@ export function ClienteDetalhe() {
                         {STATUS_DIAGNOSTICO_LABELS[diagnostico.status]}
                       </span>
                     </p>
-                    <ul className="observacoes-lista">
-                      {diagnostico.sinais.slice(0, 3).map((sinal, i) => (
-                        <li key={i} className="field-hint">
-                          {sinal}
-                        </li>
-                      ))}
-                    </ul>
+                    {adocaoPrecisaAtencao && (
+                      <ul className="observacoes-lista">
+                        {diagnostico.sinais.slice(0, 3).map((sinal, i) => (
+                          <li key={i} className="field-hint">
+                            {sinal}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </>
                 );
               })()
             ) : (
-              <p className="field-hint">Checkpoint de 30 dias ainda não respondido.</p>
+              <p className="field-hint">
+                {adocaoPrecisaAtencao ? 'Checkpoint de 30 dias pendente.' : 'Checkpoint de 30 dias ainda não respondido.'}
+              </p>
             )}
             {implementacao && (
-              <Link to={`/implementacoes/${implementacao.id}`} className="btn btn-secondary btn-auto">
+              <Link to={`/implementacoes/${implementacao.id}`} className="btn-link">
                 Ver indicadores
               </Link>
             )}
-          </section>
-
-          <section className="card">
-            <span className="etapa-card-label">Contador de {configuracao?.duracaoTotalDias ?? 40} dias</span>
-            <p>
-              {diaCiclo
-                ? `Dia ${diaCiclo.dia}/${configuracao?.duracaoTotalDias ?? 40} — ${diaCiclo.ciclo?.nome ?? 'fora dos ciclos'}`
-                : 'Kickoff ainda não realizado'}
-            </p>
-          </section>
-
-          <section className="card">
-            <span className="etapa-card-label">Pendências abertas</span>
-            <p>{pendenciasClienteAbertas.length} pendência(s) do cliente</p>
-            {pendenciasClienteAbertas.length > 0 && (
-              <ul className="observacoes-lista">
-                {pendenciasClienteAbertas.map((o) => (
-                  <li key={o.id} className="field-hint">
-                    {o.descricao}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="card">
-            <span className="etapa-card-label">Riscos</span>
-            {riscosAbertos.length === 0 ? (
-              <p className="field-hint">Nenhum risco com impacto no cronograma.</p>
-            ) : (
-              <ul className="observacoes-lista">
-                {riscosAbertos.map((o) => (
-                  <li key={o.id} className="field-hint">
-                    {o.descricao} — {o.dias_impacto ?? 0}d de impacto
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="card">
-            <span className="etapa-card-label">Ocorrências abertas</span>
-            {outrasOcorrenciasAbertas.length === 0 ? (
-              <p className="field-hint">Nenhuma ocorrência aberta.</p>
-            ) : (
-              <ul className="observacoes-lista">
-                {outrasOcorrenciasAbertas.map((o) => (
-                  <li key={o.id} className="field-hint">
-                    {CATEGORIA_OCORRENCIA_LABELS[o.categoria]} — {o.descricao}
-                  </li>
-                ))}
-              </ul>
-            )}
-            <button type="button" className="btn btn-secondary btn-auto" onClick={() => setAba('historico')}>
-              Ver todas em Histórico
-            </button>
           </section>
         </div>
       )}
@@ -1827,6 +1858,31 @@ export function ClienteDetalhe() {
                 />
               </label>
             </div>
+
+            <fieldset className="field">
+              <legend>Canais previstos para este cliente</legend>
+              <p className="field-hint">
+                Desmarque o que não fizer parte da implementação — as atividades de conexão desse canal no
+                checklist deixam de aparecer como pendentes.
+              </p>
+              <label className="option-checkbox">
+                <input
+                  type="checkbox"
+                  checked={formInfo.canal_whatsapp_business}
+                  onChange={(e) => setFormInfo({ ...formInfo, canal_whatsapp_business: e.target.checked })}
+                />
+                <span>WhatsApp Business</span>
+              </label>
+              <label className="option-checkbox">
+                <input
+                  type="checkbox"
+                  checked={formInfo.canal_instagram}
+                  onChange={(e) => setFormInfo({ ...formInfo, canal_instagram: e.target.checked })}
+                />
+                <span>Instagram</span>
+              </label>
+            </fieldset>
+
             <div className="wizard-actions">
               <button
                 type="button"
@@ -1862,6 +1918,15 @@ export function ClienteDetalhe() {
             </p>
             <p>
               <strong>UF:</strong> {cliente.uf ?? '—'}
+            </p>
+            <p>
+              <strong>Canais previstos:</strong>{' '}
+              {[
+                cliente.canal_whatsapp_business !== false && 'WhatsApp Business',
+                cliente.canal_instagram !== false && 'Instagram',
+              ]
+                .filter(Boolean)
+                .join(', ') || 'Nenhum'}
             </p>
           </div>
         )}

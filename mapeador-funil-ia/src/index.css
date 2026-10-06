@@ -2424,6 +2424,115 @@ img.auth-logo {
   color: var(--color-text-muted);
 }
 
+/* ── Aba Resumo da ficha do cliente (prompt 54) — blocos por prioridade em
+   vez de grade uniforme de cards. Status/Saúde/Dia-Ciclo/Trial/Prazo já
+   aparecem na faixa acima das abas (resumo-destaque-grid), não se repetem
+   aqui. ── */
+.resumo-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.resumo-proxima-acao-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.resumo-linha-dupla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.resumo-kpi-par {
+  display: flex;
+  gap: 28px;
+}
+
+.resumo-kpi-par > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.resumo-kpi-valor {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.resumo-card-atencao {
+  border-color: var(--color-warning);
+}
+
+/* ── Trial Kommo compacto (prompt 54, parte B) ── */
+.texto-danger {
+  color: var(--color-danger);
+}
+
+.trial-resumo-compacto {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trial-resumo-compacto .checklist-progresso {
+  margin-top: 6px;
+  max-width: 220px;
+}
+
+.trial-fases-linha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trial-fase {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--color-text-muted);
+}
+
+.trial-fase-icone {
+  font-size: 13px;
+}
+
+.trial-fase-nome {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trial-fase-atual {
+  color: var(--color-text);
+}
+
+.trial-fase-atual .trial-fase-icone {
+  color: var(--color-success);
+}
+
+.trial-acao-compacta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 0;
+}
+
+.trial-acao-compacta:not(:last-child) {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trial-acao-compacta p {
+  margin: 0;
+}
+
 .modo-visualizacao-toggle {
   display: flex;
   gap: 6px;
