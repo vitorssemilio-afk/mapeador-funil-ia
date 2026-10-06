@@ -1,6 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AplicarTemplateModal } from '../components/AplicarTemplateModal';
+import { AtividadeDetalhesDrawer } from '../components/checklist/AtividadeDetalhesDrawer';
+import { AtividadeGrupo } from '../components/checklist/AtividadeGrupo';
+import { AtividadeLinha } from '../components/checklist/AtividadeLinha';
+import { CicloMarcos, type MarcoChecklist } from '../components/checklist/CicloMarcos';
+import { CicloResumo } from '../components/checklist/CicloResumo';
 import { ConcluirAtividadeModal } from '../components/ConcluirAtividadeModal';
 import { GanttRuler } from '../components/GanttRuler';
 import { IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
@@ -15,11 +20,10 @@ import {
   resolverMarcoAgendavel,
   resolverMarcoSimples,
   resolverTrialKommo,
-  STATUS_ATIVIDADE_LABELS,
-  STATUS_ATIVIDADE_TONE,
   type AtividadeResolvida,
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
+import { agruparAtividades, contarConcluidas } from '../lib/checklistGrupos';
 import {
   fonteAtaLabel,
   RESPONSAVEL_TIPO_ACAO_LABELS,
@@ -145,6 +149,19 @@ function rankCiclo(ciclo: string): number {
   if (match) return Number(match[1]);
   return Number.POSITIVE_INFINITY;
 }
+
+// Mapeia o nome de exibição de cada marco virtual (ver atividadesResolvidas)
+// pro campo real em `clientes` — usado só pra contar quantas atividades do
+// ciclo dependem dele ("libera N atividades"), no bloco "Marcos do ciclo" do
+// redesign do checklist. Não é uma dependência nova: é a mesma string já
+// usada em `depende_de` (marco:<campo>).
+const MARCO_NOME_PARA_CAMPO: Record<string, string> = {
+  Kickoff: 'kickoff_realizado_em',
+  'Funil validado': 'funil_validado_em',
+  'Conta Kommo solicitada': 'conta_kommo_solicitada_em',
+  'Conta Kommo criada': 'conta_kommo_criada_em',
+  Treinamento: 'treinamento_realizado_em',
+};
 
 type FormReuniao = {
   tipo: TipoReuniao;
@@ -406,6 +423,12 @@ export function ImplementacaoDetalhe() {
   // fechado; guarda a atividade pra saber o nome/valor atual a pré-preencher.
   const [modalConclusao, setModalConclusao] = useState<AtividadeResolvida | null>(null);
   const [salvandoConclusao, setSalvandoConclusao] = useState(false);
+  // Drawer de detalhes da atividade (redesign do checklist) — null quando fechado.
+  // Guarda só o id (não o objeto resolvido inteiro) — assim, quando a
+  // atividade é concluída/editada com o drawer aberto, o drawer sempre lê o
+  // valor recém-recalculado em atividadesResolvidas, nunca uma foto antiga
+  // de antes da ação.
+  const [detalheAtividadeId, setDetalheAtividadeId] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -3545,163 +3568,120 @@ export function ImplementacaoDetalhe() {
       )}
 
       {aba === 'checklist' &&
-        Array.from(atividadesPorCiclo.entries()).map(([ciclo, atividadesDoCiclo]) => {
+        Array.from(atividadesPorCiclo.entries())
+          // Trial Kommo é uma trilha virtual à parte (1 linha só, sempre
+          // informativa) — já tem card próprio e mais completo logo acima
+          // (resumoTrial), então não entra nesta visão por ciclo.
+          .filter(([ciclo]) => ciclo !== 'Trial Kommo')
+          .map(([ciclo, atividadesDoCiclo]) => {
+            const marcos = atividadesDoCiclo.filter((a) => a.id === null);
+            const reais = atividadesDoCiclo.filter((a) => a.id !== null);
+            const janelaCiclo = configuracao.ciclos.find((c) => c.nome === ciclo);
+
+            const marcosChecklist: MarcoChecklist[] = marcos.map((atividade) => {
+              const campo = MARCO_NOME_PARA_CAMPO[atividade.nome];
+              const libera = campo
+                ? reais.filter((a) => atividadesTemplate.find((t) => t.id === a.id)?.depende_de === `marco:${campo}`)
+                    .length
+                : 0;
+
+              let acaoLabel: string | null = null;
+              if (atividade.nome === 'Kickoff' || atividade.nome === 'Treinamento') {
+                acaoLabel = 'Ver em Reuniões';
+              } else if (atividade.nome === 'Conta Kommo solicitada') {
+                acaoLabel = atividade.dataReal ? 'Editar data' : atividade.status === 'concluido' ? 'Adicionar data' : null;
+              } else if (atividade.nome === 'Conta Kommo criada') {
+                acaoLabel = atividade.dataReal ? 'Editar data' : null;
+              }
+
+              return { atividade, acaoLabel, libera };
+            });
+
+            function handleAcaoMarco(nomeMarco: string) {
+              if (nomeMarco === 'Kickoff' || nomeMarco === 'Treinamento') {
+                setAba('reunioes');
+                return;
+              }
+              if (nomeMarco === 'Conta Kommo solicitada') {
+                handleEditarDataMarco('conta_kommo_solicitada_em', cliente?.conta_kommo_solicitada_em ?? null);
+                return;
+              }
+              if (nomeMarco === 'Conta Kommo criada') {
+                handleEditarDataMarco('conta_kommo_criada_em', cliente?.conta_kommo_criada_em ?? null);
+              }
+            }
+
+            const grupos = agruparAtividades(
+              reais.map((atividade) => ({
+                atividade,
+                categoria: atividadesTemplate.find((t) => t.id === atividade.id)?.categoria ?? null,
+              })),
+            );
+
+            return (
+              <section key={ciclo} className="card form-card">
+                <CicloResumo
+                  nomeCiclo={ciclo}
+                  diaAtual={diaCiclo?.dia ?? null}
+                  diaInicio={janelaCiclo?.diaInicio ?? 1}
+                  diaFim={janelaCiclo?.diaFim ?? 10}
+                  atividades={reais}
+                />
+
+                <CicloMarcos marcos={marcosChecklist} onAcao={handleAcaoMarco} />
+
+                {grupos.map((grupo) => {
+                  const { concluidas, total } = contarConcluidas(grupo.itens);
+                  return (
+                    <AtividadeGrupo
+                      key={grupo.nome}
+                      chaveStorage={`${implementacao?.id ?? ''}:${ciclo}:${grupo.nome}`}
+                      nome={grupo.nome}
+                      concluidas={concluidas}
+                      total={total}
+                    >
+                      {grupo.itens.map((atividade) => (
+                        <AtividadeLinha
+                          key={atividade.id}
+                          atividade={atividade}
+                          onAlternarConcluido={(concluido) => handleMarcarConcluido(atividade, concluido)}
+                          onAbrirDetalhes={() => setDetalheAtividadeId(atividade.id)}
+                        />
+                      ))}
+                    </AtividadeGrupo>
+                  );
+                })}
+              </section>
+            );
+          })}
+
+      {detalheAtividadeId &&
+        (() => {
+          const detalheAtividade = atividadesResolvidas.find((a) => a.id === detalheAtividadeId);
+          if (!detalheAtividade) return null;
+          const templateAtividade = atividadesTemplate.find((a) => a.id === detalheAtividade.id);
+          const statusRow = atividadesStatus.find((s) => s.atividade_id === detalheAtividade.id) ?? null;
           return (
-            <section key={ciclo} className="card form-card">
-              <h2>{ciclo}</h2>
-
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Atividade</th>
-                      <th>Prazo</th>
-                      <th>Responsável</th>
-                      <th>Dependência</th>
-                      <th>Dia</th>
-                      <th>Ciclo</th>
-                      <th>Data planejada</th>
-                      <th>Data real</th>
-                      <th>Atraso</th>
-                      <th>Status</th>
-                      <th>Agendado para</th>
-                      <th>Bloqueado pelo cliente</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {atividadesDoCiclo.map((atividade) => {
-                      const virtual = atividade.id === null;
-                      const templateAtividade = atividadesTemplate.find((a) => a.id === atividade.id);
-                      const requerEvidencia = templateAtividade?.requer_evidencia ?? false;
-                      const desabilitarConcluir = atividade.status === 'aguardando_etapa_anterior';
-                      const statusRow = atividadesStatus.find((s) => s.atividade_id === atividade.id);
-
-                      return (
-                        <Fragment key={atividade.id ?? `${atividade.ciclo}-${atividade.nome}`}>
-                          <tr>
-                            <td>
-                              {!virtual && (
-                                <input
-                                  type="checkbox"
-                                  checked={atividade.status === 'concluido'}
-                                  disabled={desabilitarConcluir}
-                                  onChange={(e) => handleMarcarConcluido(atividade, e.target.checked)}
-                                />
-                              )}{' '}
-                              {atividade.nome}
-                              {templateAtividade?.implementacao_id && (
-                                <span className="derivado-badge"> · gerado do funil</span>
-                              )}
-                              {templateAtividade?.origem_template_id && (
-                                <span className="derivado-badge"> · do template</span>
-                              )}
-                            </td>
-                            <td>{atividade.prazoDias != null ? `${atividade.prazoDias}d` : '—'}</td>
-                            <td>{atividade.responsavel ?? '—'}</td>
-                            <td>{atividade.dependenciaLabel ?? '—'}</td>
-                            <td>{atividade.diaDesdeKickoff != null ? `Dia ${atividade.diaDesdeKickoff}` : '—'}</td>
-                            <td>
-                              {atividade.foraDaJanelaDoCiclo ? (
-                                <span className="ops-prazo-atrasado">
-                                  {atividade.diasAcimaDaJanela}d acima do ciclo
-                                </span>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td>
-                              {atividade.dataPlanejada?.toLocaleDateString('pt-BR') ?? '—'}
-                              {atividade.deslocamentoDias != null && (
-                                <span className="field-hint">
-                                  {' '}
-                                  (remarcado em {atividade.deslocamentoDias >= 0 ? '+' : ''}
-                                  {atividade.deslocamentoDias}d)
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              {atividade.dataReal ? (
-                                <>
-                                  {atividade.dataReal.toLocaleDateString('pt-BR')}
-                                  {!virtual && (
-                                    <>
-                                      {' '}
-                                      <button
-                                        type="button"
-                                        className="btn-link"
-                                        onClick={() => setModalConclusao(atividade)}
-                                      >
-                                        editar data
-                                      </button>
-                                    </>
-                                  )}
-                                </>
-                              ) : atividade.status === 'concluido' ? (
-                                // Concluído pela lógica de dependência (ex: "Conta
-                                // Kommo criada" prova que "solicitada" já
-                                // aconteceu), mas sem data própria conhecida —
-                                // nunca mostrar "—" aqui, que pareceria "não
-                                // aconteceu" (seções 30/42 do pedido de datas
-                                // históricas/dependências).
-                                'Data não informada'
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td>{atividade.atrasoDias > 0 ? `${atividade.atrasoDias}d` : '—'}</td>
-                            <td>
-                              <span className={`status-badge status-tone-${STATUS_ATIVIDADE_TONE[atividade.status]}`}>
-                                {atividade.status === 'aguardando_etapa_anterior' &&
-                                atividade.dependenciaLabel === 'Treinamento realizado'
-                                  ? 'Bloqueado até realização do treinamento'
-                                  : STATUS_ATIVIDADE_LABELS[atividade.status]}
-                              </span>
-                            </td>
-                            <td>
-                              {!virtual && (
-                                <input
-                                  type="date"
-                                  value={statusRow?.agendado_para ?? ''}
-                                  onChange={(e) => handleAgendar(atividade.id!, e.target.value)}
-                                />
-                              )}
-                            </td>
-                            <td>
-                              {!virtual && (
-                                <input
-                                  type="checkbox"
-                                  checked={atividade.bloqueadoPeloCliente}
-                                  onChange={(e) => handleBloquearPeloCliente(atividade.id!, e.target.checked)}
-                                />
-                              )}
-                            </td>
-                          </tr>
-                          {!virtual && requerEvidencia && (
-                            <tr>
-                              <td colSpan={12}>
-                                <input
-                                  type="text"
-                                  className="option-livre-input evidencia-input"
-                                  placeholder="Evidência (link, print ou nota) — obrigatória pra marcar"
-                                  value={evidencias[atividade.id!] ?? ''}
-                                  onChange={(e) => handleEvidenciaChange(atividade.id!, e.target.value)}
-                                  onBlur={() => handleEvidenciaBlur(atividade)}
-                                />
-                                {evidenciaFaltando.has(atividade.id!) && (
-                                  <p className="form-error">Escreva a evidência antes de marcar este critério.</p>
-                                )}
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            <AtividadeDetalhesDrawer
+              atividade={detalheAtividade}
+              statusRow={statusRow}
+              requerEvidencia={templateAtividade?.requer_evidencia ?? false}
+              descricaoTemplate={templateAtividade?.descricao ?? null}
+              evidenciaValor={evidencias[detalheAtividade.id!] ?? statusRow?.evidencia ?? ''}
+              evidenciaFaltando={evidenciaFaltando.has(detalheAtividade.id!)}
+              onFechar={() => setDetalheAtividadeId(null)}
+              onAlternarConcluido={(concluido) => handleMarcarConcluido(detalheAtividade, concluido)}
+              onEditarData={() => {
+                setDetalheAtividadeId(null);
+                setModalConclusao(detalheAtividade);
+              }}
+              onAgendar={(data) => handleAgendar(detalheAtividade.id!, data)}
+              onBloquearPeloCliente={(bloqueado) => handleBloquearPeloCliente(detalheAtividade.id!, bloqueado)}
+              onEvidenciaChange={(texto) => handleEvidenciaChange(detalheAtividade.id!, texto)}
+              onEvidenciaBlur={() => handleEvidenciaBlur(detalheAtividade)}
+            />
           );
-        })}
+        })()}
 
       {aba === 'criterios' && implementacao && (
         <section className="card form-card">
