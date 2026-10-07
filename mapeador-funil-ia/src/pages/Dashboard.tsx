@@ -663,11 +663,17 @@ export function Dashboard() {
 
   const meuConsultor = useMemo(() => consultores.find((c) => c.user_id === user?.id) ?? null, [consultores, user]);
 
-  // "Minha carteira" (seção 18/20) — os clientes mais relevantes primeiro
-  // (risco → atraso → Trial perto de vencer), vista reduzida; a lista
-  // completa com filtros vive em /clientes (seção 19).
+  // "Minha carteira" (seção 18/20) — quais 9 clientes aparecem continua
+  // decidido por prioridade (risco → atraso → Trial perto de vencer), senão
+  // um cliente crítico poderia sumir da vista reduzida só por causa da
+  // letra do nome; a ORDEM exibida é alfabética, a pedido do usuário. A
+  // lista completa com filtros (já alfabética) vive em /clientes (seção 19).
   const carteiraResumida = useMemo(
-    () => [...resumos].sort(compararPrioridadeCarteira).slice(0, MAX_CARTEIRA_VISIVEL),
+    () =>
+      [...resumos]
+        .sort(compararPrioridadeCarteira)
+        .slice(0, MAX_CARTEIRA_VISIVEL)
+        .sort((a, b) => a.cliente.nome_empresa.localeCompare(b.cliente.nome_empresa, 'pt-BR')),
     [resumos],
   );
 
