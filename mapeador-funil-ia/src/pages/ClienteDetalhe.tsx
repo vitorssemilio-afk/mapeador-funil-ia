@@ -292,6 +292,7 @@ export function ClienteDetalhe() {
   const [form, setForm] = useState<FormCliente | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [idCopiado, setIdCopiado] = useState(false);
+  const [excluindoCliente, setExcluindoCliente] = useState(false);
 
   const [criandoVendas, setCriandoVendas] = useState(false);
   const [criandoPosVenda, setCriandoPosVenda] = useState(false);
@@ -1402,6 +1403,38 @@ export function ClienteDetalhe() {
     setTimeout(() => setIdCopiado(false), 2000);
   }
 
+  // Exclusão só pra administrador (mesma restrição de sempre pra ações
+  // destrutivas de cadastro — ver Consultores.tsx). O banco já cascateia
+  // observações/arquivos/contatos/ocorrências/reuniões (on delete cascade)
+  // e desvincula mapeamento/implementação sem apagá-los (on delete set
+  // null, migration 0029) — por isso o aviso é mais forte quando já existe
+  // algum dos dois, em vez de bloquear a ação (o banco não bloqueia).
+  async function handleExcluirCliente() {
+    if (!cliente) return;
+
+    const temDadosVinculados = !!(mapeamentoVendas || mapeamentoPosVenda || implementacao);
+    const confirmado = await confirmar({
+      titulo: `Excluir o cliente "${cliente.nome_empresa}"?`,
+      descricao: temDadosVinculados
+        ? 'Esse cliente já tem mapeamento e/ou implementação vinculados. Observações, arquivos, contatos, ocorrências e reuniões serão excluídos junto; o mapeamento e a implementação não são apagados, mas ficam sem cliente vinculado. Essa ação não pode ser desfeita.'
+        : 'Essa ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir cliente',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    setExcluindoCliente(true);
+    const { error: deleteError } = await supabase.from('clientes').delete().eq('id', cliente.id);
+    setExcluindoCliente(false);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    navigate('/clientes');
+  }
+
   function abrirTransferirConsultorCliente() {
     setTransferindoConsultorCliente(true);
     setNovoConsultorClienteId('');
@@ -1492,23 +1525,35 @@ export function ClienteDetalhe() {
             </button>
           </p>
         </div>
-        {!editando && (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              // O formulário de edição só é renderizado dentro da aba
-              // "Informações" — sem trocar de aba aqui, clicar nesse botão
-              // estando em qualquer outra aba (ex: Resumo) só escondia o
-              // próprio botão e não mostrava nada, sem nenhum jeito de
-              // perceber o que tinha dado errado.
-              setAba('informacoes');
-              setEditando(true);
-            }}
-          >
-            Editar dados
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: 10 }}>
+          {!editando && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                // O formulário de edição só é renderizado dentro da aba
+                // "Informações" — sem trocar de aba aqui, clicar nesse botão
+                // estando em qualquer outra aba (ex: Resumo) só escondia o
+                // próprio botão e não mostrava nada, sem nenhum jeito de
+                // perceber o que tinha dado errado.
+                setAba('informacoes');
+                setEditando(true);
+              }}
+            >
+              Editar dados
+            </button>
+          )}
+          {souAdministrador && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={handleExcluirCliente}
+              disabled={excluindoCliente}
+            >
+              {excluindoCliente ? 'Excluindo…' : 'Excluir cliente'}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <p className="form-error">{error}</p>}
