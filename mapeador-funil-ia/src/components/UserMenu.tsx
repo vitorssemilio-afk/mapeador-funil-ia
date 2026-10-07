@@ -86,6 +86,10 @@ export function UserMenu() {
 
     if (uploadError) {
       setEnviando(false);
+      // Nunca esconder a causa real no console — a mensagem pro usuário
+      // fica genérica, mas quem for investigar (devtools/logs) precisa
+      // ver se foi RLS, bucket inexistente, mime type ou outra coisa.
+      console.error('Falha ao enviar avatar para o storage:', uploadError);
       mostrarToast('Não foi possível enviar a foto. Tente de novo.', 'error');
       return;
     }
@@ -104,7 +108,11 @@ export function UserMenu() {
     setEnviando(false);
 
     if (updateError) {
-      mostrarToast('A foto foi enviada, mas não foi possível salvar no seu perfil.', 'error');
+      // O arquivo já está no storage (path fixo, upsert) — um novo clique
+      // em "Alterar foto" reenvia pro mesmo caminho e tenta salvar de
+      // novo, sem acumular arquivo órfão nem exigir nenhuma limpeza.
+      console.error('Avatar enviado, mas falhou ao salvar avatar_url no consultor:', updateError);
+      mostrarToast('A foto foi enviada, mas não foi possível salvar no seu perfil. Tente de novo.', 'error');
       return;
     }
 
@@ -135,6 +143,7 @@ export function UserMenu() {
     setEnviando(false);
 
     if (updateError) {
+      console.error('Falha ao limpar avatar_url ao remover foto:', updateError);
       mostrarToast('Não foi possível remover a foto. Tente de novo.', 'error');
       return;
     }
