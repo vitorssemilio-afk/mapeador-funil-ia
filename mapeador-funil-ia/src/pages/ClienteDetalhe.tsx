@@ -1493,7 +1493,19 @@ export function ClienteDetalhe() {
           </p>
         </div>
         {!editando && (
-          <button type="button" className="btn btn-secondary" onClick={() => setEditando(true)}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              // O formulário de edição só é renderizado dentro da aba
+              // "Informações" — sem trocar de aba aqui, clicar nesse botão
+              // estando em qualquer outra aba (ex: Resumo) só escondia o
+              // próprio botão e não mostrava nada, sem nenhum jeito de
+              // perceber o que tinha dado errado.
+              setAba('informacoes');
+              setEditando(true);
+            }}
+          >
             Editar dados
           </button>
         )}

@@ -350,8 +350,19 @@ export function construirResumoClientes(params: {
       atividadesAtrasadas,
       trial,
       reuniaoObrigatoriaPendente,
-      consultor: nomeConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
-      consultorEmail: emailConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
+      // Cai pro responsável do CLIENTE quando ainda não existe implementação
+      // (ou ela ainda não tem um responsável próprio) — sem isso, um cliente
+      // recém-criado ou recém-transferido (ClienteDetalhe.tsx, "Transferir")
+      // sempre mostrava "—" aqui mesmo com consultor_responsavel_id já
+      // preenchido, porque antes só olhava pro campo da implementação.
+      consultor: nomeConsultor(
+        implementacao?.consultor_responsavel_id ?? cliente.consultor_responsavel_id ?? null,
+        consultores,
+      ),
+      consultorEmail: emailConsultor(
+        implementacao?.consultor_responsavel_id ?? cliente.consultor_responsavel_id ?? null,
+        consultores,
+      ),
       consultorAdicional: nomeConsultor(implementacao?.consultor_adicional_id ?? null, consultores),
     };
   });
