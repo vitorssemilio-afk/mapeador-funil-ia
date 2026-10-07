@@ -64,22 +64,46 @@ export function UserMenu() {
   const nomeExibicao = nome ?? user?.email?.split('@')[0] ?? 'Usuário';
 
   async function handleSelecionarArquivo(e: ChangeEvent<HTMLInputElement>) {
+    // Diagnóstico temporário (PROMPT 55.1) — cada etapa do fluxo loga seu
+    // próprio marcador, pra identificar exatamente onde quebra em
+    // produção sem precisar adivinhar. Remover quando o upload estiver
+    // confirmado funcionando de ponta a ponta.
+    console.info('[avatar] A. arquivo selecionado');
     const arquivo = e.target.files?.[0];
     e.target.value = '';
-    if (!arquivo || !user || !consultorId) return;
+    if (!arquivo || !user || !consultorId) {
+      console.info('[avatar] abortado: arquivo, usuário ou consultorId ausente', {
+        temArquivo: !!arquivo,
+        temUser: !!user,
+        consultorId,
+      });
+      return;
+    }
 
+    console.info('[avatar] B. validando MIME type', { tipo: arquivo.type, nome: arquivo.name });
     const extensao = TIPOS_ACEITOS[arquivo.type];
     if (!extensao) {
       mostrarToast('Use uma imagem JPG, PNG ou WEBP.', 'error');
       return;
     }
+    console.info('[avatar] C. validando tamanho', { bytes: arquivo.size, limite: TAMANHO_MAXIMO_BYTES });
     if (arquivo.size > TAMANHO_MAXIMO_BYTES) {
       mostrarToast('A imagem precisa ter até 5 MB.', 'error');
       return;
     }
 
+    console.info('[avatar] D. confirmando usuário autenticado');
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      console.error('[avatar] D. getUser() falhou ou retornou nulo', authError);
+      mostrarToast('Sua sessão expirou. Entre novamente e tente de novo.', 'error');
+      return;
+    }
+    console.info('[avatar] D. usuário confirmado', { userId: authData.user.id });
+
     setEnviando(true);
-    const caminho = `${user.id}/profile.${extensao}`;
+    const caminho = `${authData.user.id}/profile.${extensao}`;
+    console.info('[avatar] E. enviando para o Storage', { bucket: BUCKET_AVATARS, caminho });
 
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_AVATARS)
@@ -87,20 +111,39 @@ export function UserMenu() {
 
     if (uploadError) {
       setEnviando(false);
+      const detalhe = uploadError as { message?: string; status?: number; statusCode?: string; name?: string };
       // Nunca esconder a causa real no console — a mensagem pro usuário
       // fica genérica, mas quem for investigar (devtools/logs) precisa
       // ver se foi RLS, bucket inexistente, mime type ou outra coisa.
-      console.error('Falha ao enviar avatar para o storage:', uploadError);
-      mostrarToast('Não foi possível enviar a foto. Tente de novo.', 'error');
+      console.error('[avatar] E. Storage upload falhou', {
+        message: detalhe.message,
+        status: detalhe.status,
+        statusCode: detalhe.statusCode,
+        name: detalhe.name,
+        bucket: BUCKET_AVATARS,
+        caminho,
+      });
+      // Diagnóstico temporário visível na própria tela — sem isso, quem
+      // reporta o bug só vê "Tente de novo" e a causa real nunca chega a
+      // quem for corrigir. Remover depois de confirmado o upload
+      // funcionando (seção 3 do PROMPT 55.1).
+      mostrarToast(
+        `Falha ao enviar a foto — diagnóstico: ${detalhe.message ?? 'erro desconhecido'} ` +
+          `(status ${detalhe.status ?? '?'}, code ${detalhe.statusCode ?? detalhe.name ?? '?'})`,
+        'error',
+      );
       return;
     }
+    console.info('[avatar] E. upload concluído');
 
     // Cache-bust: o caminho é sempre o mesmo (upsert), então sem isso o
     // navegador continuaria mostrando a foto antiga em cache mesmo após
     // o upload (seção 20 — tem que atualizar na hora, sem logout/login).
+    console.info('[avatar] F. gerando URL pública');
     const { data } = supabase.storage.from(BUCKET_AVATARS).getPublicUrl(caminho);
     const novaUrl = `${data.publicUrl}?v=${Date.now()}`;
 
+    console.info('[avatar] G. atualizando avatar_url no perfil', { consultorId });
     const { error: updateError } = await supabase
       .from('consultores')
       .update({ avatar_url: novaUrl })
@@ -112,11 +155,16 @@ export function UserMenu() {
       // O arquivo já está no storage (path fixo, upsert) — um novo clique
       // em "Alterar foto" reenvia pro mesmo caminho e tenta salvar de
       // novo, sem acumular arquivo órfão nem exigir nenhuma limpeza.
-      console.error('Avatar enviado, mas falhou ao salvar avatar_url no consultor:', updateError);
-      mostrarToast('A foto foi enviada, mas não foi possível salvar no seu perfil. Tente de novo.', 'error');
+      console.error('[avatar] G. Storage OK, mas update em consultores falhou', updateError);
+      mostrarToast(
+        `A foto foi enviada, mas não foi possível salvar no perfil — diagnóstico: ${updateError.message} ` +
+          `(code ${updateError.code ?? '?'})`,
+        'error',
+      );
       return;
     }
 
+    console.info('[avatar] H. avatar atualizado na interface');
     setAvatarUrl(novaUrl);
     mostrarToast('Foto atualizada.');
   }
