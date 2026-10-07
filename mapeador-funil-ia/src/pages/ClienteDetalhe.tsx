@@ -320,6 +320,16 @@ export function ClienteDetalhe() {
   // (implementacao_consultor_historico) — fonte oficial, sem duplicar nada.
   const [historicoConsultor, setHistoricoConsultor] = useState<ImplementacaoConsultorHistorico[]>([]);
 
+  // Transferir o responsável direto da ficha do cliente — antes só existia
+  // depois que a implementação já tinha sido criada (ImplementacaoDetalhe.tsx).
+  // Com implementação: reaproveita a mesma RPC atômica (sincroniza cliente +
+  // implementação + histórico). Sem implementação ainda: update direto em
+  // `clientes`, a RLS já permite (migration 0062, clientes_update_por_vinculo).
+  const [transferindoConsultorCliente, setTransferindoConsultorCliente] = useState(false);
+  const [novoConsultorClienteId, setNovoConsultorClienteId] = useState('');
+  const [salvandoTransferenciaConsultorCliente, setSalvandoTransferenciaConsultorCliente] = useState(false);
+  const [erroTransferenciaConsultorCliente, setErroTransferenciaConsultorCliente] = useState<string | null>(null);
+
   const [editandoInfo, setEditandoInfo] = useState(false);
   const [formInfo, setFormInfo] = useState<FormInfoCliente | null>(null);
   const [salvandoInfo, setSalvandoInfo] = useState(false);
@@ -1392,6 +1402,81 @@ export function ClienteDetalhe() {
     setTimeout(() => setIdCopiado(false), 2000);
   }
 
+  function abrirTransferirConsultorCliente() {
+    setTransferindoConsultorCliente(true);
+    setNovoConsultorClienteId('');
+    setErroTransferenciaConsultorCliente(null);
+  }
+
+  function fecharTransferirConsultorCliente() {
+    setTransferindoConsultorCliente(false);
+    setNovoConsultorClienteId('');
+    setErroTransferenciaConsultorCliente(null);
+  }
+
+  async function handleTransferirConsultorCliente() {
+    if (!cliente || !novoConsultorClienteId) return;
+
+    const nomeAtual = nomeConsultor(cliente.consultor_responsavel_id, consultores) ?? 'sem responsável';
+    const nomeNovo = nomeConsultor(novoConsultorClienteId, consultores) ?? '—';
+    const confirmado = await confirmar({
+      titulo: 'Transferir consultor responsável?',
+      descricao: `De "${nomeAtual}" para "${nomeNovo}".`,
+      confirmarLabel: 'Transferir',
+    });
+    if (!confirmado) return;
+
+    setSalvandoTransferenciaConsultorCliente(true);
+    setErroTransferenciaConsultorCliente(null);
+
+    if (implementacao) {
+      // Já existe implementação — reaproveita a RPC atômica (migration 0062)
+      // que troca o responsável lá, sincroniza clientes.consultor_responsavel_id
+      // e grava o histórico numa única transação.
+      const { error: transferenciaError } = await supabase.rpc(
+        'transferir_consultor_responsavel_implementacao',
+        { p_implementacao_id: implementacao.id, p_novo_consultor_id: novoConsultorClienteId },
+      );
+
+      setSalvandoTransferenciaConsultorCliente(false);
+
+      if (transferenciaError) {
+        setErroTransferenciaConsultorCliente(transferenciaError.message);
+        return;
+      }
+
+      setCliente({ ...cliente, consultor_responsavel_id: novoConsultorClienteId });
+      setImplementacao({ ...implementacao, consultor_responsavel_id: novoConsultorClienteId });
+
+      const { data: historicoAtualizado } = await supabase
+        .from('implementacao_consultor_historico')
+        .select('*')
+        .eq('implementacao_id', implementacao.id);
+      setHistoricoConsultor(historicoAtualizado ?? []);
+    } else {
+      // Cliente ainda não tem implementação — não há nada pra sincronizar
+      // nem histórico de implementação pra gravar, só o próprio registro.
+      const { data, error: updateError } = await supabase
+        .from('clientes')
+        .update({ consultor_responsavel_id: novoConsultorClienteId })
+        .eq('id', cliente.id)
+        .select()
+        .single();
+
+      setSalvandoTransferenciaConsultorCliente(false);
+
+      if (updateError) {
+        setErroTransferenciaConsultorCliente(updateError.message);
+        return;
+      }
+
+      setCliente(data);
+    }
+
+    mostrarToast('Consultor responsável transferido.');
+    fecharTransferirConsultorCliente();
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -1452,7 +1537,51 @@ export function ClienteDetalhe() {
           <div className="resumo-revisao-grid resumo-revisao-grid-secundaria">
             <div>
               <span className="etapa-card-label">Consultor responsável</span>
-              <p>{resumo.consultor ?? '—'}</p>
+              <div className="page-header-actions" style={{ justifyContent: 'space-between' }}>
+                <p style={{ margin: 0 }}>{resumo.consultor ?? '—'}</p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-auto"
+                  onClick={abrirTransferirConsultorCliente}
+                >
+                  Transferir
+                </button>
+              </div>
+              {transferindoConsultorCliente && (
+                <div className="field" style={{ marginTop: 8 }}>
+                  <span>Transferir para</span>
+                  <select
+                    value={novoConsultorClienteId}
+                    onChange={(e) => setNovoConsultorClienteId(e.target.value)}
+                  >
+                    <option value="">Selecione…</option>
+                    {consultores
+                      .filter((c) => c.id !== cliente.consultor_responsavel_id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                          {!c.ativo ? ' (inativo)' : ''}
+                        </option>
+                      ))}
+                  </select>
+                  {erroTransferenciaConsultorCliente && (
+                    <p className="form-error">{erroTransferenciaConsultorCliente}</p>
+                  )}
+                  <div className="wizard-actions">
+                    <button type="button" className="btn btn-secondary" onClick={fecharTransferirConsultorCliente}>
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleTransferirConsultorCliente}
+                      disabled={!novoConsultorClienteId || salvandoTransferenciaConsultorCliente}
+                    >
+                      {salvandoTransferenciaConsultorCliente ? 'Transferindo…' : 'Confirmar transferência'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
             <div>
               <span className="etapa-card-label">Consultor adicional</span>
