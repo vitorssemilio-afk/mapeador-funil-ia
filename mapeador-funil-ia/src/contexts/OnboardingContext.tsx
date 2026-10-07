@@ -3,7 +3,7 @@
 // falsos), nunca mais depois disso. "Continuar"/"Refazer" ficam disponíveis
 // a qualquer momento pelo menu do usuário (ver UserMenu.tsx). Progresso é
 // por consultor — nunca compartilhado entre usuários (migration 0088).
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { buscarMeuConsultor } from '../lib/consultores';
@@ -30,6 +30,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [aberto, setAberto] = useState(false);
   const [etapa, setEtapa] = useState(0);
   const [jaOfereceu, setJaOfereceu] = useState(false);
+  // Fila de persistência — cada chamada só começa depois da anterior
+  // terminar, pra "Próximo, Próximo, Próximo" rápido não disparar
+  // requisições concorrentes cuja resposta mais antiga poderia chegar
+  // depois e sobrescrever um passo mais novo (seção 24 do pedido).
+  const filaPersistenciaRef = useRef<Promise<void>>(Promise.resolve());
+  // Evita toast duplicado a cada passo enquanto o erro persiste — avisa
+  // uma vez, só avisa de novo se voltar a falhar depois de um salvamento
+  // ter funcionado (seção 10/26).
+  const erroJaAvisadoRef = useRef(false);
 
   useEffect(() => {
     if (!user) return;
@@ -53,21 +62,47 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [consultor, jaOfereceu]);
 
-  async function atualizarConsultor(patch: Partial<Consultor>) {
-    if (!consultor) return;
-    const { data, error } = await supabase
-      .from('consultores')
-      .update(patch)
-      .eq('id', consultor.id)
-      .select()
-      .single();
-    if (data) setConsultor(data);
-    if (error) {
+  // Uma tentativa + 1 retry (sem loop infinito) antes de desistir e avisar
+  // (seção 11). `consultorId` é fixado no momento da chamada — nunca o
+  // `id` de um consultor diferente que tenha vindo a existir nesse
+  // meio-tempo.
+  async function persistirComRetry(consultorId: string, patch: Partial<Consultor>) {
+    for (let tentativa = 0; tentativa < 2; tentativa++) {
+      const { data, error } = await supabase
+        .from('consultores')
+        .update(patch)
+        .eq('id', consultorId)
+        .select()
+        .single();
+      if (!error) {
+        erroJaAvisadoRef.current = false;
+        if (data) setConsultor(data);
+        return;
+      }
+      if (tentativa === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        continue;
+      }
       // Se isso falhar silenciosamente, o estado de conclusão/pulado não
       // persiste e o onboarding volta a abrir sozinho no próximo reload —
-      // por isso avisa em vez de só fechar o modal como se tivesse salvo.
-      mostrarToast('Não foi possível salvar o progresso do onboarding. Tente novamente.', 'error');
+      // por isso avisa (uma vez só, mesmo em sequência de falhas) em vez
+      // de só fechar o modal como se tivesse salvo.
+      console.error('Falha ao salvar progresso do onboarding:', error);
+      if (!erroJaAvisadoRef.current) {
+        erroJaAvisadoRef.current = true;
+        mostrarToast('Não conseguimos salvar seu progresso agora. Tentaremos de novo no próximo passo.', 'error');
+      }
     }
+  }
+
+  function atualizarConsultor(patch: Partial<Consultor>) {
+    if (!consultor) return Promise.resolve();
+    const consultorId = consultor.id;
+    const proxima = filaPersistenciaRef.current.then(() => persistirComRetry(consultorId, patch));
+    // A fila sempre segue adiante, mesmo se essa chamada tiver falhado —
+    // senão uma falha isolada travaria toda chamada futura.
+    filaPersistenciaRef.current = proxima.catch(() => {});
+    return proxima;
   }
 
   const continuarOnboarding = useCallback(() => {
@@ -87,7 +122,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
     setAberto(true);
   }, []);
 
-  function irPara(novaEtapa: number) {
+  function irPara(novaEtapaAlvo: number) {
+    const novaEtapa = Math.max(0, Math.min(novaEtapaAlvo, totalEtapas - 1));
     setEtapa(novaEtapa);
     atualizarConsultor({ onboarding_etapa: novaEtapa });
   }
