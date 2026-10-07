@@ -64,10 +64,10 @@ export function UserMenu() {
   const nomeExibicao = nome ?? user?.email?.split('@')[0] ?? 'Usuário';
 
   async function handleSelecionarArquivo(e: ChangeEvent<HTMLInputElement>) {
-    // Diagnóstico temporário (PROMPT 55.1) — cada etapa do fluxo loga seu
-    // próprio marcador, pra identificar exatamente onde quebra em
-    // produção sem precisar adivinhar. Remover quando o upload estiver
-    // confirmado funcionando de ponta a ponta.
+    // Cada etapa do fluxo loga seu próprio marcador (só no console, nunca
+    // na tela) — upload confirmado funcionando em produção (PROMPT 55.1),
+    // mantido como instrumentação de diagnóstico de baixo custo pra uma
+    // eventual regressão futura não voltar a ser uma causa desconhecida.
     console.info('[avatar] A. arquivo selecionado');
     const arquivo = e.target.files?.[0];
     e.target.value = '';
@@ -123,15 +123,7 @@ export function UserMenu() {
         bucket: BUCKET_AVATARS,
         caminho,
       });
-      // Diagnóstico temporário visível na própria tela — sem isso, quem
-      // reporta o bug só vê "Tente de novo" e a causa real nunca chega a
-      // quem for corrigir. Remover depois de confirmado o upload
-      // funcionando (seção 3 do PROMPT 55.1).
-      mostrarToast(
-        `Falha ao enviar a foto — diagnóstico: ${detalhe.message ?? 'erro desconhecido'} ` +
-          `(status ${detalhe.status ?? '?'}, code ${detalhe.statusCode ?? detalhe.name ?? '?'})`,
-        'error',
-      );
+      mostrarToast('Não foi possível enviar a foto. Tente de novo.', 'error');
       return;
     }
     console.info('[avatar] E. upload concluído');
@@ -156,11 +148,7 @@ export function UserMenu() {
       // em "Alterar foto" reenvia pro mesmo caminho e tenta salvar de
       // novo, sem acumular arquivo órfão nem exigir nenhuma limpeza.
       console.error('[avatar] G. Storage OK, mas update em consultores falhou', updateError);
-      mostrarToast(
-        `A foto foi enviada, mas não foi possível salvar no perfil — diagnóstico: ${updateError.message} ` +
-          `(code ${updateError.code ?? '?'})`,
-        'error',
-      );
+      mostrarToast('A foto foi enviada, mas não foi possível salvar no seu perfil. Tente de novo.', 'error');
       return;
     }
 
