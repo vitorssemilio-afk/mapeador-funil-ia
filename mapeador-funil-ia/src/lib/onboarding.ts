@@ -15,6 +15,25 @@ export function deveAbrirOnboardingAutomaticamente(
   return !consultor.onboarding_concluido_em && !consultor.onboarding_pulado;
 }
 
+export type EstadoOnboarding = 'concluido' | 'pulado' | 'em_andamento' | 'nao_iniciado';
+
+// Prioridade explícita entre os campos persistidos — concluído sempre
+// vence (nunca "pulado" depois de concluído, mesmo que onboarding_pulado
+// tenha ficado true de uma passagem anterior), depois pulado, depois
+// iniciado-mas-não-terminado, por fim nunca visto.
+export function estadoOnboarding(
+  consultor: Pick<
+    Consultor,
+    'onboarding_concluido_em' | 'onboarding_pulado' | 'onboarding_iniciado_em'
+  > | null,
+): EstadoOnboarding {
+  if (!consultor) return 'nao_iniciado';
+  if (consultor.onboarding_concluido_em) return 'concluido';
+  if (consultor.onboarding_pulado) return 'pulado';
+  if (consultor.onboarding_iniciado_em) return 'em_andamento';
+  return 'nao_iniciado';
+}
+
 export type PassoOnboarding = {
   titulo: string;
   texto: string;

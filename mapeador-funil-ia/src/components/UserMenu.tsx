@@ -9,6 +9,7 @@ import { useConfirm } from '../contexts/ConfirmContext';
 import { useOnboarding } from '../contexts/OnboardingContext';
 import { useToast } from '../contexts/ToastContext';
 import { buscarMeuConsultor, PAPEL_LABELS, primeiroNome } from '../lib/consultores';
+import { estadoOnboarding } from '../lib/onboarding';
 import { supabase } from '../lib/supabaseClient';
 import type { PapelConsultor } from '../types/database';
 import { AlterarSenhaModal } from './AlterarSenhaModal';
@@ -228,11 +229,11 @@ export function UserMenu() {
               role="menuitem"
               onClick={() => {
                 setAberto(false);
-                if (consultorOnboarding?.onboarding_concluido_em) refazerOnboarding();
+                if (estadoOnboarding(consultorOnboarding) === 'concluido') refazerOnboarding();
                 else continuarOnboarding();
               }}
             >
-              {consultorOnboarding?.onboarding_concluido_em ? 'Refazer onboarding' : 'Continuar onboarding'}
+              {estadoOnboarding(consultorOnboarding) === 'concluido' ? 'Refazer onboarding' : 'Continuar onboarding'}
             </button>
           </div>
 
