@@ -32,6 +32,7 @@ import { RelatorioFunil } from './pages/RelatorioFunil';
 import { RelatorioImplementacaoView } from './pages/RelatorioImplementacaoView';
 import { RelatorioRespostas } from './pages/RelatorioRespostas';
 import { ResultadosBusca } from './pages/ResultadosBusca';
+import { RevisaoAtas } from './pages/RevisaoAtas';
 import { RespostasFormulario } from './pages/RespostasFormulario';
 import { TemplateDetalhe } from './pages/TemplateDetalhe';
 import { Templates } from './pages/Templates';
@@ -95,6 +96,7 @@ function App() {
                   <Route path="/implementacoes" element={<ImplementacoesCrm />} />
                   <Route path="/consultores" element={<Consultores />} />
                   <Route path="/observabilidade-ia" element={<ObservabilidadeIA />} />
+                  <Route path="/atas-revisao" element={<RevisaoAtas />} />
                   <Route path="/implementacoes/checklist" element={<ImplementacaoChecklistAdmin />} />
                   <Route path="/configuracoes" element={<Configuracoes />} />
                   <Route path="/busca" element={<ResultadosBusca />} />

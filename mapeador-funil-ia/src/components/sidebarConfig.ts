@@ -51,6 +51,7 @@ export const SIDEBAR_GROUPS: SidebarGroup[] = [
         matchPrefixes: ['/implementacoes'],
       },
       { label: 'Cronograma', to: '/cronograma', icon: IconTimeline },
+      { label: 'Atas pendentes', to: '/atas-revisao', icon: IconFileText },
     ],
   },
   {
