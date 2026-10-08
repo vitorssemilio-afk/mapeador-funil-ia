@@ -419,7 +419,14 @@ export function ImplementacaoDetalhe() {
   } | null>(null);
   const [salvandoCriterio, setSalvandoCriterio] = useState(false);
   const [confirmandoCampo, setConfirmandoCampo] = useState<
-    'conta_kommo_solicitada_em' | 'conta_kommo_criada_em' | 'contratacao_kommo_solicitada_em' | null
+    | 'conta_kommo_solicitada_em'
+    | 'conta_kommo_criada_em'
+    | 'contratacao_kommo_solicitada_em'
+    | 'extensao_7_solicitada_em'
+    | 'extensao_7_aprovada_em'
+    | 'extensao_14_solicitada_em'
+    | 'extensao_14_aprovada_em'
+    | null
   >(null);
   const [valorConfirmacao, setValorConfirmacao] = useState('');
   // Modal "Concluir atividade" (prompt 51, seções 4-9) — null quando
@@ -1284,35 +1291,6 @@ export function ImplementacaoDetalhe() {
     fecharTransferirConsultor();
   }
 
-  // Registra a solicitação/aprovação da extensão de Trial atual — grava
-  // direto no marco correspondente em `clientes` (extensao_14/7_solicitada_em
-  // ou _aprovada_em), com a data de hoje. A aprovação da extensão de 14 dias
-  // é o que recalcula o vencimento pra incluir a 2ª extensão (+7) como
-  // próxima opção — ver resolverResumoTrialKommo.
-  async function handleRegistrarEventoTrial(
-    campo: 'extensao_14_solicitada_em' | 'extensao_14_aprovada_em' | 'extensao_7_solicitada_em' | 'extensao_7_aprovada_em',
-  ) {
-    if (!cliente) return;
-    setSalvandoTrial(true);
-
-    const atualizacao: Partial<Cliente> = { [campo]: new Date().toISOString().slice(0, 10) };
-    const { data, error: updateError } = await supabase
-      .from('clientes')
-      .update(atualizacao)
-      .eq('id', cliente.id)
-      .select()
-      .single();
-
-    setSalvandoTrial(false);
-
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-
-    setCliente(data);
-  }
-
   function agoraParaInputDatetime(): string {
     return isoParaInputDatetime(new Date().toISOString());
   }
@@ -1322,7 +1300,11 @@ export function ImplementacaoDetalhe() {
   // preenchida com agora, mas editável antes de confirmar.
   function handleAbrirLinkPipefy(
     url: string | null | undefined,
-    campo: 'conta_kommo_solicitada_em' | 'contratacao_kommo_solicitada_em',
+    campo:
+      | 'conta_kommo_solicitada_em'
+      | 'contratacao_kommo_solicitada_em'
+      | 'extensao_7_solicitada_em'
+      | 'extensao_14_solicitada_em',
   ) {
     if (url) window.open(url, '_blank', 'noopener,noreferrer');
     setConfirmandoCampo(campo);
@@ -2965,52 +2947,105 @@ export function ImplementacaoDetalhe() {
           <div className="trial-acao-compacta">
             <span className="etapa-card-label">Próxima ação</span>
             {resumoTrial.proximaExtensao ? (
-              <>
-                <p className="field-hint">
-                  {resumoTrial.proximaExtensao.aprovadaEm
-                    ? `Extensão ${resumoTrial.proximaExtensao.rotulo} aprovada em ${new Date(`${resumoTrial.proximaExtensao.aprovadaEm}T12:00:00`).toLocaleDateString('pt-BR')}`
-                    : resumoTrial.proximaExtensao.solicitadaEm
-                      ? `Extensão ${resumoTrial.proximaExtensao.rotulo} solicitada em ${new Date(`${resumoTrial.proximaExtensao.solicitadaEm}T12:00:00`).toLocaleDateString('pt-BR')}, aguardando aprovação`
-                      : 'Não há ação necessária no momento.'}
-                </p>
-                {!resumoTrial.proximaExtensao.solicitadaEm && (
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-auto"
-                    disabled={salvandoTrial}
-                    onClick={() => {
-                      const campo =
-                        resumoTrial.proximaExtensao!.rotulo === '+14 dias'
-                          ? 'extensao_14_solicitada_em'
-                          : 'extensao_7_solicitada_em';
-                      const url =
-                        campo === 'extensao_14_solicitada_em'
-                          ? pipefyConfig?.url_extensao_14
-                          : pipefyConfig?.url_extensao_7;
-                      if (url) window.open(url, '_blank', 'noopener,noreferrer');
-                      handleRegistrarEventoTrial(campo);
-                    }}
-                  >
-                    Solicitar extensão {resumoTrial.proximaExtensao.rotulo}
-                  </button>
-                )}
-                {resumoTrial.proximaExtensao.solicitadaEm && !resumoTrial.proximaExtensao.aprovadaEm && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-auto"
-                    disabled={salvandoTrial}
-                    onClick={() =>
-                      handleRegistrarEventoTrial(
-                        resumoTrial.proximaExtensao!.rotulo === '+14 dias'
-                          ? 'extensao_14_aprovada_em'
-                          : 'extensao_7_aprovada_em',
-                      )
-                    }
-                  >
-                    Registrar aprovação
-                  </button>
-                )}
-              </>
+              (() => {
+                const campoSolicitada =
+                  resumoTrial.proximaExtensao.rotulo === '+14 dias'
+                    ? 'extensao_14_solicitada_em'
+                    : 'extensao_7_solicitada_em';
+                const campoAprovada =
+                  resumoTrial.proximaExtensao.rotulo === '+14 dias'
+                    ? 'extensao_14_aprovada_em'
+                    : 'extensao_7_aprovada_em';
+                const urlSolicitacao =
+                  campoSolicitada === 'extensao_14_solicitada_em'
+                    ? pipefyConfig?.url_extensao_14
+                    : pipefyConfig?.url_extensao_7;
+                return (
+                  <>
+                    <p className="field-hint">
+                      {resumoTrial.proximaExtensao.aprovadaEm
+                        ? `Extensão ${resumoTrial.proximaExtensao.rotulo} aprovada em ${new Date(`${resumoTrial.proximaExtensao.aprovadaEm}T12:00:00`).toLocaleDateString('pt-BR')}`
+                        : resumoTrial.proximaExtensao.solicitadaEm
+                          ? `Extensão ${resumoTrial.proximaExtensao.rotulo} solicitada em ${new Date(`${resumoTrial.proximaExtensao.solicitadaEm}T12:00:00`).toLocaleDateString('pt-BR')}, aguardando aprovação`
+                          : 'Não há ação necessária no momento.'}{' '}
+                      {/* Registrar hoje algo que já aconteceu há semanas (cliente que
+                          já estava no meio do Trial quando o sistema entrou em uso)
+                          precisa poder escolher a data real, não só "agora" — por
+                          isso essas duas ações abrem o mesmo painel de data editável
+                          já usado pros marcos de Conta Kommo, em vez de gravar
+                          new Date() direto. */}
+                      {resumoTrial.proximaExtensao.aprovadaEm ? (
+                        <button
+                          type="button"
+                          className="btn-link"
+                          onClick={() => handleEditarDataMarco(campoAprovada, resumoTrial.proximaExtensao!.aprovadaEm)}
+                        >
+                          editar data
+                        </button>
+                      ) : (
+                        resumoTrial.proximaExtensao.solicitadaEm && (
+                          <button
+                            type="button"
+                            className="btn-link"
+                            onClick={() => handleEditarDataMarco(campoSolicitada, resumoTrial.proximaExtensao!.solicitadaEm)}
+                          >
+                            editar data
+                          </button>
+                        )
+                      )}
+                    </p>
+                    {!resumoTrial.proximaExtensao.solicitadaEm && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-auto"
+                        disabled={salvandoTrial}
+                        onClick={() => handleAbrirLinkPipefy(urlSolicitacao, campoSolicitada)}
+                      >
+                        Solicitar extensão {resumoTrial.proximaExtensao.rotulo}
+                      </button>
+                    )}
+                    {resumoTrial.proximaExtensao.solicitadaEm && !resumoTrial.proximaExtensao.aprovadaEm && (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-auto"
+                        disabled={salvandoTrial}
+                        onClick={() => handleEditarDataMarco(campoAprovada, null)}
+                      >
+                        Registrar aprovação
+                      </button>
+                    )}
+                    {(['extensao_7_solicitada_em', 'extensao_7_aprovada_em', 'extensao_14_solicitada_em', 'extensao_14_aprovada_em'] as const).map(
+                      (campo) =>
+                        confirmandoCampo === campo && (
+                          <div className="form-info form-info-com-acao" key={campo}>
+                            <label className="field">
+                              <span>
+                                {campo.includes('solicitada') ? 'Solicitada em' : 'Aprovada em'}
+                              </span>
+                              <input
+                                type="datetime-local"
+                                max={agoraParaInputDatetime()}
+                                value={valorConfirmacao}
+                                onChange={(e) => setValorConfirmacao(e.target.value)}
+                              />
+                            </label>
+                            <button type="button" className="btn btn-secondary" onClick={() => setConfirmandoCampo(null)}>
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={salvandoTrial}
+                              onClick={handleConfirmarDataMarco}
+                            >
+                              Confirmar
+                            </button>
+                          </div>
+                        ),
+                    )}
+                  </>
+                );
+              })()
             ) : (
               <p className="field-hint">As duas extensões já foram usadas — não há mais prorrogação possível.</p>
             )}
