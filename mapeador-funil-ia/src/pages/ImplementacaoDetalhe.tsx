@@ -3125,7 +3125,12 @@ export function ImplementacaoDetalhe() {
         implementacao.status === 'adocao' ||
         implementacao.status === 'concluida') &&
         (posVendaMapeamento ? (
-          <section className="card trial-acao-compacta">
+          // "trial-acao-compacta" é feita pra linha dentro do card do Trial
+          // Kommo (padding: 10px 0, sem padding lateral) — usada aqui sozinha,
+          // sobrescrevia o padding de ".card" e deixava o card espremido,
+          // encostado na borda. "form-card" é o padrão já usado por todo
+          // card avulso desta página.
+          <section className="card form-card">
             <span className="etapa-card-label">Pós-venda</span>
             <p className="field-hint">Formulário gerado</p>
             <button type="button" className="btn btn-secondary btn-auto" onClick={handleCopiarLinkPosVenda}>
@@ -3133,7 +3138,7 @@ export function ImplementacaoDetalhe() {
             </button>
           </section>
         ) : (
-          <section className="card trial-acao-compacta">
+          <section className="card form-card">
             <span className="etapa-card-label">Pós-venda</span>
             <p className="field-hint">A implementação chegou na Semana 3 — hora de oferecer o formulário.</p>
             <button
