@@ -179,6 +179,30 @@ Deno.serve(async (req: Request) => {
   const dataReuniao = asString(payload?.data_reuniao);
   const geradaEm = asString(payload?.gerada_em);
 
+  // ============================================================
+  // Diagnóstico temporário (vínculo da Colégio Ieprol, 09/10/2026) — o App
+  // de Atas mostrou cliente_id/implementacao_id/tipo_reuniao preenchidos
+  // na própria tela antes de enviar, mas eles chegaram null aqui. Grava o
+  // payload bruto (chaves recebidas + valor exato desses 4 campos, antes
+  // de qualquer validação/normalização) pra provar com dado real o que de
+  // fato está sendo mandado, já que não temos acesso ao código do App de
+  // Atas. Remover quando a causa do lado de lá estiver confirmada e
+  // corrigida.
+  await registrarLog({
+    externalMinuteId,
+    integrationSource,
+    ataId: null,
+    evento: 'diagnostico_payload_recebido',
+    sucesso: true,
+    detalhes: {
+      chaves_recebidas: payload && typeof payload === 'object' ? Object.keys(payload) : [],
+      cliente_id_bruto: payload?.cliente_id ?? null,
+      implementacao_id_bruto: payload?.implementacao_id ?? null,
+      reuniao_id_bruto: payload?.reuniao_id ?? null,
+      tipo_reuniao_bruto: payload?.tipo_reuniao ?? null,
+    },
+  });
+
   const participantes: ParticipanteInput[] = Array.isArray(payload?.participantes) ? (payload!.participantes as ParticipanteInput[]) : [];
   const decisoes: DecisaoInput[] = Array.isArray(payload?.decisoes) ? (payload!.decisoes as DecisaoInput[]) : [];
   const acoesInput: AcaoInput[] = Array.isArray(payload?.acoes) ? (payload!.acoes as AcaoInput[]) : [];
