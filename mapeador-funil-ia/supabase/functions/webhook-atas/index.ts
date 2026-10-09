@@ -63,6 +63,55 @@ function asString(valor: unknown): string | null {
   return typeof valor === 'string' && valor.trim() ? valor.trim() : null;
 }
 
+// O App de Atas manda o tipo de reunião como rótulo em português (o mesmo
+// que aparece na tela de Reuniões, ex: "Tira-dúvidas"), não como o slug
+// interno (`tira_duvidas`) que fica salvo em `reunioes.tipo`. Sem
+// normalizar aqui, o fallback de vínculo automático por tipo+data (seção
+// 10) nunca bate — toda ata cai em requer_revisao mesmo quando a reunião
+// certa já existe. Aceita também o próprio slug (caso ele venha a mudar a
+// integração no futuro), comparando sem acento/maiúsculas para tolerar
+// pequenas variações de grafia.
+const SLUGS_TIPO_REUNIAO = [
+  'kickoff',
+  'treinamento',
+  'checkin_1',
+  'checkin_2',
+  'tira_duvidas',
+  'reuniao_final',
+  'extraordinaria',
+] as const;
+
+const ROTULOS_TIPO_REUNIAO: Record<string, (typeof SLUGS_TIPO_REUNIAO)[number]> = {
+  kickoff: 'kickoff',
+  treinamento: 'treinamento',
+  'check-in 1': 'checkin_1',
+  'checkin 1': 'checkin_1',
+  'check-in 2': 'checkin_2',
+  'checkin 2': 'checkin_2',
+  'tira-duvidas': 'tira_duvidas',
+  'tira duvidas': 'tira_duvidas',
+  'reuniao final / entrega': 'reuniao_final',
+  'reuniao final': 'reuniao_final',
+  entrega: 'reuniao_final',
+  'reuniao extraordinaria': 'extraordinaria',
+  extraordinaria: 'extraordinaria',
+};
+
+function normalizarTextoSimples(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function normalizarTipoReuniao(valor: string | null): string | null {
+  if (!valor) return null;
+  const normalizado = normalizarTextoSimples(valor);
+  if ((SLUGS_TIPO_REUNIAO as readonly string[]).includes(normalizado)) return normalizado;
+  return ROTULOS_TIPO_REUNIAO[normalizado] ?? valor;
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -125,7 +174,7 @@ Deno.serve(async (req: Request) => {
   const clienteIdInput = isUuid(payload?.cliente_id) ? (payload!.cliente_id as string) : null;
   const implementacaoIdInput = isUuid(payload?.implementacao_id) ? (payload!.implementacao_id as string) : null;
   const reuniaoIdInput = isUuid(payload?.reuniao_id) ? (payload!.reuniao_id as string) : null;
-  const tipoReuniao = asString(payload?.tipo_reuniao);
+  const tipoReuniao = normalizarTipoReuniao(asString(payload?.tipo_reuniao));
   const titulo = asString(payload?.titulo);
   const dataReuniao = asString(payload?.data_reuniao);
   const geradaEm = asString(payload?.gerada_em);
