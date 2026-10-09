@@ -218,14 +218,34 @@ Deno.serve(async (req: Request) => {
 
   const { data: versaoAnterior } = await supabase
     .from('atas_reuniao')
-    .select('id, conteudo_hash, status')
+    .select('id, conteudo_hash, status, cliente_id, implementacao_id, reuniao_id, tipo_reuniao')
     .eq('integration_source', integrationSource)
     .eq('external_minute_id', externalMinuteId)
     .order('versao', { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  if (versaoAnterior && versaoAnterior.conteudo_hash === conteudoHash) {
+  // Reenvio só pra corrigir o vínculo (seções 10/30) — o hash de conteúdo
+  // (resumo/decisões/ações/conteúdo original) não muda quando o App de
+  // Atas apenas corrige cliente_id/implementacao_id/reuniao_id/
+  // tipo_reuniao num reenvio, então sem este caso especial a ata ficava
+  // presa pra sempre em requer_revisao: o reenvio caía direto no
+  // "already_processed" abaixo, e a correção nunca chegava a ser
+  // aplicada (foi exatamente o que aconteceu com a ata do Colégio
+  // Ieprol). Só reabre a tentativa de vínculo quando a ata anterior ainda
+  // não estava resolvida E o reenvio trouxe algum identificador
+  // novo/diferente do que já estava salvo — nunca mexe numa ata que já
+  // está 'vinculada'/'processada'.
+  const statusAnteriorPendente =
+    versaoAnterior?.status === 'requer_revisao' || versaoAnterior?.status === 'erro_vinculo';
+  const trouxeNovaInformacaoDeVinculo =
+    !!versaoAnterior &&
+    statusAnteriorPendente &&
+    ((!!clienteIdInput && clienteIdInput !== versaoAnterior.cliente_id) ||
+      (!!implementacaoIdInput && implementacaoIdInput !== versaoAnterior.implementacao_id) ||
+      (!!reuniaoIdInput && reuniaoIdInput !== versaoAnterior.reuniao_id));
+
+  if (versaoAnterior && versaoAnterior.conteudo_hash === conteudoHash && !trouxeNovaInformacaoDeVinculo) {
     await registrarLog({
       externalMinuteId,
       integrationSource,
@@ -236,31 +256,38 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ success: true, status: 'already_processed', minute_id: versaoAnterior.id });
   }
 
+  const revinculandoAtaExistente = trouxeNovaInformacaoDeVinculo && versaoAnterior!.conteudo_hash === conteudoHash;
+
   // ============================================================
   // Identificação do vínculo (seções 2/9/10) — nunca só pelo nome.
   // Prioridade: reuniao_id > implementacao_id/cliente_id com fallback por
-  // tipo+data > nada (requer_revisao).
+  // tipo+data > nada (requer_revisao). Num re-vínculo, um identificador
+  // que não veio de novo no reenvio continua valendo o que já estava
+  // salvo na ata anterior.
   // ============================================================
-  let clienteId: string | null = clienteIdInput;
-  let implementacaoId: string | null = implementacaoIdInput;
+  let clienteId: string | null = clienteIdInput ?? (revinculandoAtaExistente ? versaoAnterior!.cliente_id : null);
+  let implementacaoId: string | null =
+    implementacaoIdInput ?? (revinculandoAtaExistente ? versaoAnterior!.implementacao_id : null);
+  const reuniaoIdParaResolver = reuniaoIdInput ?? (revinculandoAtaExistente ? versaoAnterior!.reuniao_id : null);
+  const tipoReuniaoParaResolver = tipoReuniao ?? (revinculandoAtaExistente ? versaoAnterior!.tipo_reuniao : null);
   let reuniaoId: string | null = null;
   let status: string = 'requer_revisao';
   let vinculoTipo: string | null = null;
   let erroMensagem: string | null = null;
 
-  if (reuniaoIdInput) {
+  if (reuniaoIdParaResolver) {
     const { data: reuniao } = await supabase
       .from('reunioes')
       .select('id, cliente_id, implementacao_id')
-      .eq('id', reuniaoIdInput)
+      .eq('id', reuniaoIdParaResolver)
       .maybeSingle();
 
     if (!reuniao) {
       status = 'erro_vinculo';
       erroMensagem = 'reuniao_id informado não existe.';
     } else if (
-      (clienteIdInput && reuniao.cliente_id !== clienteIdInput) ||
-      (implementacaoIdInput && reuniao.implementacao_id !== implementacaoIdInput)
+      (clienteId && reuniao.cliente_id !== clienteId) ||
+      (implementacaoId && reuniao.implementacao_id !== implementacaoId)
     ) {
       status = 'erro_vinculo';
       erroMensagem = 'reuniao_id não pertence ao cliente/implementação informados.';
@@ -271,7 +298,7 @@ Deno.serve(async (req: Request) => {
       status = 'vinculada';
       vinculoTipo = 'automatico_id';
     }
-  } else if (implementacaoId && tipoReuniao && dataReuniao) {
+  } else if (implementacaoId && tipoReuniaoParaResolver && dataReuniao) {
     // Fallback sem reuniao_id (seção 10): tipo + data aproximada (±48h).
     const dataAlvo = new Date(dataReuniao);
     const janelaInicio = new Date(dataAlvo.getTime() - 48 * 60 * 60 * 1000).toISOString();
@@ -281,7 +308,7 @@ Deno.serve(async (req: Request) => {
       .from('reunioes')
       .select('id, cliente_id, implementacao_id')
       .eq('implementacao_id', implementacaoId)
-      .eq('tipo', tipoReuniao)
+      .eq('tipo', tipoReuniaoParaResolver)
       .gte('data_hora', janelaInicio)
       .lte('data_hora', janelaFim);
 
@@ -305,30 +332,55 @@ Deno.serve(async (req: Request) => {
     erroMensagem = 'Nenhum identificador de cliente/implementação/reunião informado.';
   }
 
-  const { data: ataInserida, error: insertError } = await supabase
-    .from('atas_reuniao')
-    .insert({
-      external_minute_id: externalMinuteId,
-      integration_source: integrationSource,
-      cliente_id: clienteId,
-      implementacao_id: implementacaoId,
-      reuniao_id: reuniaoId,
-      tipo_reuniao: tipoReuniao,
-      titulo,
-      data_reuniao: dataReuniao,
-      participantes,
-      resumo,
-      decisoes,
-      conteudo_original: conteudoOriginal,
-      conteudo_hash: conteudoHash,
-      gerada_em: geradaEm,
-      status,
-      vinculo_tipo: vinculoTipo,
-      erro_mensagem: erroMensagem,
-      processado_em: new Date().toISOString(),
-    })
-    .select()
-    .single();
+  let ataInserida: { id: string } | null;
+  let insertError: { message: string } | null;
+
+  if (revinculandoAtaExistente) {
+    const { data, error } = await supabase
+      .from('atas_reuniao')
+      .update({
+        cliente_id: clienteId,
+        implementacao_id: implementacaoId,
+        reuniao_id: reuniaoId,
+        tipo_reuniao: tipoReuniaoParaResolver,
+        status,
+        vinculo_tipo: vinculoTipo,
+        erro_mensagem: erroMensagem,
+        processado_em: new Date().toISOString(),
+      })
+      .eq('id', versaoAnterior!.id)
+      .select('id')
+      .single();
+    ataInserida = data;
+    insertError = error;
+  } else {
+    const { data, error } = await supabase
+      .from('atas_reuniao')
+      .insert({
+        external_minute_id: externalMinuteId,
+        integration_source: integrationSource,
+        cliente_id: clienteId,
+        implementacao_id: implementacaoId,
+        reuniao_id: reuniaoId,
+        tipo_reuniao: tipoReuniaoParaResolver,
+        titulo,
+        data_reuniao: dataReuniao,
+        participantes,
+        resumo,
+        decisoes,
+        conteudo_original: conteudoOriginal,
+        conteudo_hash: conteudoHash,
+        gerada_em: geradaEm,
+        status,
+        vinculo_tipo: vinculoTipo,
+        erro_mensagem: erroMensagem,
+        processado_em: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    ataInserida = data;
+    insertError = error;
+  }
 
   if (insertError || !ataInserida) {
     await registrarLog({
@@ -346,9 +398,19 @@ Deno.serve(async (req: Request) => {
   }
 
   // Ações identificadas (seção 15/22) — sempre pendente_revisao; NUNCA
-  // viram pendência aqui.
+  // viram pendência aqui. Num re-vínculo (conteúdo idêntico ao que já
+  // estava salvo), as ações já foram gravadas na tentativa anterior — só
+  // conta quantas ainda estão pendentes de revisão pra decidir a
+  // notificação abaixo, sem inserir de novo (duplicaria a mesma ação).
   let acoesPendentes = 0;
-  if (acoesInput.length > 0) {
+  if (revinculandoAtaExistente) {
+    const { count } = await supabase
+      .from('ata_acoes_identificadas')
+      .select('id', { count: 'exact', head: true })
+      .eq('ata_id', ataInserida.id)
+      .eq('status', 'pendente_revisao');
+    acoesPendentes = count ?? 0;
+  } else if (acoesInput.length > 0) {
     const linhasAcoes = acoesInput
       .map((acao, indice) => ({
         ata_id: ataInserida.id,
@@ -418,7 +480,7 @@ Deno.serve(async (req: Request) => {
     evento: 'ata_processada',
     sucesso: status !== 'erro_vinculo',
     mensagemErro: erroMensagem,
-    detalhes: { status, vinculo_tipo: vinculoTipo, acoes: acoesPendentes },
+    detalhes: { status, vinculo_tipo: vinculoTipo, acoes: acoesPendentes, revinculado: revinculandoAtaExistente },
   });
 
   if (status === 'erro_vinculo') {
