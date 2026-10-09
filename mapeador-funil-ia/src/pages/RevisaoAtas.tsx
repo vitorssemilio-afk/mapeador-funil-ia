@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
 import { fonteAtaLabel, STATUS_ATA_LABELS, STATUS_ATA_TONE } from '../lib/atasIntegracao';
 import { TIPO_REUNIAO_LABELS } from '../lib/reunioes';
@@ -34,6 +35,7 @@ function tituloAta(ata: AtaReuniao): string {
 // já tiverem acesso ao cliente/implementação atribuídos), então a tela não
 // reaplica essa regra — só lista o que a consulta já devolveu.
 export function RevisaoAtas() {
+  const confirmar = useConfirm();
   const { mostrarToast } = useToast();
   const [atas, setAtas] = useState<AtaReuniao[]>([]);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -43,6 +45,7 @@ export function RevisaoAtas() {
   const [error, setError] = useState<string | null>(null);
   const [selecoes, setSelecoes] = useState<Record<string, Selecao>>({});
   const [vinculandoId, setVinculandoId] = useState<string | null>(null);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   async function carregar() {
     setLoading(true);
@@ -128,6 +131,32 @@ export function RevisaoAtas() {
     }
 
     mostrarToast('Ata vinculada.');
+    carregar();
+  }
+
+  async function handleExcluir(ata: AtaReuniao) {
+    // Nem toda ata gerada no App de Atas é de um cliente (reunião
+    // interna, one:one, treinamento da equipe etc.) — pra essas, excluir
+    // é a ação certa, não vincular. ata_acoes_identificadas é apagada
+    // junto (on delete cascade, ver migration 0080).
+    const confirmado = await confirmar({
+      titulo: `Excluir a ata "${tituloAta(ata)}"?`,
+      descricao: 'Essa ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir ata',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    setExcluindoId(ata.id);
+    const { error: excluirError } = await supabase.from('atas_reuniao').delete().eq('id', ata.id);
+    setExcluindoId(null);
+
+    if (excluirError) {
+      mostrarToast(`Não foi possível excluir: ${excluirError.message}`, 'error');
+      return;
+    }
+
+    mostrarToast('Ata excluída.');
     carregar();
   }
 
@@ -228,14 +257,24 @@ export function RevisaoAtas() {
                   </label>
                 </div>
 
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-auto"
-                  disabled={vinculandoId === ata.id}
-                  onClick={() => handleVincular(ata)}
-                >
-                  {vinculandoId === ata.id ? 'Vinculando…' : 'Vincular'}
-                </button>
+                <div className="page-header-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-auto"
+                    disabled={vinculandoId === ata.id || excluindoId === ata.id}
+                    onClick={() => handleVincular(ata)}
+                  >
+                    {vinculandoId === ata.id ? 'Vinculando…' : 'Vincular'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={vinculandoId === ata.id || excluindoId === ata.id}
+                    onClick={() => handleExcluir(ata)}
+                  >
+                    {excluindoId === ata.id ? 'Excluindo…' : 'Excluir'}
+                  </button>
+                </div>
               </div>
             );
           })}
