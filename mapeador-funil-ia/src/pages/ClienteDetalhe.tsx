@@ -1365,6 +1365,26 @@ export function ClienteDetalhe() {
   // mandar o consultor.
   const proximoPasso = useMemo(() => (resumo ? resolverProximoPassoGeral(resumo) : null), [resumo]);
 
+  // resolverProximoPassoGeral devolve um `to` genérico (usado também pela
+  // Home, onde é uma navegação de verdade pra esta página). Aqui, quando o
+  // destino é só uma aba desta MESMA ficha (ex: "?aba=mapeamento"), virar
+  // <Link> não adianta — a rota não muda, então o React Router não
+  // remonta o componente, e `aba` só lê a URL na carga inicial (ver
+  // abaInicial acima): o clique mudava a URL mas a tela ficava parada,
+  // parecendo que o botão "não fazia nada". Mesma classe de bug do botão
+  // "Editar dados" (ver handleCopiarIdCliente) — a correção é a mesma:
+  // trocar de aba direto pelo estado local em vez de depender da URL.
+  const abaAlvoDoProximoPasso = useMemo(() => {
+    if (!proximoPasso || !cliente) return null;
+    const prefixo = `/clientes/${cliente.id}`;
+    if (!proximoPasso.to.startsWith(prefixo)) return null;
+    const resto = proximoPasso.to.slice(prefixo.length);
+    if (resto === '') return null;
+    const match = resto.match(/^\?aba=([a-z]+)$/);
+    const candidata = match?.[1];
+    return candidata && ABAS_CLIENTE.includes(candidata as AbaCliente) ? (candidata as AbaCliente) : null;
+  }, [proximoPasso, cliente]);
+
   // Adoção só ganha destaque visual quando o checkpoint de 30 dias está
   // perto/pendente ou o diagnóstico já não está saudável (prompt 54, seção
   // 11) — nunca um cálculo novo, só decide se este card chama mais atenção.
@@ -1745,7 +1765,16 @@ export function ClienteDetalhe() {
             <span className="etapa-card-label">Próxima ação</span>
             <p className="resumo-destaque-valor">{resumo.proximaAcao}</p>
             <p className="field-hint">{prazoLabelDe(resumo) ?? 'Sem prazo calculado'}</p>
-            {proximoPasso && (
+            {proximoPasso && abaAlvoDoProximoPasso && (
+              <button
+                type="button"
+                className="btn btn-primary btn-auto"
+                onClick={() => setAba(abaAlvoDoProximoPasso)}
+              >
+                {proximoPasso.label}
+              </button>
+            )}
+            {proximoPasso && !abaAlvoDoProximoPasso && (
               <Link to={proximoPasso.to} className="btn btn-primary btn-auto">
                 {proximoPasso.label}
               </Link>
