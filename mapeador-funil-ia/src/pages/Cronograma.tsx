@@ -189,7 +189,15 @@ export function Cronograma() {
                 const alturaTrack = numRaias * ALTURA_RAIA + 16;
                 const cliente = clientes.find((c) => c.id === implementacao.cliente_id) ?? null;
                 const config = (cliente && configuracoesPorCliente.get(cliente.id)) || CONFIGURACAO_PADRAO;
-                const diaCiclo = calcularDiaCiclo(cliente?.kickoff_realizado_em ?? null, hoje, config.ciclos);
+                // Implementação cancelada (pedido do Vitor) — congela em
+                // cancelada_em em vez de seguir contando "Xd atrasada"
+                // contra a data real, mesmo congelamento de
+                // operacaoResumo.ts (migration 0095).
+                const hojeEfetivo =
+                  implementacao.status === 'cancelada' && implementacao.cancelada_em
+                    ? new Date(implementacao.cancelada_em)
+                    : hoje;
+                const diaCiclo = calcularDiaCiclo(cliente?.kickoff_realizado_em ?? null, hojeEfetivo, config.ciclos);
                 const duracaoTotalDias = config.duracaoTotalDias;
                 const diasAtrasoGeral = diaCiclo && diaCiclo.dia > duracaoTotalDias ? diaCiclo.dia - duracaoTotalDias : 0;
                 return (

@@ -501,6 +501,12 @@ export type ImplementacaoCrm = {
   template_aplicado_nome: string | null;
   template_aplicado_versao: number | null;
   template_aplicado_em: string | null;
+  // Preenchidos pelo trigger sincronizar_cancelamento_implementacao (ver
+  // migration 0095) sempre que status vira/deixa de ser 'cancelada' —
+  // nunca setados manualmente pelo frontend. cancelada_em é o ponto onde
+  // operacaoResumo.ts congela o cálculo de dia/ciclo/atraso.
+  cancelada_em: string | null;
+  motivo_cancelamento: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1998,6 +2004,10 @@ export type Database = {
       atualizar_data_marco_cliente: {
         Args: { p_cliente_id: string; p_marco: string; p_nova_data: string | null };
         Returns: Cliente;
+      };
+      cancelar_implementacao: {
+        Args: { p_implementacao_id: string; p_motivo: string };
+        Returns: ImplementacaoCrm;
       };
     };
     Enums: {
