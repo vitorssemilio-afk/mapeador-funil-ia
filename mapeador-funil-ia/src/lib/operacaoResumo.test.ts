@@ -158,3 +158,51 @@ describe('construirResumoClientes — consultor responsável', () => {
     expect(resumo.consultor).toBe('Vitor Emilio');
   });
 });
+
+// Implementação cancelada (pedido do Vitor) — sem congelar o relógio no
+// momento do cancelamento, "dia X do ciclo"/atraso continuava subindo
+// pra sempre contra a data real, mesmo num cliente que não está mais em
+// andamento.
+describe('construirResumoClientes — implementação cancelada', () => {
+  it('congela diaCiclo/atrasado em cancelada_em, não na data de hoje', () => {
+    const cliente = clienteFixture({ kickoff_realizado_em: '2026-01-01T00:00:00Z' });
+    // Kickoff em 01/01, cancelada em 05/01 (dia 5) — se o relógio não
+    // tivesse congelado, "hoje" (bem mais tarde) daria um dia bem maior.
+    const implementacao = implementacaoFixture({
+      status: 'cancelada',
+      cancelada_em: '2026-01-05T00:00:00Z',
+      motivo_cancelamento: 'Cliente desistiu do projeto',
+    });
+
+    const [resumo] = construirResumoClientes({
+      clientes: [cliente],
+      mapeamentos: [],
+      implementacoes: [implementacao],
+      historico: [],
+      atividades: [],
+      statusRows: [],
+      consultores: [],
+      hoje: new Date('2026-10-07T00:00:00Z'),
+    });
+
+    expect(resumo.diaCiclo?.dia).toBe(5);
+  });
+
+  it('implementação em andamento (não cancelada) continua usando a data de hoje normalmente', () => {
+    const cliente = clienteFixture({ kickoff_realizado_em: '2026-01-01T00:00:00Z' });
+    const implementacao = implementacaoFixture({ status: 'automacoes' });
+
+    const [resumo] = construirResumoClientes({
+      clientes: [cliente],
+      mapeamentos: [],
+      implementacoes: [implementacao],
+      historico: [],
+      atividades: [],
+      statusRows: [],
+      consultores: [],
+      hoje: new Date('2026-01-10T00:00:00Z'),
+    });
+
+    expect(resumo.diaCiclo?.dia).toBe(10);
+  });
+});

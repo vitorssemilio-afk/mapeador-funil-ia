@@ -470,7 +470,28 @@ export function ImplementacaoDetalhe() {
   const [excluindo, setExcluindo] = useState(false);
   const [gerandoItens, setGerandoItens] = useState(false);
 
-  const hoje = useMemo(() => inicioDoDia(new Date()), []);
+  // Cancelar implementação (pedido do Vitor) — distinto de excluir: os
+  // dados continuam existindo, só marca que não está mais em andamento
+  // (RPC cancelar_implementacao, migration 0095) e para o relógio de
+  // dia/ciclo/atraso no momento do cancelamento (ver `hoje` acima).
+  const [cancelandoImplementacao, setCancelandoImplementacao] = useState(false);
+  const [motivoCancelamento, setMotivoCancelamento] = useState('');
+  const [salvandoCancelamento, setSalvandoCancelamento] = useState(false);
+  const [erroCancelamento, setErroCancelamento] = useState<string | null>(null);
+
+  // Implementação cancelada (pedido do Vitor) — toda esta tela (dia/ciclo,
+  // atividades atrasadas, marcador "hoje" no Gantt) deriva de `hoje`, então
+  // congelar só aqui (em vez de em cada cálculo individual) já propaga o
+  // congelamento pra tela inteira de uma vez. Mesmo `cancelada_em` usado em
+  // operacaoResumo.ts (migration 0095) — sem isso essa página continuaria
+  // mostrando o prazo avançando pra sempre num cliente já cancelado, só
+  // que a Home/ficha do cliente já teriam parado.
+  const hoje = useMemo(() => {
+    if (implementacao?.status === 'cancelada' && implementacao.cancelada_em) {
+      return inicioDoDia(new Date(implementacao.cancelada_em));
+    }
+    return inicioDoDia(new Date());
+  }, [implementacao?.status, implementacao?.cancelada_em]);
 
   const fasesCronograma = useMemo(
     () => (implementacao ? fasesImplementacao(implementacao, historicoStatus) : []),
@@ -2324,6 +2345,41 @@ export function ImplementacaoDetalhe() {
     navigate('/implementacoes');
   }
 
+  async function handleCancelarImplementacao() {
+    if (!implementacao) return;
+    if (!motivoCancelamento.trim()) {
+      setErroCancelamento('Informe o motivo do cancelamento.');
+      return;
+    }
+
+    const confirmado = await confirmarAcao({
+      titulo: `Cancelar a implementação de "${implementacao.nome_cliente}"?`,
+      descricao:
+        'O registro continua existindo (diferente de excluir), mas para de contar dia/ciclo/atraso a partir de agora e some das listas de implementações em andamento. Dá pra reverter depois escolhendo outro status em "Dados gerais".',
+      confirmarLabel: 'Cancelar implementação',
+      destrutivo: true,
+    });
+    if (!confirmado) return;
+
+    setSalvandoCancelamento(true);
+    setErroCancelamento(null);
+    const { data, error: rpcError } = await supabase.rpc('cancelar_implementacao', {
+      p_implementacao_id: implementacao.id,
+      p_motivo: motivoCancelamento.trim(),
+    });
+    setSalvandoCancelamento(false);
+
+    if (rpcError) {
+      setErroCancelamento(rpcError.message);
+      return;
+    }
+
+    setImplementacao(data);
+    setCancelandoImplementacao(false);
+    setMotivoCancelamento('');
+    mostrarToast('Implementação cancelada.');
+  }
+
   function abrirNovaCredencial() {
     setFormCredencial(FORM_CREDENCIAL_VAZIO);
   }
@@ -2717,6 +2773,12 @@ export function ImplementacaoDetalhe() {
           <span className={`status-badge status-tone-${STATUS_CONTRATACAO_KOMMO_TONE[implementacao.status_contratacao_kommo]}`}>
             {STATUS_CONTRATACAO_KOMMO_LABELS[implementacao.status_contratacao_kommo]}
           </span>
+          {implementacao.status === 'cancelada' && (
+            <p className="form-error">
+              Cancelada{implementacao.cancelada_em ? ` em ${formatarDataHoraLocal(implementacao.cancelada_em)}` : ''}
+              {implementacao.motivo_cancelamento ? ` — motivo: ${implementacao.motivo_cancelamento}` : ''}
+            </p>
+          )}
           <p className="field-hint">
             {implementacao.cliente_id && (
               <>
@@ -2745,11 +2807,60 @@ export function ImplementacaoDetalhe() {
           <Link to={`/implementacoes/${implementacao.id}/entrega`} className="btn btn-secondary">
             Relatórios e Entrega
           </Link>
+          {implementacao.status !== 'cancelada' && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setCancelandoImplementacao((aberto) => !aberto);
+                setErroCancelamento(null);
+              }}
+            >
+              Cancelar implementação
+            </button>
+          )}
           <button type="button" className="btn btn-danger" onClick={handleExcluirImplementacao} disabled={excluindo}>
             {excluindo ? 'Excluindo…' : 'Excluir implementação'}
           </button>
         </div>
       </div>
+
+      {cancelandoImplementacao && (
+        <section className="card form-card">
+          <label className="field">
+            <span>Motivo do cancelamento</span>
+            <textarea
+              rows={3}
+              value={motivoCancelamento}
+              onChange={(e) => setMotivoCancelamento(e.target.value)}
+              placeholder="Ex: cliente desistiu do projeto durante a configuração do CRM"
+            />
+          </label>
+          {erroCancelamento && <p className="form-error">{erroCancelamento}</p>}
+          <div className="wizard-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setCancelandoImplementacao(false);
+                setMotivoCancelamento('');
+                setErroCancelamento(null);
+              }}
+              disabled={salvandoCancelamento}
+            >
+              Voltar
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={handleCancelarImplementacao}
+              disabled={salvandoCancelamento}
+            >
+              {salvandoCancelamento ? 'Cancelando…' : 'Confirmar cancelamento'}
+            </button>
+          </div>
+        </section>
+      )}
 
       {error && <p className="form-error">{error}</p>}
 

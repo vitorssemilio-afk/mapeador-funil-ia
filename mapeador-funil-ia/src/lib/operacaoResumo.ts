@@ -283,7 +283,21 @@ export function construirResumoClientes(params: {
     const posVenda = doCliente.find((m) => m.tipo === 'pos_venda') ?? null;
     const implementacao = implementacoes.find((i) => i.cliente_id === cliente.id) ?? null;
 
-    const diaCiclo = calcularDiaCiclo(cliente.kickoff_realizado_em, hoje, config.ciclos);
+    // Implementação cancelada (pedido do Vitor) — sem isso, "dia X do
+    // ciclo"/"Xd atrasado"/atividades atrasadas continuavam sendo
+    // recalculados contra a data de HOJE pra sempre, mesmo depois do
+    // cancelamento, fazendo o atraso crescer indefinidamente num cliente
+    // que já não está mais em andamento. `cancelada_em` (trigger da
+    // migration 0095) é o momento exato da transição pra 'cancelada' —
+    // usar ele no lugar de `hoje` congela TODO o cálculo desse cliente
+    // (dia/ciclo, atividades atrasadas, reunião obrigatória, Trial) no
+    // instante do cancelamento, de uma vez só.
+    const hojeEfetivo =
+      implementacao?.status === 'cancelada' && implementacao.cancelada_em
+        ? new Date(implementacao.cancelada_em)
+        : hoje;
+
+    const diaCiclo = calcularDiaCiclo(cliente.kickoff_realizado_em, hojeEfetivo, config.ciclos);
     const atividadesResolvidas = implementacao
       ? resolverAtividadesDaImplementacao({
           implementacaoId: implementacao.id,
@@ -292,7 +306,7 @@ export function construirResumoClientes(params: {
           historico,
           cliente,
           reunioes,
-          hoje,
+          hoje: hojeEfetivo,
           ciclos: config.ciclos,
         })
       : [];
@@ -305,12 +319,12 @@ export function construirResumoClientes(params: {
           tipo,
           reunioesDoTipo: reunioesDoCliente.filter((r) => r.tipo === tipo),
           kickoffRealizadoEm: cliente.kickoff_realizado_em,
-          hoje,
+          hoje: hojeEfetivo,
           ciclos: config.ciclos,
         }) != null,
     );
 
-    const trial = resolverResumoTrialKommo(cliente, hoje, {
+    const trial = resolverResumoTrialKommo(cliente, hojeEfetivo, {
       diasInicial: config.trialInicialDias,
       diasExtensao14: config.trialExtensao14Dias,
       diasExtensao7: config.trialExtensao7Dias,

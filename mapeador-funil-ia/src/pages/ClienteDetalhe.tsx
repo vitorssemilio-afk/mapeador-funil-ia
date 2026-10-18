@@ -1292,8 +1292,15 @@ export function ClienteDetalhe() {
 
   const diaCiclo = useMemo(() => {
     if (!cliente || !configuracao) return null;
-    return calcularDiaCiclo(cliente.kickoff_realizado_em, new Date(), configuracao.ciclos);
-  }, [cliente, configuracao]);
+    // Implementação cancelada (pedido do Vitor) — congela em cancelada_em
+    // em vez de seguir contando contra a data real, mesmo congelamento
+    // de operacaoResumo.ts (migration 0095).
+    const hojeEfetivo =
+      implementacao?.status === 'cancelada' && implementacao.cancelada_em
+        ? new Date(implementacao.cancelada_em)
+        : new Date();
+    return calcularDiaCiclo(cliente.kickoff_realizado_em, hojeEfetivo, configuracao.ciclos);
+  }, [cliente, configuracao, implementacao?.status, implementacao?.cancelada_em]);
 
   const resumoTrial = useMemo(() => {
     if (!cliente || !configuracao) return null;
