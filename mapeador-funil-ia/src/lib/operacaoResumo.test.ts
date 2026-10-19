@@ -188,6 +188,27 @@ describe('construirResumoClientes — implementação cancelada', () => {
     expect(resumo.diaCiclo?.dia).toBe(5);
   });
 
+  it('usa saúde "cancelado" própria, nunca "normal" (daria a entender que está tudo bem)', () => {
+    const cliente = clienteFixture({ kickoff_realizado_em: '2026-01-01T00:00:00Z' });
+    const implementacao = implementacaoFixture({
+      status: 'cancelada',
+      cancelada_em: '2026-01-05T00:00:00Z',
+    });
+
+    const [resumo] = construirResumoClientes({
+      clientes: [cliente],
+      mapeamentos: [],
+      implementacoes: [implementacao],
+      historico: [],
+      atividades: [],
+      statusRows: [],
+      consultores: [],
+      hoje: new Date('2026-10-07T00:00:00Z'),
+    });
+
+    expect(resumo.saude).toBe('cancelado');
+  });
+
   it('implementação em andamento (não cancelada) continua usando a data de hoje normalmente', () => {
     const cliente = clienteFixture({ kickoff_realizado_em: '2026-01-01T00:00:00Z' });
     const implementacao = implementacaoFixture({ status: 'automacoes' });
