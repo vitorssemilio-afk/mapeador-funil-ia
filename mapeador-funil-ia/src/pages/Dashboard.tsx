@@ -59,6 +59,7 @@ const PESO_SAUDE: Record<SaudeCliente, number> = {
   aguardando_cliente: 2,
   normal: 3,
   concluido: 4,
+  cancelado: 5,
 };
 
 // Contexto de prazo pra cada alerta — evita o caso descrito na seção 11: um

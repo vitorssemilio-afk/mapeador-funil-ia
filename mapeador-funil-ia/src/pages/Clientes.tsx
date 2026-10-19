@@ -28,7 +28,7 @@ import type {
   Reuniao,
 } from '../types/database';
 
-const SAUDE_ORDEM: SaudeCliente[] = ['critico', 'atencao', 'aguardando_cliente', 'normal', 'concluido'];
+const SAUDE_ORDEM: SaudeCliente[] = ['critico', 'atencao', 'aguardando_cliente', 'normal', 'concluido', 'cancelado'];
 
 // Página completa de clientes (seção 19 do redesenho da Home) — a Home
 // mostra só "Minha carteira" (top prioritários); esta página tem a tabela

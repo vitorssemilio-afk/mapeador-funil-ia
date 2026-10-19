@@ -50,7 +50,7 @@ function emailConsultor(consultorId: string | null, consultores: Consultor[]): s
   return consultores.find((c) => c.id === consultorId)?.email ?? null;
 }
 
-export type SaudeCliente = 'normal' | 'atencao' | 'critico' | 'aguardando_cliente' | 'concluido';
+export type SaudeCliente = 'normal' | 'atencao' | 'critico' | 'aguardando_cliente' | 'concluido' | 'cancelado';
 
 export const SAUDE_LABELS: Record<SaudeCliente, string> = {
   normal: 'Normal',
@@ -58,18 +58,22 @@ export const SAUDE_LABELS: Record<SaudeCliente, string> = {
   critico: 'Crítico',
   aguardando_cliente: 'Aguardando cliente',
   concluido: 'Concluído',
+  cancelado: 'Cancelado',
 };
 
 // Mesmo vocabulário de tom usado em PRIORIDADE_TONE (src/lib/notificacoes.ts)
 // — "crítico" é sempre a cor de perigo (--color-danger), nunca a cor de
 // marca (--color-accent), pra não misturar "estado grave" com "ação
-// principal" em telas diferentes.
+// principal" em telas diferentes. "cancelado" usa o mesmo tom neutro do
+// badge de status (ImplementacaoStatusBadge) — nunca "normal", que dava a
+// entender que um cliente cancelado estava saudável.
 export const SAUDE_TONE: Record<SaudeCliente, 'neutral' | 'warning' | 'danger' | 'info' | 'success'> = {
   normal: 'neutral',
   atencao: 'warning',
   critico: 'danger',
   aguardando_cliente: 'info',
   concluido: 'success',
+  cancelado: 'neutral',
 };
 
 export type ClienteResumo = {
@@ -224,7 +228,7 @@ function calcularSaude(params: {
   const { vendas, implementacao, diaCiclo, atividadesAtrasadas, reuniaoObrigatoriaPendente, trial, duracaoTotalDias } = params;
 
   if (implementacao?.status === 'concluida') return 'concluido';
-  if (implementacao?.status === 'cancelada') return 'normal';
+  if (implementacao?.status === 'cancelada') return 'cancelado';
   if (vendas?.status === 'erro') return 'critico';
 
   if (implementacao) {

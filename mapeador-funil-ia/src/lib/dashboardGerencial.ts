@@ -842,7 +842,7 @@ export function construirResumoAdocao(params: {
 export type DistribuicaoSaude = { saude: SaudeCliente; valor: number; clientes: Cliente[] };
 
 export function construirDistribuicaoSaude(resumos: ClienteResumo[]): DistribuicaoSaude[] {
-  const ordem: SaudeCliente[] = ['critico', 'atencao', 'aguardando_cliente', 'normal', 'concluido'];
+  const ordem: SaudeCliente[] = ['critico', 'atencao', 'aguardando_cliente', 'normal', 'concluido', 'cancelado'];
   return ordem.map((saude) => {
     const itens = resumos.filter((r) => r.saude === saude);
     return { saude, valor: itens.length, clientes: itens.map((r) => r.cliente) };
