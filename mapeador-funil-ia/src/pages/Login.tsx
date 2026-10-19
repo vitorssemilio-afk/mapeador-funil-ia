@@ -34,11 +34,6 @@ export function Login() {
     setError(null);
     setInfo(null);
 
-    if (mode === 'cadastrar' && !email.trim().toLowerCase().endsWith('@v4company.com')) {
-      setError('O cadastro é permitido apenas para e-mails do domínio @v4company.com.');
-      return;
-    }
-
     setSubmitting(true);
 
     if (mode === 'recuperar') {
@@ -63,7 +58,9 @@ export function Login() {
     if (result.error) {
       setError(result.error);
     } else if (mode === 'cadastrar') {
-      setInfo('Conta criada. Verifique seu e-mail para confirmar o cadastro, se necessário.');
+      setInfo(
+        'Conta criada. Verifique seu e-mail para confirmar o cadastro, se necessário — depois disso, um administrador precisa liberar seu acesso.',
+      );
     }
     setSubmitting(false);
   }
