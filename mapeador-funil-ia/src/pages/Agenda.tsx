@@ -27,6 +27,25 @@ import type {
 
 const BUCKETS_ORDENADOS: BucketAgenda[] = ['atrasados', 'hoje', 'amanha', 'proximos7', 'sem_data'];
 
+// Prompt 59.1, seção 15 — "Sem prazo" agrupado por cliente em vez de uma
+// lista enorme de cards soltos; só os N primeiros clientes aparecem abertos
+// de cara, com um botão pra revelar o resto (mesmo padrão de "ver mais" já
+// usado na Home/Prompt 59).
+const MAX_CLIENTES_SEM_PRAZO_VISIVEL = 8;
+
+type GrupoSemPrazo = { clienteId: string; clienteNome: string; itens: ItemAgendaOperacional[] };
+
+function agruparPorCliente(itens: ItemAgendaOperacional[]): GrupoSemPrazo[] {
+  const mapa = new Map<string, GrupoSemPrazo>();
+  for (const item of itens) {
+    if (!mapa.has(item.clienteId)) {
+      mapa.set(item.clienteId, { clienteId: item.clienteId, clienteNome: item.clienteNome, itens: [] });
+    }
+    mapa.get(item.clienteId)!.itens.push(item);
+  }
+  return [...mapa.values()].sort((a, b) => b.itens.length - a.itens.length);
+}
+
 function inicioDoDia(data: Date): Date {
   const copia = new Date(data);
   copia.setHours(0, 0, 0, 0);
@@ -39,6 +58,150 @@ function formatarData(item: ItemAgendaOperacional): string {
   return temHora
     ? item.data.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
     : item.data.toLocaleDateString('pt-BR');
+}
+
+// Tabela desktop + cards mobile de uma lista de itens — reaproveitada tanto
+// pelos buckets normais quanto por cada grupo de cliente dentro de "Sem
+// prazo" (Prompt 59.1, seção 15), pra não duplicar o markup duas vezes.
+function ListaItensAgenda({
+  lista,
+  marcando,
+  onMarcarConcluida,
+}: {
+  lista: ItemAgendaOperacional[];
+  marcando: string | null;
+  onMarcarConcluida: (item: ItemAgendaOperacional) => void;
+}) {
+  return (
+    <>
+      <div className="responsive-table-wrap table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Tipo</th>
+              <th>Item</th>
+              <th>Responsável</th>
+              <th>Data</th>
+              <th>Status</th>
+              <th>Ação</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {lista.map((item) => (
+              <tr key={item.id}>
+                <td data-label="Cliente">
+                  <Link to={`/clientes/${item.clienteId}`}>{item.clienteNome}</Link>
+                </td>
+                <td data-label="Tipo">
+                  <span className={`status-badge status-tone-${TIPO_ITEM_AGENDA_TONE[item.tipo]}`}>
+                    {TIPO_ITEM_AGENDA_LABELS[item.tipo]}
+                  </span>
+                  {item.categoriaLabel && <span className="field-hint"> · {item.categoriaLabel}</span>}
+                </td>
+                <td data-label="Item">
+                  {item.titulo}
+                  {item.implementacaoId && (
+                    <>
+                      {' '}
+                      <Link to={`/implementacoes/${item.implementacaoId}`} className="field-hint">
+                        (ver implementação)
+                      </Link>
+                    </>
+                  )}
+                </td>
+                <td data-label="Responsável">{item.responsavel ?? '—'}</td>
+                <td data-label="Data">{formatarData(item)}</td>
+                <td data-label="Status" className={item.atrasado ? 'ops-prazo-atrasado' : undefined}>
+                  {item.aguardando ? `Aguardando ${item.aguardando}` : item.status}
+                </td>
+                <td data-label="Ação">
+                  <Link to={`/clientes/${item.clienteId}`} className="btn btn-ghost btn-auto">
+                    {item.acaoLabel}
+                  </Link>
+                </td>
+                <td data-label="">
+                  {item.atividadeId && (
+                    <label className="agenda-card-concluir">
+                      <input
+                        type="checkbox"
+                        checked={false}
+                        disabled={marcando === item.atividadeId}
+                        onChange={() => onMarcarConcluida(item)}
+                        title="Marcar como concluída"
+                      />
+                      <span className="agenda-card-concluir-label">Marcar como concluída</span>
+                    </label>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="responsive-card-list">
+        {lista.map((item) => (
+          <div key={item.id} className="card entity-card">
+            <div className="entity-card-header">
+              <span className="entity-card-title">{item.titulo}</span>
+              <span className="entity-card-subtitle">{item.clienteNome}</span>
+            </div>
+
+            <div className="entity-card-badges">
+              <span className={`status-badge status-tone-${TIPO_ITEM_AGENDA_TONE[item.tipo]}`}>
+                {TIPO_ITEM_AGENDA_LABELS[item.tipo]}
+              </span>
+              {item.categoriaLabel && <span className="field-hint">{item.categoriaLabel}</span>}
+            </div>
+
+            <div className="entity-card-rows">
+              <div className="entity-card-row">
+                <span className="entity-card-row-label">Data</span>
+                <span className="entity-card-row-value">{formatarData(item)}</span>
+              </div>
+              <div className="entity-card-row">
+                <span className="entity-card-row-label">Status</span>
+                <span className={`entity-card-row-value${item.atrasado ? ' ops-prazo-atrasado' : ''}`}>
+                  {item.aguardando ? `Aguardando ${item.aguardando}` : item.status}
+                </span>
+              </div>
+              {item.responsavel && (
+                <div className="entity-card-row">
+                  <span className="entity-card-row-label">Responsável</span>
+                  <span className="entity-card-row-value">{item.responsavel}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="entity-card-actions">
+              <Link to={`/clientes/${item.clienteId}`} className="btn btn-secondary">
+                {item.acaoLabel}
+              </Link>
+              {item.implementacaoId && (
+                <Link to={`/implementacoes/${item.implementacaoId}`} className="btn btn-ghost">
+                  Ver implementação
+                </Link>
+              )}
+            </div>
+
+            {item.atividadeId && (
+              <label className="agenda-card-concluir">
+                <input
+                  type="checkbox"
+                  checked={false}
+                  disabled={marcando === item.atividadeId}
+                  onChange={() => onMarcarConcluida(item)}
+                />
+                <span className="agenda-card-concluir-label">Marcar como concluída</span>
+              </label>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
+  );
 }
 
 // Central operacional da implementação: reúne reuniões, tarefas, prazos de
@@ -65,6 +228,7 @@ export function Agenda() {
   // renderizada fica visível nessa largura (CSS); desktop continua
   // mostrando todos os buckets empilhados, sem nenhuma consulta nova.
   const [bucketMobileAtivo, setBucketMobileAtivo] = useState<BucketAgenda>('atrasados');
+  const [mostrarTodosClientesSemPrazo, setMostrarTodosClientesSemPrazo] = useState(false);
 
   async function carregar() {
     setLoading(true);
@@ -292,136 +456,55 @@ export function Agenda() {
           const lista = itensPorBucket.get(bucket) ?? [];
           if (lista.length === 0) return null;
 
+          const secaoClassName = `card form-card${bucket === bucketMobileAtivo ? '' : ' agenda-secao-oculta-mobile'}`;
+
+          // "Sem prazo" agrupado por cliente (Prompt 59.1, seção 15) — os
+          // demais buckets já são curtos (filtrados por data), não precisam
+          // de agrupamento nem paginação.
+          if (bucket === 'sem_data') {
+            const grupos = agruparPorCliente(lista);
+            const gruposVisiveis = mostrarTodosClientesSemPrazo ? grupos : grupos.slice(0, MAX_CLIENTES_SEM_PRAZO_VISIVEL);
+            return (
+              <section key={bucket} id={bucket} className={secaoClassName}>
+                <h2>
+                  {BUCKET_AGENDA_LABELS[bucket]}
+                  <span className="field-hint"> ({lista.length})</span>
+                </h2>
+                <div className="agenda-grupos-sem-prazo">
+                  {gruposVisiveis.map((grupo) => (
+                    <details key={grupo.clienteId} className="agenda-grupo-cliente">
+                      <summary>
+                        {grupo.clienteNome} — {grupo.itens.length}{' '}
+                        {grupo.itens.length === 1 ? 'pendência' : 'pendências'}
+                      </summary>
+                      <ListaItensAgenda
+                        lista={grupo.itens}
+                        marcando={marcando}
+                        onMarcarConcluida={handleMarcarConcluida}
+                      />
+                    </details>
+                  ))}
+                </div>
+                {!mostrarTodosClientesSemPrazo && grupos.length > MAX_CLIENTES_SEM_PRAZO_VISIVEL && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-auto"
+                    onClick={() => setMostrarTodosClientesSemPrazo(true)}
+                  >
+                    Ver todos os {grupos.length} clientes
+                  </button>
+                )}
+              </section>
+            );
+          }
+
           return (
-            <section
-              key={bucket}
-              id={bucket}
-              className={`card form-card${bucket === bucketMobileAtivo ? '' : ' agenda-secao-oculta-mobile'}`}
-            >
+            <section key={bucket} id={bucket} className={secaoClassName}>
               <h2>
                 {BUCKET_AGENDA_LABELS[bucket]}
                 <span className="field-hint"> ({lista.length})</span>
               </h2>
-              <div className="responsive-table-wrap table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Cliente</th>
-                      <th>Tipo</th>
-                      <th>Item</th>
-                      <th>Responsável</th>
-                      <th>Data</th>
-                      <th>Status</th>
-                      <th>Ação recomendada</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lista.map((item) => (
-                      <tr key={item.id}>
-                        <td data-label="Cliente">
-                          <Link to={`/clientes/${item.clienteId}`}>{item.clienteNome}</Link>
-                        </td>
-                        <td data-label="Tipo">
-                          <span className={`status-badge status-tone-${TIPO_ITEM_AGENDA_TONE[item.tipo]}`}>
-                            {TIPO_ITEM_AGENDA_LABELS[item.tipo]}
-                          </span>
-                        </td>
-                        <td data-label="Item">
-                          {item.titulo}
-                          {item.implementacaoId && (
-                            <>
-                              {' '}
-                              <Link to={`/implementacoes/${item.implementacaoId}`} className="field-hint">
-                                (ver implementação)
-                              </Link>
-                            </>
-                          )}
-                        </td>
-                        <td data-label="Responsável">{item.responsavel ?? '—'}</td>
-                        <td data-label="Data">{formatarData(item)}</td>
-                        <td data-label="Status" className={item.atrasado ? 'ops-prazo-atrasado' : undefined}>
-                          {item.aguardando ? `Aguardando ${item.aguardando}` : item.status}
-                        </td>
-                        <td data-label="Ação recomendada">{item.acaoRecomendada}</td>
-                        <td data-label="">
-                          {item.atividadeId && (
-                            <label className="agenda-card-concluir">
-                              <input
-                                type="checkbox"
-                                checked={false}
-                                disabled={marcando === item.atividadeId}
-                                onChange={() => handleMarcarConcluida(item)}
-                                title="Marcar como concluída"
-                              />
-                              <span className="agenda-card-concluir-label">Marcar como concluída</span>
-                            </label>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="responsive-card-list">
-                {lista.map((item) => (
-                  <div key={item.id} className="card entity-card">
-                    <div className="entity-card-header">
-                      <span className="entity-card-title">{item.titulo}</span>
-                      <span className="entity-card-subtitle">{item.clienteNome}</span>
-                    </div>
-
-                    <div className="entity-card-badges">
-                      <span className={`status-badge status-tone-${TIPO_ITEM_AGENDA_TONE[item.tipo]}`}>
-                        {TIPO_ITEM_AGENDA_LABELS[item.tipo]}
-                      </span>
-                    </div>
-
-                    <div className="entity-card-rows">
-                      <div className="entity-card-row">
-                        <span className="entity-card-row-label">Data</span>
-                        <span className="entity-card-row-value">{formatarData(item)}</span>
-                      </div>
-                      <div className="entity-card-row">
-                        <span className="entity-card-row-label">Status</span>
-                        <span className={`entity-card-row-value${item.atrasado ? ' ops-prazo-atrasado' : ''}`}>
-                          {item.aguardando ? `Aguardando ${item.aguardando}` : item.status}
-                        </span>
-                      </div>
-                      {item.responsavel && (
-                        <div className="entity-card-row">
-                          <span className="entity-card-row-label">Responsável</span>
-                          <span className="entity-card-row-value">{item.responsavel}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="entity-card-actions">
-                      <Link to={`/clientes/${item.clienteId}`} className="btn btn-secondary">
-                        {item.acaoRecomendada}
-                      </Link>
-                      {item.implementacaoId && (
-                        <Link to={`/implementacoes/${item.implementacaoId}`} className="btn btn-ghost">
-                          Ver implementação
-                        </Link>
-                      )}
-                    </div>
-
-                    {item.atividadeId && (
-                      <label className="agenda-card-concluir">
-                        <input
-                          type="checkbox"
-                          checked={false}
-                          disabled={marcando === item.atividadeId}
-                          onChange={() => handleMarcarConcluida(item)}
-                        />
-                        <span className="agenda-card-concluir-label">Marcar como concluída</span>
-                      </label>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <ListaItensAgenda lista={lista} marcando={marcando} onMarcarConcluida={handleMarcarConcluida} />
             </section>
           );
         })}

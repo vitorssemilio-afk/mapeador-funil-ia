@@ -58,7 +58,10 @@ export const BUCKET_AGENDA_LABELS: Record<BucketAgenda, string> = {
   hoje: 'Hoje',
   amanha: 'Amanhã',
   proximos7: 'Próximos 7 dias',
-  sem_data: 'Sem data definida',
+  // Prompt 59.1, seção 14 — "Sem data definida" soava como um erro/lacuna;
+  // boa parte desses itens são pendências reais que só ainda não ganharam
+  // uma data (ver comentário no topo do arquivo).
+  sem_data: 'Sem prazo',
 };
 
 export type ItemAgendaOperacional = {
@@ -67,11 +70,20 @@ export type ItemAgendaOperacional = {
   clienteNome: string;
   tipo: TipoItemAgenda;
   titulo: string;
+  // Só preenchido quando o item nasce de uma ocorrência (categoria dela é
+  // informação secundária — Prompt 59.1 seção 7 — nunca deve substituir o
+  // nome real da ação, que já vai em `titulo`).
+  categoriaLabel: string | null;
   responsavel: string | null;
   data: Date | null;
   aguardando: string | null;
   status: string;
+  // Texto completo/contextual (pode ser longo) — mostrado como informação,
+  // nunca como rótulo de botão (Prompt 59.1, seção 18).
   acaoRecomendada: string;
+  // Rótulo curto pro botão de ação — a lógica de elegibilidade continua a
+  // mesma de sempre, só o texto do botão fica mais objetivo.
+  acaoLabel: string;
   atrasado: boolean;
   implementacaoId: string | null;
   // Só preenchido pra tipo 'tarefa' com atividade real (não virtual) — dá
@@ -145,6 +157,7 @@ function itemDeAtividade(
     clienteNome: cliente.nome_empresa,
     tipo,
     titulo: atividade.nome,
+    categoriaLabel: null,
     responsavel: nomeConsultor(implementacao.consultor_responsavel_id, consultores),
     data: atividade.dataPlanejada,
     aguardando,
@@ -155,6 +168,7 @@ function itemDeAtividade(
         : atividade.status === 'agendado'
           ? `Confirmar ${atividade.nome.toLowerCase()}`
           : `Concluir "${atividade.nome}"`,
+    acaoLabel: aguardando != null ? 'Ver detalhes' : atividade.status === 'agendado' ? 'Confirmar' : 'Concluir',
     atrasado: atividade.status === 'atrasado',
     implementacaoId: implementacao.id,
     atividadeId: tipo === 'tarefa' ? atividade.id : null,
@@ -185,11 +199,13 @@ function itensDePendenciaInternaVendas(
     clienteNome: cliente.nome_empresa,
     tipo: 'pendencia_interna',
     titulo: acao,
+    categoriaLabel: null,
     responsavel: null,
     data: null,
     aguardando: null,
     status: MAPEAMENTO_STATUS_LABELS[vendas.status],
     acaoRecomendada: acao,
+    acaoLabel: 'Resolver pendência',
     atrasado: false,
     implementacaoId: null,
     atividadeId: null,
@@ -214,11 +230,13 @@ function itemDePendenciaClienteFormulario(
     clienteNome: cliente.nome_empresa,
     tipo: 'pendencia_cliente',
     titulo: `Formulário ainda não respondido — ${dias}d`,
+    categoriaLabel: null,
     responsavel: null,
     data: null,
     aguardando: null,
     status: 'Aguardando resposta do cliente',
     acaoRecomendada: 'Cobrar resposta do formulário com o cliente',
+    acaoLabel: 'Cobrar cliente',
     atrasado: false,
     implementacaoId: null,
     atividadeId: null,
@@ -249,11 +267,13 @@ function itensDeTrial(
       clienteNome: cliente.nome_empresa,
       tipo: 'trial',
       titulo: `Solicitar extensão ${resumo.proximaExtensao.rotulo}`,
+      categoriaLabel: null,
       responsavel: nomeConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
       data: resumo.vencimento,
       aguardando: null,
       status: rotuloPrazoDias(resumo.diasRestantes),
-      acaoRecomendada: `Solicitar extensão ${resumo.proximaExtensao.rotulo} antes do vencimento`,
+      acaoRecomendada: `Próxima extensão: ${resumo.proximaExtensao.rotulo}`,
+      acaoLabel: 'Solicitar extensão',
       atrasado: resumo.diasRestantes < 0,
       implementacaoId: implementacao?.id ?? null,
       atividadeId: null,
@@ -284,11 +304,13 @@ function itemDeProximidadePrazoGeral(
     clienteNome: cliente.nome_empresa,
     tipo: 'alerta',
     titulo: `Cliente está no dia ${diaAtual}/${duracaoTotalDias}`,
+    categoriaLabel: null,
     responsavel: nomeConsultor(implementacao.consultor_responsavel_id, consultores),
     data: null,
     aguardando: null,
     status: `${diasRestantes}d restantes no prazo geral`,
     acaoRecomendada: 'Revisar o que falta pra concluir dentro do prazo',
+    acaoLabel: 'Revisar prazo',
     atrasado: false,
     implementacaoId: implementacao.id,
     atividadeId: null,
@@ -320,6 +342,11 @@ function tipoItemDaOcorrencia(ocorrencia: ClienteOcorrencia): TipoItemAgenda {
 // uma pendência de verdade (do cliente ou interna) — perdendo a
 // categorização que a mesma pendência tinha antes da implementação começar
 // (ver itensDePendenciaInternaVendas/itemDePendenciaClienteFormulario).
+// Prompt 59.1, seção 5/6 — a causa real do título genérico "Outro": a
+// ocorrência sempre tem uma `descricao` com a ação de verdade (vem sobretudo
+// do App de Atas), mas o item da Agenda só lia a categoria, que é "Outro"
+// pra praticamente toda ocorrência extraída de ata. A categoria continua
+// disponível (campo `categoriaLabel`), só não é mais o título.
 function itemDeOcorrencia(
   ocorrencia: ClienteOcorrencia,
   cliente: Cliente,
@@ -328,20 +355,21 @@ function itemDeOcorrencia(
 ): ItemAgendaOperacional {
   const tipo = tipoItemDaOcorrencia(ocorrencia);
   const prazo = ocorrencia.prazo ? new Date(`${ocorrencia.prazo}T12:00:00`) : null;
+  const categoriaLabel = CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria];
+  const titulo = ocorrencia.descricao?.trim() || categoriaLabel;
   return {
     id: `ocorrencia:${ocorrencia.id}`,
     clienteId: cliente.id,
     clienteNome: cliente.nome_empresa,
     tipo,
-    titulo:
-      tipo === 'alerta'
-        ? `Ocorrência: ${CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria]}`
-        : CATEGORIA_OCORRENCIA_LABELS[ocorrencia.categoria],
+    titulo,
+    categoriaLabel,
     responsavel: nomeConsultor(ocorrencia.consultor_responsavel_id, consultores),
     data: prazo,
     aguardando: null,
     status: 'Aberta',
     acaoRecomendada: 'Resolver a ocorrência',
+    acaoLabel: prazo ? 'Resolver' : 'Definir prazo',
     atrasado: prazo ? prazo.getTime() < hoje.getTime() : false,
     implementacaoId: null,
     atividadeId: null,
@@ -371,11 +399,13 @@ function itensDeReunioesEstruturadas(
       clienteNome: cliente.nome_empresa,
       tipo: 'reuniao',
       titulo,
+      categoriaLabel: null,
       responsavel: nomeConsultor(reuniao.consultor_responsavel_id ?? implementacao.consultor_responsavel_id, consultores),
       data: new Date(reuniao.data_hora),
       aguardando: null,
       status: STATUS_REUNIAO_LABELS[reuniao.status],
       acaoRecomendada: `Confirmar ${titulo.toLowerCase()}`,
+      acaoLabel: 'Confirmar',
       atrasado: false,
       implementacaoId: implementacao.id,
       atividadeId: null,
@@ -411,11 +441,13 @@ function itensDeAlertaReuniaoObrigatoria(
       clienteNome: cliente.nome_empresa,
       tipo: 'alerta',
       titulo: alerta.titulo,
+      categoriaLabel: null,
       responsavel: nomeConsultor(implementacao.consultor_responsavel_id, consultores),
       data: null,
       aguardando: null,
       status: `${alerta.diasRestantesNoCiclo}d restantes no ciclo`,
       acaoRecomendada: `Agendar ${TIPO_REUNIAO_LABELS[tipo].toLowerCase()}`,
+      acaoLabel: 'Agendar',
       atrasado: false,
       implementacaoId: implementacao.id,
       atividadeId: null,
@@ -486,6 +518,13 @@ export function construirAgendaOperacional(params: {
     }
 
     if (!implementacao) continue;
+    // Prompt 59.1, seção 2/10 — implementação cancelada não tem mais
+    // pendência operacional de verdade; as atividades em aberto do checklist
+    // continuavam gerando "tarefa" sem data na Agenda mesmo depois do
+    // cancelamento (achado da auditoria: ~14% dos itens "sem prazo" vinham
+    // de uma única implementação cancelada). Isso é só ruído na Agenda — o
+    // histórico do cliente continua intacto em ClienteDetalhe/Cronograma.
+    if (implementacao.status === 'cancelada') continue;
 
     const historicoDaImplementacao = historico.filter((h) => h.implementacao_id === implementacao.id);
     const atividadesVisiveis = atividades.filter(
