@@ -1895,6 +1895,205 @@ img.auth-logo {
   }
 }
 
+/* ============================================================
+   Prompt 58 — fundação "tabela no desktop → cards no mobile",
+   reutilizável por Clientes/Implementações/Consultores (e qualquer
+   página futura). O MESMO array já calculado é renderizado duas vezes em
+   JSX — uma <table> normal, uma lista de .entity-card — nunca duas
+   fontes de dado nem duas chamadas de API; só o CSS decide qual metade
+   fica visível. Breakpoint de 860px — já usado em .ops-grid-2 e
+   .resultados-busca-layout pra "empilha tablet e celular juntos", então
+   reaproveitado aqui em vez de inventar um quarto número.
+   ============================================================ */
+.responsive-card-list {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (max-width: 860px) {
+  .responsive-table-wrap {
+    display: none;
+  }
+
+  .responsive-card-list {
+    display: flex;
+  }
+
+  /* Área de toque ~44px (seção 4) e campos sem zoom automático do Safari
+     no iPhone, que dispara sempre que a fonte de um input focado é menor
+     que 16px (seção 4) — only nos breakpoints de tablet/celular, nunca
+     no desktop, pra não mexer na tipografia já aprovada. */
+  .btn {
+    min-height: 44px;
+  }
+
+  .field input,
+  .field textarea,
+  .field select,
+  .ops-filters-bar input,
+  .ops-filters-bar select {
+    font-size: 16px;
+  }
+}
+
+.entity-card {
+  display: block;
+  padding: 16px;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.entity-card {
+  cursor: pointer;
+}
+
+.entity-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.entity-card-title {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.entity-card-subtitle {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.entity-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.entity-card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 13.5px;
+  margin-bottom: 12px;
+}
+
+.entity-card-rows:last-child {
+  margin-bottom: 0;
+}
+
+.entity-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.entity-card-row-label {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.entity-card-row-value {
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.entity-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.entity-card-actions .btn {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Menu de ações por card (seção 16/20) — mesmo padrão de disclosure
+   inline já usado em ClienteDetalhe.tsx ("Transferir"), não um popover
+   flutuante novo: evita reimplementar posicionamento/click-fora/foco do
+   zero só pra 3-4 botões por card. */
+.entity-card-menu-toggle {
+  flex: 0 0 auto;
+  width: 44px;
+  padding: 0;
+}
+
+.entity-card-menu-painel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+}
+
+.entity-card-menu-painel .btn {
+  width: 100%;
+}
+
+/* Drawer de filtros mobile (seção 9) — mesmo mecanismo visual do drawer
+   da Sidebar (Layout.tsx/Sidebar.tsx: backdrop + painel fixo que desliza),
+   reaproveitado aqui em vez de criar outro padrão de overlay. */
+.mobile-filtros-trigger {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .mobile-filtros-trigger {
+    display: inline-flex;
+  }
+
+  .ops-filters-bar {
+    display: none;
+  }
+
+  .ops-filters-bar.mobile-filtros-drawer-aberta {
+    display: flex;
+    position: fixed;
+    inset: auto 0 0 0;
+    top: 10vh;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    z-index: 30;
+    overflow-y: auto;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .mobile-filtros-drawer-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    border: none;
+    padding: 0;
+    z-index: 29;
+    cursor: pointer;
+  }
+
+  .mobile-filtros-drawer-acoes {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .mobile-filtros-drawer-acoes .btn {
+    flex: 1;
+  }
+}
+
 /* ── Status badge ── */
 .status-badge {
   display: inline-flex;
@@ -2964,6 +3163,19 @@ img.auth-logo {
   color: var(--color-text-muted);
   font-size: 13.5px;
   line-height: 1.55;
+}
+
+/* Busca (Prompt 58, seção 9) — fica fora do drawer de filtros, sempre
+   visível, com o botão "Filtros (N)" ao lado só aparecendo no mobile
+   (ver .mobile-filtros-trigger). */
+.ops-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.ops-search-row .ops-search {
+  flex: 1;
 }
 
 .ops-filters-bar {

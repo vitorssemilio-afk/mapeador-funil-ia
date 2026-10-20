@@ -55,6 +55,10 @@ export function Consultores() {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [form, setForm] = useState<FormConsultor>(FORM_VAZIO);
+  // Menu de ações do card mobile (Prompt 58, seção 16) — só um aberto por
+  // vez, disclosure inline (mesmo padrão de "Transferir" em
+  // ClienteDetalhe.tsx), não um popover novo.
+  const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
 
   async function carregar() {
     setLoading(true);
@@ -88,6 +92,7 @@ export function Consultores() {
     setEditandoId(consultor.id);
     setForm(paraForm(consultor));
     setMostrarForm(true);
+    setMenuAbertoId(null);
   }
 
   function fecharForm() {
@@ -215,9 +220,9 @@ export function Consultores() {
           {souAdministrador && (
             <p className="field-hint">
               Para dar acesso a alguém novo: cadastre aqui com o e-mail da pessoa e peça para ela entrar em{' '}
-              <strong>/login</strong> e criar a própria senha (cadastro aberto só para e-mails @v4company.com) — o
-              vínculo com a conta acontece sozinho no primeiro login. Cada um só vê a própria carteira (clientes onde é
-              responsável ou apoio); administrador vê tudo.
+              <strong>/login</strong> e criar a própria senha — o vínculo com a conta acontece sozinho no primeiro
+              login (ou use "Vincular" abaixo se ela já tinha conta antes de virar consultor(a)). Cada um só vê a
+              própria carteira (clientes onde é responsável ou apoio); administrador vê tudo.
             </p>
           )}
         </div>
@@ -326,7 +331,8 @@ export function Consultores() {
       )}
 
       {!loading && consultores.length > 0 && (
-        <div className="table-wrap">
+        <>
+        <div className="responsive-table-wrap table-wrap">
           <table className="data-table">
             <thead>
               <tr>
@@ -399,6 +405,94 @@ export function Consultores() {
             </tbody>
           </table>
         </div>
+
+        <div className="responsive-card-list">
+          {consultores.map((c) => (
+            <div key={c.id} className={`card entity-card${c.ativo ? '' : ' checklist-grupo-travado'}`}>
+              <div className="entity-card-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Avatar nome={c.nome} avatarUrl={c.avatar_url} size={36} />
+                  <div>
+                    <span className="entity-card-title">{c.nome}</span>
+                    <span className="entity-card-subtitle" style={{ display: 'block' }}>
+                      {PAPEL_LABELS[c.role]}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="entity-card-subtitle" style={{ wordBreak: 'break-all', marginBottom: 10 }}>
+                {c.email}
+              </p>
+
+              <div className="entity-card-badges">
+                <span className={`status-badge status-tone-${c.ativo ? 'success' : 'danger'}`}>
+                  {c.ativo ? 'Ativo' : 'Inativo'}
+                </span>
+                {c.user_id ? (
+                  <span className="status-badge status-tone-success">Conta vinculada</span>
+                ) : (
+                  <span className="status-badge status-tone-warning">Conta não criada</span>
+                )}
+              </div>
+
+              <div className="entity-card-rows">
+                {c.telefone && (
+                  <div className="entity-card-row">
+                    <span className="entity-card-row-label">Telefone</span>
+                    <span className="entity-card-row-value">{c.telefone}</span>
+                  </div>
+                )}
+                {c.cargo && (
+                  <div className="entity-card-row">
+                    <span className="entity-card-row-label">Cargo</span>
+                    <span className="entity-card-row-value">{c.cargo}</span>
+                  </div>
+                )}
+              </div>
+
+              {souAdministrador && (
+                <>
+                  <div className="entity-card-actions">
+                    <button
+                      type="button"
+                      className="btn btn-secondary entity-card-menu-toggle"
+                      aria-label={menuAbertoId === c.id ? 'Fechar ações' : 'Mais ações'}
+                      onClick={() => setMenuAbertoId((atual) => (atual === c.id ? null : c.id))}
+                    >
+                      •••
+                    </button>
+                  </div>
+
+                  {menuAbertoId === c.id && (
+                    <div className="entity-card-menu-painel">
+                      <button type="button" className="btn btn-secondary" onClick={() => abrirEdicao(c)}>
+                        Editar
+                      </button>
+                      {!c.user_id && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => handleVincularConta(c)}
+                          title="Procura uma conta de login já existente com este e-mail e vincula."
+                        >
+                          Vincular conta
+                        </button>
+                      )}
+                      <button type="button" className="btn btn-ghost" onClick={() => handleAlternarAtivo(c)}>
+                        {c.ativo ? 'Desativar' : 'Ativar'}
+                      </button>
+                      <button type="button" className="btn btn-danger" onClick={() => handleExcluir(c)}>
+                        Excluir
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        </>
       )}
     </div>
   );

@@ -55,6 +55,12 @@ export function Clientes() {
   const [filtroSaude, setFiltroSaude] = useState('');
   const [soAtrasados, setSoAtrasados] = useState(false);
   const [soMeusClientes, setSoMeusClientes] = useState(false);
+  // Drawer de filtros mobile (Prompt 58, seção 9) — a busca continua fora
+  // do drawer e sempre visível; só fase/consultor/saúde/checkboxes entram
+  // nele. Não é um estado de rascunho: os filtros já se aplicam ao vivo
+  // (resumosFiltrados abaixo), o drawer só decide se essa área aparece
+  // expandida ou não no celular.
+  const [filtrosDrawerAberta, setFiltrosDrawerAberta] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,6 +190,12 @@ export function Clientes() {
   const filtrosAtivos =
     !!busca || !!filtroFase || !!filtroConsultor || !!filtroSaude || soAtrasados || soMeusClientes;
 
+  // Contagem só do que mora dentro do drawer mobile (sem a busca, que
+  // fica fora dele e sempre visível) — mostrada no botão "Filtros (N)".
+  const quantidadeFiltrosDrawer = [!!filtroFase, !!filtroConsultor, !!filtroSaude, soAtrasados, soMeusClientes].filter(
+    Boolean,
+  ).length;
+
   return (
     <div className="page">
       <div className="page-header">
@@ -206,7 +218,7 @@ export function Clientes() {
             <span className="ops-section-count">{resumosFiltrados.length}</span>
           </div>
 
-          <div className="ops-filters-bar">
+          <div className="ops-search-row">
             <input
               type="text"
               className="ops-search"
@@ -214,6 +226,25 @@ export function Clientes() {
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar por empresa, contato ou segmento"
             />
+            <button
+              type="button"
+              className="btn btn-secondary mobile-filtros-trigger"
+              onClick={() => setFiltrosDrawerAberta(true)}
+            >
+              Filtros{quantidadeFiltrosDrawer > 0 ? ` (${quantidadeFiltrosDrawer})` : ''}
+            </button>
+          </div>
+
+          {filtrosDrawerAberta && (
+            <button
+              type="button"
+              className="mobile-filtros-drawer-backdrop"
+              aria-label="Fechar filtros"
+              onClick={() => setFiltrosDrawerAberta(false)}
+            />
+          )}
+
+          <div className={`ops-filters-bar${filtrosDrawerAberta ? ' mobile-filtros-drawer-aberta' : ''}`}>
             <select value={filtroFase} onChange={(e) => setFiltroFase(e.target.value)}>
               <option value="">Todas as fases</option>
               {fasesDisponiveis.map((f) => (
@@ -251,14 +282,27 @@ export function Clientes() {
                 Limpar filtros
               </button>
             )}
+            {filtrosDrawerAberta && (
+              <div className="mobile-filtros-drawer-acoes">
+                <button type="button" className="btn btn-primary" onClick={() => setFiltrosDrawerAberta(false)}>
+                  Aplicar filtros
+                </button>
+              </div>
+            )}
           </div>
 
           {resumosFiltrados.length === 0 ? (
             <div className="empty-state">
               <p>Nenhum cliente encontrado com esses filtros.</p>
+              {filtrosAtivos && (
+                <button type="button" className="btn btn-secondary" onClick={limparFiltros}>
+                  Limpar filtros
+                </button>
+              )}
             </div>
           ) : (
-            <div className="table-wrap" style={{ overflowX: 'auto' }}>
+            <>
+            <div className="responsive-table-wrap table-wrap" style={{ overflowX: 'auto' }}>
               <table className="data-table ops-table">
                 <thead>
                   <tr>
@@ -279,10 +323,81 @@ export function Clientes() {
                 </tbody>
               </table>
             </div>
+
+            <div className="responsive-card-list">
+              {resumosFiltrados.map((r) => (
+                <CardCliente key={r.cliente.id} resumo={r} />
+              ))}
+            </div>
+            </>
           )}
         </section>
       )}
     </div>
+  );
+}
+
+// Card mobile (Prompt 58, seção 8) — mesmo resumo já calculado por
+// construirResumoClientes, nenhum dado novo nem segunda consulta; só
+// prioriza o essencial (igual a tabela, sem coluna nenhuma escondida de
+// propósito) num cartão tocável que abre a ficha do cliente.
+function CardCliente({ resumo }: { resumo: ClienteResumo }) {
+  const { cliente, faseAtual, saude, trial, proximaAcao, consultor } = resumo;
+  const prazoLabel = prazoLabelDe(resumo);
+  const prazoAtrasado = estaAtrasado(resumo);
+
+  return (
+    <Link to={`/clientes/${cliente.id}`} className="card entity-card">
+      <div className="entity-card-header">
+        <span className="entity-card-title">{cliente.nome_empresa}</span>
+        {(cliente.nome_contato || cliente.segmento) && (
+          <span className="entity-card-subtitle">
+            {[cliente.nome_contato, cliente.segmento].filter(Boolean).join(' · ')}
+          </span>
+        )}
+      </div>
+
+      <div className="entity-card-badges">
+        <span className={`status-badge status-tone-${SAUDE_TONE[saude]}`}>{SAUDE_LABELS[saude]}</span>
+        {trial && (
+          <span
+            className={`status-badge status-tone-${STATUS_TRIAL_TONE[trial.status]}`}
+            title={STATUS_TRIAL_LABELS[trial.status]}
+          >
+            Trial: {trial.diasRestantes}d
+          </span>
+        )}
+      </div>
+
+      <div className="entity-card-rows">
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Fase</span>
+          <span className="entity-card-row-value">{faseAtual}</span>
+        </div>
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Dia/Ciclo</span>
+          <span className="entity-card-row-value">{diaCicloLabel(resumo)}</span>
+        </div>
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Próxima ação</span>
+          <span className="entity-card-row-value">{proximaAcao}</span>
+        </div>
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Prazo</span>
+          <span className={`entity-card-row-value${prazoAtrasado ? ' ops-prazo-atrasado' : ''}`}>
+            {prazoLabel ?? '—'}
+          </span>
+        </div>
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Consultor</span>
+          <span className="entity-card-row-value">{consultor ?? '—'}</span>
+        </div>
+      </div>
+
+      <div className="entity-card-actions">
+        <span className="btn btn-secondary">Abrir cliente</span>
+      </div>
+    </Link>
   );
 }
 
