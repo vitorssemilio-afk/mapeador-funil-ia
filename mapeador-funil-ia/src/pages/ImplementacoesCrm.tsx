@@ -79,36 +79,71 @@ export function ImplementacoesCrm() {
       )}
 
       {!loading && implementacoes.length > 0 && (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Cliente</th>
-                <th>Consultor</th>
-                <th>Status</th>
-                <th>Criado em</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {implementacoes.map((impl) => (
-                <tr key={impl.id}>
-                  <td>{impl.nome_cliente}</td>
-                  <td>{nomeConsultor(impl.consultor_responsavel_id, consultores) || '—'}</td>
-                  <td>
-                    <ImplementacaoStatusBadge status={impl.status} />
-                  </td>
-                  <td>{new Date(impl.created_at).toLocaleDateString('pt-BR')}</td>
-                  <td className="table-actions">
-                    <Link to={`/implementacoes/${impl.id}`} className="btn btn-secondary">
-                      Ver
-                    </Link>
-                  </td>
+        <>
+          <div className="responsive-table-wrap table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Consultor</th>
+                  <th>Status</th>
+                  <th>Criado em</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {implementacoes.map((impl) => (
+                  <tr key={impl.id}>
+                    <td>{impl.nome_cliente}</td>
+                    <td>{nomeConsultor(impl.consultor_responsavel_id, consultores) || '—'}</td>
+                    <td>
+                      <ImplementacaoStatusBadge status={impl.status} />
+                    </td>
+                    <td>{new Date(impl.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td className="table-actions">
+                      <Link to={`/implementacoes/${impl.id}`} className="btn btn-secondary">
+                        Ver
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="responsive-card-list">
+            {implementacoes.map((impl) => (
+              <Link key={impl.id} to={`/implementacoes/${impl.id}`} className="card entity-card">
+                <div className="entity-card-header">
+                  <span className="entity-card-title">{impl.nome_cliente}</span>
+                </div>
+
+                <div className="entity-card-badges">
+                  <ImplementacaoStatusBadge status={impl.status} />
+                </div>
+
+                <div className="entity-card-rows">
+                  <div className="entity-card-row">
+                    <span className="entity-card-row-label">Consultor</span>
+                    <span className="entity-card-row-value">
+                      {nomeConsultor(impl.consultor_responsavel_id, consultores) || '—'}
+                    </span>
+                  </div>
+                  <div className="entity-card-row">
+                    <span className="entity-card-row-label">Criado em</span>
+                    <span className="entity-card-row-value">
+                      {new Date(impl.created_at).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="entity-card-actions">
+                  <span className="btn btn-secondary">Ver implementação</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
