@@ -2014,6 +2014,9 @@ a.entity-card {
 .entity-card-actions .btn {
   flex: 1;
   min-width: 0;
+  white-space: normal;
+  text-align: center;
+  height: auto;
 }
 
 /* Menu de ações por card (seção 16/20) — mesmo padrão de disclosure
@@ -3277,6 +3280,226 @@ a.entity-card {
 
 .ops-kpi-card-compact .ops-kpi-value {
   font-size: 24px;
+}
+
+/* Home mobile (Prompt 59, seção 6) — os 4 indicadores compactos ficam
+   2×2 mesmo nas larguras mais estreitas de iPhone (320-430px); a grade
+   genérica (.ops-kpi-grid, usada no Dashboard Gerencial) empilha em 1
+   coluna abaixo de 480px, o que faria cada indicador ocupar uma tela
+   inteira de altura à toa aqui na Home. */
+@media (max-width: 480px) {
+  .ops-kpi-grid-compact {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Cabeçalho compacto da Home (seção 5) — a descrição longa não entra no
+   celular, só o título e a saudação continuam visíveis. */
+@media (max-width: 640px) {
+  .ops-descricao-longa {
+    display: none;
+  }
+}
+
+/* Limite inicial de itens no mobile pra "Precisa da sua atenção"/"Precisa
+   da sua decisão" (seções 7/9) — o motor de prioridade e o limite do
+   desktop (5) continuam os mesmos; só o CSS esconde itens além do 3º
+   nessa largura, sempre com um "ver mais" específico do mobile
+   garantindo que nenhum item fica inacessível (ver
+   .ops-mobile-ver-mais/.ops-mobile-ver-mais-oculta abaixo). */
+@media (max-width: 860px) {
+  .ops-mobile-truncar-3 > *:nth-child(n + 4) {
+    display: none;
+  }
+
+  .ops-mobile-ver-mais {
+    display: inline-flex;
+  }
+}
+
+.ops-mobile-ver-mais {
+  display: none;
+}
+
+/* Agenda — abas de período mobile (Prompt 59, seção 18). Desktop continua
+   mostrando todas as seções empilhadas (nenhuma delas é escondida nessa
+   largura); só abaixo de 860px elas viram abas controladas por estado. */
+.agenda-abas-mobile {
+  display: none;
+}
+
+.agenda-aba-vazia-mobile {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .agenda-abas-mobile {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin-bottom: 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .agenda-aba-botao {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 9px 14px;
+    min-height: 44px;
+    border-radius: 999px;
+    border: 1px solid var(--color-border-strong);
+    background: var(--color-surface-raised);
+    color: var(--color-text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .agenda-aba-ativa {
+    border-color: var(--color-accent);
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+  }
+
+  .agenda-aba-vazia-mobile {
+    display: block;
+  }
+
+  .agenda-secao-oculta-mobile {
+    display: none;
+  }
+
+  /* O checkbox "Marcar como concluída" só ficava visível (CSS) abaixo de
+     640px, herdado do mecanismo antigo — aqui, dentro do card novo, ele
+     deve aparecer sempre que o card em si está visível (860px). */
+  .responsive-card-list .agenda-card-concluir {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+}
+
+/* Cronograma — visão mobile (Prompt 59, seções 26-35). Desktop mantém o
+   Gantt horizontal intacto; abaixo de 860px ele vira seletor de cliente +
+   resumo + acordeão de ciclos + linha do tempo de marcos verticais. */
+.cronograma-mobile {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .cronograma-desktop {
+    display: none;
+  }
+
+  .cronograma-mobile {
+    display: block;
+  }
+
+  .cronograma-resumo-mobile {
+    margin: 16px 0;
+  }
+
+  .cronograma-ciclos-mobile {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0;
+  }
+
+  .cronograma-ciclo-item {
+    border: 1px solid var(--color-border-strong);
+    border-radius: 10px;
+    background: var(--color-surface-raised);
+    overflow: hidden;
+  }
+
+  .cronograma-ciclo-atual {
+    border-color: var(--color-accent);
+  }
+
+  .cronograma-ciclo-cabecalho {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    min-height: 44px;
+    background: none;
+    border: none;
+    color: var(--color-text);
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .cronograma-ciclo-badge {
+    margin-left: 8px;
+  }
+
+  .cronograma-ciclo-dias {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  .cronograma-ciclo-corpo {
+    padding: 0 14px 12px;
+    margin: 0;
+  }
+
+  .cronograma-marcos-mobile {
+    margin: 16px 0;
+  }
+
+  .cronograma-marcos-titulo {
+    margin: 0 0 10px;
+    font-size: 15px;
+  }
+
+  .cronograma-marcos-lista {
+    list-style: none;
+    margin: 0 0 12px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    border-left: 2px solid var(--color-border-strong);
+    padding-left: 16px;
+  }
+
+  .cronograma-marco-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    position: relative;
+  }
+
+  .cronograma-marco-ponto {
+    position: absolute;
+    left: -21px;
+    top: 4px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--color-accent);
+  }
+
+  .cronograma-marco-label {
+    margin: 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .cronograma-marco-data {
+    margin: 2px 0 0;
+    font-size: 12px;
+    color: var(--color-text-muted);
+  }
 }
 
 .ops-cockpit-grid {

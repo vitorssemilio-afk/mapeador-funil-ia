@@ -683,7 +683,7 @@ export function Dashboard() {
       <div className="page-header">
         <div>
           <h1>Operação CRM</h1>
-          <p className="field-hint">
+          <p className="field-hint ops-descricao-longa">
             Acompanhe o que exige atenção, os próximos compromissos e as ações prioritárias da sua
             carteira.
           </p>
@@ -742,7 +742,9 @@ export function Dashboard() {
               ) : (
                 <>
                   {resumoDaAtencao && <p className="ops-breakdown-line">{resumoDaAtencao}</p>}
-                  <ul className="ops-alert-list ops-alert-list-static">
+                  <ul
+                    className={`ops-alert-list ops-alert-list-static${mostrarTodaAtencao ? '' : ' ops-mobile-truncar-3'}`}
+                  >
                     {alertasVisiveis.map((a) => (
                       <AlertaCard
                         key={`${a.clienteId}-${a.motivo}`}
@@ -758,6 +760,20 @@ export function Dashboard() {
                       Ver todos os {alertas.length} itens
                     </button>
                   )}
+                  {/* Seção 7 (mobile) — a grade desktop já mostra 5 antes do
+                      botão acima; no celular só 3 ficam visíveis (CSS), então
+                      esse gatilho próprio garante acesso ao resto sempre que
+                      houver mais de 3, mesmo com só 4-5 alertas (caso em que
+                      o botão de desktop acima ainda não apareceria). */}
+                  {!mostrarTodaAtencao && alertas.length > 3 && alertas.length <= MAX_ATENCAO_VISIVEL && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-auto ops-mobile-ver-mais"
+                      onClick={() => setMostrarTodaAtencao(true)}
+                    >
+                      Ver todos os {alertas.length} itens
+                    </button>
+                  )}
                 </>
               )}
             </section>
@@ -769,7 +785,9 @@ export function Dashboard() {
                     <h2>Precisa da sua decisão</h2>
                     <span className="ops-section-count">{itensDecisao.length}</span>
                   </div>
-                  <ul className="ops-decision-list">
+                  <ul
+                    className={`ops-decision-list${mostrarTodasDecisoes ? '' : ' ops-mobile-truncar-3'}`}
+                  >
                     {gruposDecisaoVisiveis.map((grupo) =>
                       grupo.itens.length === 1 ? (
                         <li key={grupo.clienteId} className="ops-decision-item">
@@ -819,6 +837,15 @@ export function Dashboard() {
                       Ver todas as {itensDecisao.length} decisões
                     </button>
                   )}
+                  {!mostrarTodasDecisoes && gruposDecisao.length > 3 && gruposDecisao.length <= MAX_GRUPOS_DECISAO_VISIVEL && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-auto ops-mobile-ver-mais"
+                      onClick={() => setMostrarTodasDecisoes(true)}
+                    >
+                      Ver todas as {itensDecisao.length} decisões
+                    </button>
+                  )}
                 </section>
               )}
 
@@ -833,7 +860,7 @@ export function Dashboard() {
                     <p className="ops-empty-hint">Nenhuma ação para hoje.</p>
                   ) : (
                     <ul className="ops-today-list">
-                      {itensHoje.slice(0, 5).map((item) => (
+                      {itensHoje.slice(0, 3).map((item) => (
                         <li key={item.id}>
                           <Link to={`/clientes/${item.clienteId}`}>{item.clienteNome}</Link>
                           <span className="field-hint"> — {TIPO_ITEM_AGENDA_LABELS[item.tipo]}: {item.titulo}</span>
@@ -901,8 +928,8 @@ export function Dashboard() {
               </Link>
             </div>
 
-            <div className="table-wrap" style={{ overflowX: 'auto' }}>
-              <table className="data-table ops-table ops-table-carteira data-table-cards-mobile">
+            <div className="responsive-table-wrap table-wrap" style={{ overflowX: 'auto' }}>
+              <table className="data-table ops-table ops-table-carteira">
                 <thead>
                   <tr>
                     <th>Cliente</th>
@@ -927,6 +954,23 @@ export function Dashboard() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Correção obrigatória do Prompt 59 (seção 12/13) — a Minha
+                carteira ainda usava o mecanismo antigo de "label:valor
+                empilhado" (data-table-cards-mobile), que quebrava palavras
+                em colunas estreitas. Mesmo padrão .entity-card já usado em
+                Clientes.tsx (Prompt 58), mesmo array `carteiraResumida` —
+                nenhuma segunda fonte de dado. */}
+            <div className="responsive-card-list">
+              {carteiraResumida.map((r) => (
+                <CardCarteira
+                  key={r.cliente.id}
+                  resumo={r}
+                  mostrarConsultor={souAdministrador}
+                  acao={acaoPorCliente.get(r.cliente.id) ?? { label: 'Ver detalhes', to: `/clientes/${r.cliente.id}?aba=resumo`, tipo: 'detalhes' }}
+                />
+              ))}
             </div>
           </section>
         </>
@@ -1001,6 +1045,82 @@ function AlertaCard({
         {acao.label}
       </Link>
     </li>
+  );
+}
+
+function CardCarteira({
+  resumo,
+  mostrarConsultor,
+  acao,
+}: {
+  resumo: ClienteResumo;
+  mostrarConsultor: boolean;
+  acao: AcaoOperacional;
+}) {
+  const { cliente, saude, trial, proximaAcao, consultor } = resumo;
+  const prazoLabel = prazoHumanizado(resumo);
+  const prazoAtrasado = estaAtrasado(resumo);
+  // Seção 14 — Trial só entra no card quando há alerta relevante de
+  // vencimento (mesmo sinal oficial já usado em calcularSaude/estaAtrasado
+  // pra Trial em risco), não em todo cliente que tem Trial ativo.
+  const trialEmAlerta = !!trial && (trial.status === 'encerrado' || trial.diasRestantes <= 2);
+
+  // Seção 1/37 — "próxima ação" clicável leva direto pro destino que
+  // resolve o alerta/próximo passo (mesmo link contextual da coluna
+  // "Próxima ação" da tabela desktop); "Ver cliente" é o acesso genérico à
+  // ficha. Dois links reais lado a lado (nunca um <Link> aninhado dentro
+  // de outro), igual à distinção que já existe na LinhaCarteira desktop.
+  const temAcaoContextual = acao.to !== `/clientes/${cliente.id}` && acao.to !== `/clientes/${cliente.id}?aba=resumo`;
+
+  return (
+    <div className="card entity-card">
+      <div className="entity-card-header">
+        <span className="entity-card-title">{cliente.nome_empresa}</span>
+      </div>
+
+      <div className="entity-card-badges">
+        <span className={`status-badge status-tone-${SAUDE_TONE[saude]}`}>{SAUDE_LABELS[saude]}</span>
+        {trialEmAlerta && (
+          <span className={`status-badge status-tone-${STATUS_TRIAL_TONE[trial!.status]}`}>
+            Trial: {trialHumanizado(trial!.diasRestantes)}
+          </span>
+        )}
+      </div>
+
+      <div className="entity-card-rows">
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Dia/Ciclo</span>
+          <span className="entity-card-row-value">{diaCicloLabel(resumo)}</span>
+        </div>
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Próxima ação</span>
+          <span className="entity-card-row-value">{proximaAcao}</span>
+        </div>
+        <div className="entity-card-row">
+          <span className="entity-card-row-label">Prazo</span>
+          <span className={`entity-card-row-value${prazoAtrasado ? ' ops-prazo-atrasado' : ''}`}>
+            {prazoLabel ?? '—'}
+          </span>
+        </div>
+        {mostrarConsultor && (
+          <div className="entity-card-row">
+            <span className="entity-card-row-label">Consultor</span>
+            <span className="entity-card-row-value">{consultor ?? '—'}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="entity-card-actions">
+        {temAcaoContextual && (
+          <Link to={acao.to} className="btn btn-secondary">
+            {acao.label}
+          </Link>
+        )}
+        <Link to={`/clientes/${cliente.id}`} className="btn btn-secondary">
+          Ver cliente
+        </Link>
+      </div>
+    </div>
   );
 }
 
