@@ -130,10 +130,14 @@ function prazoHumanizado(resumo: ClienteResumo): string | null {
   return label;
 }
 
+// Prompt 59.1, seção 27 — "Trial: -8d" não fazia sentido pro usuário quando
+// o trial já tinha vencido. Só a apresentação muda; `diasRestantes` continua
+// vindo do mesmo cálculo oficial (trialKommo.ts), negativo e tudo.
 function trialHumanizado(diasRestantes: number): string {
-  if (diasRestantes === 0) return 'Expira hoje';
-  if (diasRestantes === 1) return 'Expira amanhã';
-  return `${diasRestantes}d`;
+  if (diasRestantes > 0) return `${diasRestantes} dia${diasRestantes === 1 ? '' : 's'} restante${diasRestantes === 1 ? '' : 's'}`;
+  if (diasRestantes === 0) return 'Vence hoje';
+  const atraso = Math.abs(diasRestantes);
+  return `Vencido há ${atraso} dia${atraso === 1 ? '' : 's'}`;
 }
 
 function diferencaEmDiasLocal(depois: Date, antes: Date): number {

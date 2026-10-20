@@ -3381,6 +3381,46 @@ a.entity-card {
   }
 }
 
+/* Agenda — "Sem prazo" agrupado por cliente (Prompt 59.1, seção 15). Mesmo
+   em desktop isso evita uma lista enorme de cards soltos; <details> nativo
+   dá o colapsar/expandir sem precisar de estado React por grupo. */
+.agenda-grupos-sem-prazo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agenda-grupo-cliente {
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  padding: 4px 14px;
+}
+
+.agenda-grupo-cliente > summary {
+  padding: 10px 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  list-style: none;
+}
+
+.agenda-grupo-cliente > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agenda-grupo-cliente[open] > summary {
+  border-bottom: 1px solid var(--color-border-strong);
+}
+
+.agenda-grupo-cliente > .responsive-table-wrap,
+.agenda-grupo-cliente > .responsive-card-list {
+  margin-top: 10px;
+  padding-bottom: 10px;
+}
+
 /* Cronograma — visão mobile (Prompt 59, seções 26-35). Desktop mantém o
    Gantt horizontal intacto; abaixo de 860px ele vira seletor de cliente +
    resumo + acordeão de ciclos + linha do tempo de marcos verticais. */

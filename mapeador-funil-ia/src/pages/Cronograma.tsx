@@ -201,9 +201,11 @@ export function Cronograma() {
         <div>
           <h1>Cronograma</h1>
           <p className="field-hint">
-            Linha do tempo de todas as implementações — cada bloco é uma fase (Pré-requisito, Semana
-            1-4) com a data real de início e fim. A fase em andamento aparece com a borda tracejada,
-            indo até hoje.
+            Linha do tempo de todas as implementações — cada bloco é uma fase operacional (Preparação
+            do CRM, CRM em configuração, Treinamento agendado, Automações, Entrega) com a data real de
+            início e fim. A fase em andamento aparece com a borda tracejada, indo até hoje. Acompanhe os
+            quatro ciclos de 10 dias de cada implementação, seus marcos e prazos, selecionando um
+            cliente na visão mobile.
           </p>
         </div>
       </div>
@@ -246,17 +248,30 @@ export function Cronograma() {
                   <div className="entity-card-header">
                     <span className="entity-card-title">{implementacaoSelecionadaMobile.implementacao.nome_cliente}</span>
                   </div>
-                  <div className="entity-card-badges">
-                    <ImplementacaoStatusBadge status={implementacaoSelecionadaMobile.implementacao.status} />
-                  </div>
                   <div className="entity-card-rows">
                     <div className="entity-card-row">
-                      <span className="entity-card-row-label">Dia/Ciclo</span>
+                      <span className="entity-card-row-label">Fase operacional</span>
+                      <span className="entity-card-row-value">
+                        <ImplementacaoStatusBadge status={implementacaoSelecionadaMobile.implementacao.status} />
+                      </span>
+                    </div>
+                    {/* Prompt 59.1, seção 31 — fase operacional (acima) e ciclo
+                        temporal (abaixo) são conceitos diferentes: uma
+                        implementação pode estar na fase "Automações" e já no
+                        Ciclo 4 pelo calendário, sem que isso seja um erro —
+                        um real atraso é sinalizado pelo "restantes/atrasada"
+                        no Prazo, não por essa diferença em si. */}
+                    <div className="entity-card-row">
+                      <span className="entity-card-row-label">Ciclo atual</span>
+                      <span className="entity-card-row-value">
+                        {implementacaoSelecionadaMobile.diaCiclo?.ciclo?.nome ?? '—'}
+                      </span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="entity-card-row-label">Dia</span>
                       <span className="entity-card-row-value">
                         {implementacaoSelecionadaMobile.diaCiclo
-                          ? `Dia ${implementacaoSelecionadaMobile.diaCiclo.dia}/${implementacaoSelecionadaMobile.config.duracaoTotalDias}${
-                              implementacaoSelecionadaMobile.diaCiclo.ciclo ? ` · ${implementacaoSelecionadaMobile.diaCiclo.ciclo.nome}` : ''
-                            }`
+                          ? `Dia ${implementacaoSelecionadaMobile.diaCiclo.dia}/${implementacaoSelecionadaMobile.config.duracaoTotalDias}`
                           : 'Kickoff pendente'}
                       </span>
                     </div>
