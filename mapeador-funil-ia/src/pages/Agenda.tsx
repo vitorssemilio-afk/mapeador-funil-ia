@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   bucketDeItem,
@@ -61,6 +61,10 @@ export function Agenda() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [marcando, setMarcando] = useState<string | null>(null);
+  // Abas de período mobile (Prompt 59, seção 18) — só decide qual seção já
+  // renderizada fica visível nessa largura (CSS); desktop continua
+  // mostrando todos os buckets empilhados, sem nenhuma consulta nova.
+  const [bucketMobileAtivo, setBucketMobileAtivo] = useState<BucketAgenda>('atrasados');
 
   async function carregar() {
     setLoading(true);
@@ -173,6 +177,18 @@ export function Agenda() {
     return mapa;
   }, [itens, hoje]);
 
+  // Primeira aba com algo relevante (Atrasados → Hoje → Amanhã → ...) —
+  // só decide o padrão inicial da aba mobile, uma única vez que os dados
+  // chegam (nunca de novo depois, senão marcar uma tarefa como concluída
+  // recalcularia os buckets e puxaria o usuário de volta pra outra aba).
+  const abaInicialEscolhidaRef = useRef(false);
+  useEffect(() => {
+    if (loading || abaInicialEscolhidaRef.current) return;
+    abaInicialEscolhidaRef.current = true;
+    const primeiraComItens = BUCKETS_ORDENADOS.find((b) => (itensPorBucket.get(b) ?? []).length > 0);
+    if (primeiraComItens) setBucketMobileAtivo(primeiraComItens);
+  }, [loading, itensPorBucket]);
+
   async function handleMarcarConcluida(item: ItemAgendaOperacional) {
     if (!item.atividadeId || !item.implementacaoId) return;
 
@@ -242,19 +258,52 @@ export function Agenda() {
         </div>
       )}
 
+      {/* Abas de período (seção 18) — só aparecem no mobile (CSS); desktop
+          continua mostrando todos os buckets empilhados, igual sempre foi. */}
+      {!loading && totalItens > 0 && (
+        <div className="agenda-abas-mobile" role="tablist" aria-label="Período da agenda">
+          {BUCKETS_ORDENADOS.filter((b) => (itensPorBucket.get(b) ?? []).length > 0 || b === bucketMobileAtivo).map(
+            (bucket) => (
+              <button
+                key={bucket}
+                type="button"
+                role="tab"
+                aria-selected={bucketMobileAtivo === bucket}
+                className={`agenda-aba-botao${bucketMobileAtivo === bucket ? ' agenda-aba-ativa' : ''}`}
+                onClick={() => setBucketMobileAtivo(bucket)}
+              >
+                {BUCKET_AGENDA_LABELS[bucket]} ({(itensPorBucket.get(bucket) ?? []).length})
+              </button>
+            ),
+          )}
+        </div>
+      )}
+
+      {!loading &&
+        totalItens > 0 &&
+        (itensPorBucket.get(bucketMobileAtivo) ?? []).length === 0 && (
+          <p className="ops-empty-hint agenda-aba-vazia-mobile">
+            Nenhuma atividade prevista para {BUCKET_AGENDA_LABELS[bucketMobileAtivo].toLowerCase()}.
+          </p>
+        )}
+
       {!loading &&
         BUCKETS_ORDENADOS.map((bucket) => {
           const lista = itensPorBucket.get(bucket) ?? [];
           if (lista.length === 0) return null;
 
           return (
-            <section key={bucket} id={bucket} className="card form-card">
+            <section
+              key={bucket}
+              id={bucket}
+              className={`card form-card${bucket === bucketMobileAtivo ? '' : ' agenda-secao-oculta-mobile'}`}
+            >
               <h2>
                 {BUCKET_AGENDA_LABELS[bucket]}
                 <span className="field-hint"> ({lista.length})</span>
               </h2>
-              <div className="table-wrap">
-                <table className="data-table data-table-cards-mobile">
+              <div className="responsive-table-wrap table-wrap">
+                <table className="data-table">
                   <thead>
                     <tr>
                       <th>Cliente</th>
@@ -313,6 +362,65 @@ export function Agenda() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="responsive-card-list">
+                {lista.map((item) => (
+                  <div key={item.id} className="card entity-card">
+                    <div className="entity-card-header">
+                      <span className="entity-card-title">{item.titulo}</span>
+                      <span className="entity-card-subtitle">{item.clienteNome}</span>
+                    </div>
+
+                    <div className="entity-card-badges">
+                      <span className={`status-badge status-tone-${TIPO_ITEM_AGENDA_TONE[item.tipo]}`}>
+                        {TIPO_ITEM_AGENDA_LABELS[item.tipo]}
+                      </span>
+                    </div>
+
+                    <div className="entity-card-rows">
+                      <div className="entity-card-row">
+                        <span className="entity-card-row-label">Data</span>
+                        <span className="entity-card-row-value">{formatarData(item)}</span>
+                      </div>
+                      <div className="entity-card-row">
+                        <span className="entity-card-row-label">Status</span>
+                        <span className={`entity-card-row-value${item.atrasado ? ' ops-prazo-atrasado' : ''}`}>
+                          {item.aguardando ? `Aguardando ${item.aguardando}` : item.status}
+                        </span>
+                      </div>
+                      {item.responsavel && (
+                        <div className="entity-card-row">
+                          <span className="entity-card-row-label">Responsável</span>
+                          <span className="entity-card-row-value">{item.responsavel}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="entity-card-actions">
+                      <Link to={`/clientes/${item.clienteId}`} className="btn btn-secondary">
+                        {item.acaoRecomendada}
+                      </Link>
+                      {item.implementacaoId && (
+                        <Link to={`/implementacoes/${item.implementacaoId}`} className="btn btn-ghost">
+                          Ver implementação
+                        </Link>
+                      )}
+                    </div>
+
+                    {item.atividadeId && (
+                      <label className="agenda-card-concluir">
+                        <input
+                          type="checkbox"
+                          checked={false}
+                          disabled={marcando === item.atividadeId}
+                          onChange={() => handleMarcarConcluida(item)}
+                        />
+                        <span className="agenda-card-concluir-label">Marcar como concluída</span>
+                      </label>
+                    )}
+                  </div>
+                ))}
               </div>
             </section>
           );

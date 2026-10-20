@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { GanttRuler } from '../components/GanttRuler';
 import { ImplementacaoStatusBadge, IMPLEMENTACAO_STATUS_LABELS } from '../components/ImplementacaoStatusBadge';
 import { inicioDoDia } from '../lib/agendaImplementacao';
-import { calcularDiaCiclo } from '../lib/atividadesCronograma';
+import { calcularDiaCiclo, type DiaCiclo } from '../lib/atividadesCronograma';
 import { CONFIGURACAO_PADRAO, construirMapaConfiguracoes } from '../lib/configuracaoImplementacao';
 import {
   ALTURA_RAIA,
@@ -14,6 +14,7 @@ import {
   fasesImplementacao,
   type FaseCronograma,
 } from '../lib/cronograma';
+import { MARCOS_ORDENADOS } from '../lib/marcosCliente';
 import { supabase } from '../lib/supabaseClient';
 import type {
   Cliente,
@@ -27,6 +28,18 @@ import type {
 // Abaixo disso o título não cabe legível dentro da barra — sai como um
 // rótulo ao lado dela em vez de cortar o texto.
 const LARGURA_MINIMA_TEXTO_INTERNO = 90;
+
+function formatarMarcoMobile(valor: string, apenasData: boolean): string {
+  return apenasData
+    ? new Date(`${valor}T12:00:00`).toLocaleDateString('pt-BR')
+    : new Date(valor).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+}
 
 const CORES_FASE: Record<ImplementacaoStatus, string> = {
   preparacao_crm: '#fbbf24',
@@ -47,6 +60,14 @@ export function Cronograma() {
   const [snapshots, setSnapshots] = useState<ImplementacaoSettingsSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Visão mobile (Prompt 59, seção 27) — seleção de cliente própria, só
+  // pra decidir qual implementação mostrar na linha do tempo vertical;
+  // nenhuma fonte de dado nova (mesmas `implementacoes`/`clientes` já
+  // carregadas pro Gantt desktop, que a RLS já restringe à carteira de
+  // quem está logado).
+  const [clienteSelecionadoMobileId, setClienteSelecionadoMobileId] = useState('');
+  const [cicloExpandidoIndex, setCicloExpandidoIndex] = useState<number | null>(null);
 
   useEffect(() => {
     async function carregar() {
@@ -130,6 +151,50 @@ export function Cronograma() {
   const larguraTotal = escala.totalDias * PX_POR_DIA;
   const hojePx = diaParaPx(hoje, escala);
 
+  // Mesma ordenação alfabética já usada no carregamento (seção 12/26 — não
+  // criar uma ordenação independente pro seletor mobile).
+  const implementacoesOrdenadasParaSelecao = useMemo(
+    () => [...implementacoes].sort((a, b) => a.nome_cliente.localeCompare(b.nome_cliente, 'pt-BR', { sensitivity: 'base' })),
+    [implementacoes],
+  );
+
+  const implementacaoSelecionadaMobile = useMemo(() => {
+    if (!clienteSelecionadoMobileId) return null;
+    const implementacao = implementacoes.find((i) => i.id === clienteSelecionadoMobileId);
+    if (!implementacao) return null;
+    const cliente = clientes.find((c) => c.id === implementacao.cliente_id) ?? null;
+    const config = (cliente && configuracoesPorCliente.get(cliente.id)) || CONFIGURACAO_PADRAO;
+    // Mesmo congelamento em cancelada_em já usado no Gantt desktop acima
+    // (migration 0095) — implementação cancelada não segue contando dia/
+    // ciclo contra a data real.
+    const hojeEfetivo =
+      implementacao.status === 'cancelada' && implementacao.cancelada_em
+        ? new Date(implementacao.cancelada_em)
+        : hoje;
+    const diaCiclo: DiaCiclo | null = calcularDiaCiclo(cliente?.kickoff_realizado_em ?? null, hojeEfetivo, config.ciclos);
+    const prazoRestante = diaCiclo ? config.duracaoTotalDias - diaCiclo.dia : null;
+    const cicloAtualIndex = diaCiclo
+      ? config.ciclos.findIndex((c) => diaCiclo.dia >= c.diaInicio && diaCiclo.dia <= c.diaFim)
+      : -1;
+    const marcos = cliente
+      ? MARCOS_ORDENADOS.filter((m) => !!cliente[m.campo]).map((m) => ({
+          label: m.label,
+          valor: cliente[m.campo] as string,
+          apenasData: m.apenasData,
+        }))
+      : [];
+    return { implementacao, cliente, config, diaCiclo, prazoRestante, cicloAtualIndex, marcos };
+  }, [clienteSelecionadoMobileId, implementacoes, clientes, configuracoesPorCliente, hoje]);
+
+  // Ciclo aberto por padrão = o atual (seção 30); troca de cliente reabre
+  // nesse mesmo ciclo, nunca mantém o índice de outro cliente selecionado antes.
+  useEffect(() => {
+    setCicloExpandidoIndex(implementacaoSelecionadaMobile?.cicloAtualIndex ?? null);
+    // Só reage à troca de cliente — não ao recálculo do ciclo atual
+    // (senão reabrir manualmente outro ciclo seria desfeito a cada render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteSelecionadoMobileId]);
+
   return (
     <div className="page">
       <div className="page-header">
@@ -154,26 +219,152 @@ export function Cronograma() {
 
       {!loading && implementacoes.length > 0 && (
         <>
-          <div className="gantt-legenda">
-            {(
-              [
-                'preparacao_crm',
-                'crm_em_configuracao',
-                'treinamento_agendado',
-                'automacoes',
-                'entrega',
-              ] as ImplementacaoStatus[]
-            ).map(
-              (status) => (
-                <span key={status} className="gantt-legenda-item">
-                  <span className="gantt-legenda-cor" style={{ background: CORES_FASE[status] }} />
-                  {IMPLEMENTACAO_STATUS_LABELS[status]}
-                </span>
-              ),
+          <div className="cronograma-mobile">
+            <div className="field-row">
+              <label htmlFor="cronograma-cliente-mobile">Cliente</label>
+              <select
+                id="cronograma-cliente-mobile"
+                value={clienteSelecionadoMobileId}
+                onChange={(e) => setClienteSelecionadoMobileId(e.target.value)}
+              >
+                <option value="">Selecione um cliente…</option>
+                {implementacoesOrdenadasParaSelecao.map((implementacao) => (
+                  <option key={implementacao.id} value={implementacao.id}>
+                    {implementacao.nome_cliente}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {!implementacaoSelecionadaMobile && (
+              <p className="field-hint">Escolha um cliente para ver o ciclo e os marcos da implementação.</p>
+            )}
+
+            {implementacaoSelecionadaMobile && (
+              <>
+                <div className="card cronograma-resumo-mobile">
+                  <div className="entity-card-header">
+                    <span className="entity-card-title">{implementacaoSelecionadaMobile.implementacao.nome_cliente}</span>
+                  </div>
+                  <div className="entity-card-badges">
+                    <ImplementacaoStatusBadge status={implementacaoSelecionadaMobile.implementacao.status} />
+                  </div>
+                  <div className="entity-card-rows">
+                    <div className="entity-card-row">
+                      <span className="entity-card-row-label">Dia/Ciclo</span>
+                      <span className="entity-card-row-value">
+                        {implementacaoSelecionadaMobile.diaCiclo
+                          ? `Dia ${implementacaoSelecionadaMobile.diaCiclo.dia}/${implementacaoSelecionadaMobile.config.duracaoTotalDias}${
+                              implementacaoSelecionadaMobile.diaCiclo.ciclo ? ` · ${implementacaoSelecionadaMobile.diaCiclo.ciclo.nome}` : ''
+                            }`
+                          : 'Kickoff pendente'}
+                      </span>
+                    </div>
+                    <div className="entity-card-row">
+                      <span className="entity-card-row-label">Prazo</span>
+                      <span className="entity-card-row-value">
+                        {implementacaoSelecionadaMobile.prazoRestante === null
+                          ? '—'
+                          : implementacaoSelecionadaMobile.prazoRestante >= 0
+                            ? `${implementacaoSelecionadaMobile.prazoRestante}d restantes`
+                            : `${Math.abs(implementacaoSelecionadaMobile.prazoRestante)}d atrasada`}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="entity-card-actions">
+                    <Link to={`/implementacoes/${implementacaoSelecionadaMobile.implementacao.id}?aba=reunioes`} className="btn btn-secondary">
+                      Ver check-ins e reuniões
+                    </Link>
+                    <Link to={`/implementacoes/${implementacaoSelecionadaMobile.implementacao.id}`} className="btn btn-secondary">
+                      Ver implementação
+                    </Link>
+                  </div>
+                </div>
+
+                <div className="cronograma-ciclos-mobile">
+                  {implementacaoSelecionadaMobile.config.ciclos.map((ciclo, index) => {
+                    const ehAtual = index === implementacaoSelecionadaMobile.cicloAtualIndex;
+                    const aberto = cicloExpandidoIndex === index;
+                    return (
+                      <div
+                        key={ciclo.nome}
+                        className={`cronograma-ciclo-item${ehAtual ? ' cronograma-ciclo-atual' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          className="cronograma-ciclo-cabecalho"
+                          aria-expanded={aberto}
+                          onClick={() => setCicloExpandidoIndex(aberto ? null : index)}
+                        >
+                          <span>
+                            {ciclo.nome}
+                            {ehAtual && <span className="status-badge status-tone-info cronograma-ciclo-badge">Atual</span>}
+                          </span>
+                          <span className="cronograma-ciclo-dias">
+                            Dia {ciclo.diaInicio}–{ciclo.diaFim}
+                          </span>
+                        </button>
+                        {aberto && (
+                          <p className="field-hint cronograma-ciclo-corpo">
+                            {ehAtual && implementacaoSelecionadaMobile.diaCiclo
+                              ? `Hoje é o dia ${implementacaoSelecionadaMobile.diaCiclo.dia} da implementação, dentro deste ciclo.`
+                              : 'Consulte os marcos abaixo e a implementação para o detalhamento completo deste ciclo.'}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="cronograma-marcos-mobile">
+                  <h3 className="cronograma-marcos-titulo">Marcos</h3>
+                  {implementacaoSelecionadaMobile.marcos.length === 0 && (
+                    <p className="field-hint">Nenhum marco registrado ainda.</p>
+                  )}
+                  <ul className="cronograma-marcos-lista">
+                    {implementacaoSelecionadaMobile.marcos.map((marco) => (
+                      <li key={marco.label} className="cronograma-marco-item">
+                        <span className="cronograma-marco-ponto" />
+                        <div>
+                          <p className="cronograma-marco-label">{marco.label}</p>
+                          <p className="cronograma-marco-data">{formatarMarcoMobile(marco.valor, marco.apenasData)}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="field-hint">
+                    Check-ins, reuniões e remarcações completas ficam na{' '}
+                    <Link to={`/implementacoes/${implementacaoSelecionadaMobile.implementacao.id}?aba=reunioes`}>
+                      implementação
+                    </Link>
+                    .
+                  </p>
+                </div>
+              </>
             )}
           </div>
 
-          <div className="gantt-scroll">
+          <div className="cronograma-desktop">
+            <div className="gantt-legenda">
+              {(
+                [
+                  'preparacao_crm',
+                  'crm_em_configuracao',
+                  'treinamento_agendado',
+                  'automacoes',
+                  'entrega',
+                ] as ImplementacaoStatus[]
+              ).map(
+                (status) => (
+                  <span key={status} className="gantt-legenda-item">
+                    <span className="gantt-legenda-cor" style={{ background: CORES_FASE[status] }} />
+                    {IMPLEMENTACAO_STATUS_LABELS[status]}
+                  </span>
+                ),
+              )}
+            </div>
+
+            <div className="gantt-scroll">
             <div className="gantt-inner" style={{ minWidth: larguraTotal + 200 }}>
               <div className="gantt-row gantt-row-ruler">
                 <div className="gantt-row-label" />
@@ -248,6 +439,7 @@ export function Cronograma() {
                 );
               })}
             </div>
+          </div>
           </div>
         </>
       )}

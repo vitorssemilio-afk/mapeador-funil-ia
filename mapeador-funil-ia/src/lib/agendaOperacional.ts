@@ -79,6 +79,18 @@ export type ItemAgendaOperacional = {
   atividadeId: string | null;
 };
 
+// Padroniza o texto de prazo (Prompt 59, seção 21) — "Vence em -8d" não
+// fazia sentido pro usuário quando o prazo já tinha passado. Só a
+// APRESENTAÇÃO muda aqui; `resumo.diasRestantes` continua calculado do
+// mesmo jeito (trialKommo.ts), negativo e tudo, pra `atrasado` continuar
+// correto.
+function rotuloPrazoDias(diasRestantes: number): string {
+  if (diasRestantes > 0) return `Vence em ${diasRestantes} dia${diasRestantes === 1 ? '' : 's'}`;
+  if (diasRestantes === 0) return 'Vence hoje';
+  const atraso = Math.abs(diasRestantes);
+  return `Vencido há ${atraso} dia${atraso === 1 ? '' : 's'}`;
+}
+
 function inicioDoDia(data: Date): Date {
   const copia = new Date(data);
   copia.setHours(0, 0, 0, 0);
@@ -240,7 +252,7 @@ function itensDeTrial(
       responsavel: nomeConsultor(implementacao?.consultor_responsavel_id ?? null, consultores),
       data: resumo.vencimento,
       aguardando: null,
-      status: `Vence em ${resumo.diasRestantes}d`,
+      status: rotuloPrazoDias(resumo.diasRestantes),
       acaoRecomendada: `Solicitar extensão ${resumo.proximaExtensao.rotulo} antes do vencimento`,
       atrasado: resumo.diasRestantes < 0,
       implementacaoId: implementacao?.id ?? null,
