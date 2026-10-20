@@ -113,6 +113,9 @@ export function FormularioAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [tipoAtivo, setTipoAtivo] = useState<MapeamentoTipo>('vendas');
+  // "•••" por pergunta, só pra largura mobile (card tem id próprio porque
+  // várias listas de perguntas — uma por bloco — coexistem na tela).
+  const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
 
   const [mostrarFormBloco, setMostrarFormBloco] = useState(false);
   const [tituloNovoBloco, setTituloNovoBloco] = useState('');
@@ -483,7 +486,7 @@ export function FormularioAdmin() {
               </div>
             </div>
 
-            <div className="table-wrap">
+            <div className="responsive-table-wrap table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -548,6 +551,79 @@ export function FormularioAdmin() {
                   )}
                 </tbody>
               </table>
+            </div>
+
+            {/* Cards mobile (Prompt 60, seção 7/9/10) — reordenar continua
+                por botões ↑/↓ (nunca drag-and-drop no celular), "Editar"
+                como ação principal, "Excluir" (destrutiva, já com
+                confirmação) atrás do menu "•••" em vez de 4 botões
+                pequenos lado a lado. */}
+            <div className="responsive-card-list">
+              {perguntasDoBloco(bloco.id).map((pergunta, perguntaIndex, lista) => {
+                const menuId = `pergunta-${pergunta.id}`;
+                return (
+                  <div key={pergunta.id} className="card entity-card">
+                    <div className="entity-card-header">
+                      <span className="entity-card-title">{pergunta.label}</span>
+                    </div>
+                    <div className="entity-card-badges">
+                      <span className="status-badge status-tone-neutral">{TIPO_LABELS[pergunta.tipo]}</span>
+                      {pergunta.obrigatoria && <span className="status-badge status-tone-warning">Obrigatória</span>}
+                    </div>
+                    <div className="entity-card-rows">
+                      <div className="entity-card-row">
+                        <span className="entity-card-row-label">Condição</span>
+                        <span className="entity-card-row-value">{condicaoLabel(pergunta) ?? '—'}</span>
+                      </div>
+                      <div className="entity-card-row">
+                        <span className="entity-card-row-label">Usada na IA</span>
+                        <span className="entity-card-row-value">{pergunta.incluir_na_geracao_ia ? 'Sim' : 'Não'}</span>
+                      </div>
+                    </div>
+                    <div className="entity-card-actions">
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => handleMoverPergunta(pergunta, -1)}
+                        disabled={perguntaIndex === 0}
+                        title="Mover para cima"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        onClick={() => handleMoverPergunta(pergunta, 1)}
+                        disabled={perguntaIndex === lista.length - 1}
+                        title="Mover para baixo"
+                      >
+                        ↓
+                      </button>
+                      <button type="button" className="btn btn-secondary" onClick={() => abrirEdicaoPergunta(pergunta)}>
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary entity-card-menu-toggle"
+                        aria-label={menuAbertoId === menuId ? 'Fechar ações' : 'Mais ações'}
+                        onClick={() => setMenuAbertoId((atual) => (atual === menuId ? null : menuId))}
+                      >
+                        •••
+                      </button>
+                    </div>
+                    {menuAbertoId === menuId && (
+                      <div className="entity-card-menu-painel">
+                        <button type="button" className="btn btn-danger" onClick={() => handleExcluirPergunta(pergunta)}>
+                          Excluir pergunta
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {perguntasDoBloco(bloco.id).length === 0 && (
+                <p className="field-hint">Nenhuma pergunta neste bloco ainda.</p>
+              )}
             </div>
 
             {formPergunta && formPergunta.bloco_id === bloco.id ? (

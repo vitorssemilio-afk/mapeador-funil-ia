@@ -2273,8 +2273,8 @@ export function ImplementacaoDetalhe() {
 
         {ata.conteudo_original && (
           <details>
-            <summary className="field-hint">Conteúdo original</summary>
-            <p className="field-hint" style={{ whiteSpace: 'pre-wrap' }}>
+            <summary className="field-hint">Transcrição completa</summary>
+            <p className="field-hint" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.6 }}>
               {ata.conteudo_original}
             </p>
           </details>
@@ -4468,10 +4468,13 @@ export function ImplementacaoDetalhe() {
               .filter((a) => a.status === 'requer_revisao' || a.status === 'erro_vinculo')
               .map((ata) => (
                 <section key={ata.id} className="card form-card">
-                  <p className="form-error">
-                    Esta ata precisa ser vinculada a uma reunião.
-                    {ata.erro_mensagem ? ` (${ata.erro_mensagem})` : ''}
-                  </p>
+                  <p className="ops-empty-hint">Vinculação pendente — esta ata ainda precisa ser associada a uma reunião.</p>
+                  {ata.erro_mensagem && (
+                    <details className="revisao-ata-erro-tecnico">
+                      <summary className="field-hint">Detalhe técnico</summary>
+                      <p className="form-error">{ata.erro_mensagem}</p>
+                    </details>
+                  )}
                   {ata.resumo && <p className="field-hint">{ata.resumo}</p>}
                   {vinculandoAtaId === ata.id && formVinculoReuniao ? (
                     <div className="form-grid">
