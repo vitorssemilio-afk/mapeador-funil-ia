@@ -14,11 +14,18 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import type { CategoriaNotificacao, Cliente, Consultor } from '../types/database';
 
-type FiltroRapido = 'todas' | 'nao_lidas' | 'criticas' | CategoriaNotificacao;
+type FiltroRapido = 'todas' | 'nao_lidas' | 'resolvidas' | 'criticas' | CategoriaNotificacao;
 
-const FILTROS_RAPIDOS: { valor: FiltroRapido; label: string }[] = [
-  { valor: 'todas', label: 'Todas' },
+// Prompt 60, seção 35 — "Não lidas | Todas | Resolvidas" são os três
+// estados principais e ficam sempre visíveis; o resto (prioridade e
+// categorias) vai pro mesmo drawer de filtros secundários no mobile.
+const FILTROS_PRINCIPAIS: { valor: FiltroRapido; label: string }[] = [
   { valor: 'nao_lidas', label: 'Não lidas' },
+  { valor: 'todas', label: 'Todas' },
+  { valor: 'resolvidas', label: 'Resolvidas' },
+];
+
+const FILTROS_SECUNDARIOS: { valor: FiltroRapido; label: string }[] = [
   { valor: 'criticas', label: 'Críticas' },
   { valor: 'implementacao', label: 'Implementação' },
   { valor: 'trial', label: 'Trial' },
@@ -48,6 +55,10 @@ export function CentralNotificacoes() {
   const [filtroConsultor, setFiltroConsultor] = useState('');
   const [filtroPeriodo, setFiltroPeriodo] = useState<Periodo>('todos');
   const [mostrarArquivadas, setMostrarArquivadas] = useState(false);
+  const [drawerFiltrosAberto, setDrawerFiltrosAberto] = useState(false);
+  // "•••" por card, só pra largura mobile (Prompt 60, seção 41) — desktop
+  // continua mostrando os 3 botões lado a lado, sem nenhuma mudança.
+  const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
 
   async function carregar() {
     setLoading(true);
@@ -94,10 +105,12 @@ export function CentralNotificacoes() {
       if (n.arquivada !== mostrarArquivadas) return false;
 
       if (filtroRapido === 'nao_lidas' && (n.lida || n.resolvida_em)) return false;
+      else if (filtroRapido === 'resolvidas' && !n.resolvida_em) return false;
       else if (filtroRapido === 'criticas' && n.prioridade !== 'critica') return false;
       else if (
         filtroRapido !== 'todas' &&
         filtroRapido !== 'nao_lidas' &&
+        filtroRapido !== 'resolvidas' &&
         filtroRapido !== 'criticas' &&
         n.categoria !== filtroRapido
       )
@@ -145,6 +158,17 @@ export function CentralNotificacoes() {
 
   const naoLidasCount = notificacoes.filter((n) => !n.lida && !n.arquivada && !n.resolvida_em).length;
 
+  // Contagem só do que mora dentro do drawer mobile (sem os 3 chips
+  // principais, que ficam fora dele e sempre visíveis) — mostrada no botão
+  // "Filtros (N)", mesmo padrão já usado em Clientes.tsx.
+  const quantidadeFiltrosExtra = [
+    FILTROS_SECUNDARIOS.some((f) => f.valor === filtroRapido),
+    !!filtroCliente,
+    !!filtroConsultor,
+    filtroPeriodo !== 'todos',
+    mostrarArquivadas,
+  ].filter(Boolean).length;
+
   return (
     <div className="page">
       <div className="page-header">
@@ -164,8 +188,12 @@ export function CentralNotificacoes() {
 
       {error && <p className="form-error">{error}</p>}
 
-      <div className="notification-filtros-rapidos">
-        {FILTROS_RAPIDOS.map((f) => (
+      {/* Três estados principais sempre visíveis (Prompt 60, seção 35); o
+          resto (prioridade, categorias, cliente/consultor/período) mora no
+          mesmo drawer "Filtros" do mobile — no desktop o drawer já aparece
+          todo aberto, sem nenhuma mudança de comportamento. */}
+      <div className="notification-filtros-rapidos notification-filtros-principais">
+        {FILTROS_PRINCIPAIS.map((f) => (
           <button
             key={f.valor}
             type="button"
@@ -175,50 +203,87 @@ export function CentralNotificacoes() {
             {f.label}
           </button>
         ))}
+        <button
+          type="button"
+          className="btn btn-secondary mobile-filtros-trigger"
+          onClick={() => setDrawerFiltrosAberto(true)}
+        >
+          Filtros{quantidadeFiltrosExtra > 0 ? ` (${quantidadeFiltrosExtra})` : ''}
+        </button>
       </div>
 
-      <div className="form-grid notification-filtros-extra">
-        <label className="field">
-          <span>Cliente</span>
-          <select value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
-            <option value="">Todos</option>
-            {clientes
-              .slice()
-              .sort((a, b) => a.nome_empresa.localeCompare(b.nome_empresa))
-              .map((c) => (
+      {drawerFiltrosAberto && (
+        <button
+          type="button"
+          className="mobile-filtros-drawer-backdrop"
+          aria-label="Fechar filtros"
+          onClick={() => setDrawerFiltrosAberto(false)}
+        />
+      )}
+
+      <div className={`notification-filtros-secundarios${drawerFiltrosAberto ? ' mobile-filtros-drawer-aberta' : ''}`}>
+        <div className="notification-filtros-rapidos">
+          {FILTROS_SECUNDARIOS.map((f) => (
+            <button
+              key={f.valor}
+              type="button"
+              className={`filtro-chip${filtroRapido === f.valor ? ' filtro-chip-ativo' : ''}`}
+              onClick={() => setFiltroRapido(f.valor)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="form-grid notification-filtros-extra">
+          <label className="field">
+            <span>Cliente</span>
+            <select value={filtroCliente} onChange={(e) => setFiltroCliente(e.target.value)}>
+              <option value="">Todos</option>
+              {clientes
+                .slice()
+                .sort((a, b) => a.nome_empresa.localeCompare(b.nome_empresa))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome_empresa}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Consultor</span>
+            <select value={filtroConsultor} onChange={(e) => setFiltroConsultor(e.target.value)}>
+              <option value="">Todos</option>
+              {consultores.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.nome_empresa}
+                  {c.nome}
                 </option>
               ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Consultor</span>
-          <select value={filtroConsultor} onChange={(e) => setFiltroConsultor(e.target.value)}>
-            <option value="">Todos</option>
-            {consultores.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Período</span>
-          <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value as Periodo)}>
-            <option value="todos">Todo o período</option>
-            <option value="7dias">Últimos 7 dias</option>
-            <option value="30dias">Últimos 30 dias</option>
-          </select>
-        </label>
-        <label className="option-checkbox notification-filtro-arquivadas">
-          <input
-            type="checkbox"
-            checked={mostrarArquivadas}
-            onChange={(e) => setMostrarArquivadas(e.target.checked)}
-          />
-          <span>Mostrar arquivadas</span>
-        </label>
+            </select>
+          </label>
+          <label className="field">
+            <span>Período</span>
+            <select value={filtroPeriodo} onChange={(e) => setFiltroPeriodo(e.target.value as Periodo)}>
+              <option value="todos">Todo o período</option>
+              <option value="7dias">Últimos 7 dias</option>
+              <option value="30dias">Últimos 30 dias</option>
+            </select>
+          </label>
+          <label className="option-checkbox notification-filtro-arquivadas">
+            <input
+              type="checkbox"
+              checked={mostrarArquivadas}
+              onChange={(e) => setMostrarArquivadas(e.target.checked)}
+            />
+            <span>Mostrar arquivadas</span>
+          </label>
+        </div>
+        {drawerFiltrosAberto && (
+          <div className="mobile-filtros-drawer-acoes">
+            <button type="button" className="btn btn-primary" onClick={() => setDrawerFiltrosAberto(false)}>
+              Aplicar filtros
+            </button>
+          </div>
+        )}
       </div>
 
       {loading && <p className="page-loading">Carregando…</p>}
@@ -257,7 +322,8 @@ export function CentralNotificacoes() {
                   Cliente: <strong>{nomeCliente(n.cliente_id)}</strong>
                 </p>
               )}
-              <div className="notification-card-acoes">
+              {/* Desktop intacto: os 3 botões continuam lado a lado. */}
+              <div className="notification-card-acoes notification-card-acoes-desktop">
                 {n.rota && (
                   <button type="button" className="btn btn-primary" onClick={() => handleAbrir(n)}>
                     Abrir
@@ -278,6 +344,41 @@ export function CentralNotificacoes() {
                   </button>
                 )}
               </div>
+
+              {/* Mobile: só a ação principal + "•••" com o resto (seção 41). */}
+              <div className="notification-card-acoes notification-card-acoes-mobile">
+                {n.rota && (
+                  <button type="button" className="btn btn-primary" onClick={() => handleAbrir(n)}>
+                    Abrir
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-secondary entity-card-menu-toggle"
+                  aria-label={menuAbertoId === n.id ? 'Fechar ações' : 'Mais ações'}
+                  onClick={() => setMenuAbertoId((atual) => (atual === n.id ? null : n.id))}
+                >
+                  •••
+                </button>
+              </div>
+              {menuAbertoId === n.id && (
+                <div className="entity-card-menu-painel notification-card-acoes-mobile">
+                  {n.lida ? (
+                    <button type="button" className="btn btn-secondary" onClick={() => handleMarcarNaoLida(n)}>
+                      Marcar como não lida
+                    </button>
+                  ) : (
+                    <button type="button" className="btn btn-secondary" onClick={() => handleMarcarLida(n)}>
+                      Marcar como lida
+                    </button>
+                  )}
+                  {!n.arquivada && (
+                    <button type="button" className="btn btn-secondary" onClick={() => handleArquivar(n)}>
+                      Arquivar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

@@ -3049,6 +3049,17 @@ a.entity-card {
   margin: 0;
 }
 
+/* Prompt 60, seção 28 — detalhe técnico de erro de vínculo de ata fica
+   recolhido por padrão; a frase amigável acima (.ops-empty-hint) é o que
+   aparece primeiro. */
+.revisao-ata-erro-tecnico {
+  margin-top: 6px;
+}
+
+.revisao-ata-erro-tecnico .form-error {
+  margin-top: 6px;
+}
+
 .ops-alert-list {
   list-style: none;
   margin: 0;
@@ -4042,6 +4053,50 @@ a.entity-card {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
+}
+
+/* Prompt 60, seção 34/35/41 — chips principais sempre visíveis + resto dos
+   filtros no mesmo drawer mobile de Clientes.tsx (.mobile-filtros-trigger/
+   .mobile-filtros-drawer-backdrop/.mobile-filtros-drawer-acoes, seção 9).
+   Ações secundárias do card (ler/arquivar) viram "•••" só no mobile —
+   desktop continua com os 3 botões lado a lado, sem nenhuma mudança. */
+.notification-filtros-principais {
+  align-items: center;
+}
+
+.notification-card-acoes-mobile {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .notification-filtros-secundarios {
+    display: none;
+  }
+
+  .notification-filtros-secundarios.mobile-filtros-drawer-aberta {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    position: fixed;
+    inset: auto 0 0 0;
+    top: 10vh;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    z-index: 30;
+    overflow-y: auto;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  .notification-card-acoes-desktop {
+    display: none;
+  }
+
+  .notification-card-acoes-mobile {
+    display: flex;
+  }
 }
 
 /* ── Busca Global (Command Palette) ── */

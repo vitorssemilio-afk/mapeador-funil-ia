@@ -26,6 +26,16 @@ function tituloAta(ata: AtaReuniao): string {
   return tipoLabel ?? 'Reunião';
 }
 
+// Prompt 60, seção 28 — "não apresentar erro técnico bruto ao usuário". A
+// mensagem de erro original (`erro_mensagem`) continua disponível pra quem
+// precisar investigar (console/suporte), só não é mais a primeira coisa que
+// o consultor vê; o card já deixa claro que a ação é vincular.
+function explicacaoPendencia(ata: AtaReuniao): string {
+  if (!ata.cliente_id) return 'Esta ata ainda precisa ser associada a um cliente e uma implementação.';
+  if (!ata.implementacao_id) return 'Cliente identificado, mas esta ata ainda precisa ser associada a uma implementação.';
+  return 'Esta ata ainda precisa ser associada a uma reunião.';
+}
+
 // Fila de revisão manual das atas que o App de Atas enviou mas o Mapeador
 // não conseguiu vincular automaticamente a uma reunião (status
 // requer_revisao/erro_vinculo — ver webhook-atas e migration 0080, seções
@@ -204,7 +214,13 @@ export function RevisaoAtas() {
                   {new Date(ata.recebido_em).toLocaleString('pt-BR')}
                   {ata.data_reuniao && ` · reunião em ${new Date(ata.data_reuniao).toLocaleString('pt-BR')}`}
                 </p>
-                {ata.erro_mensagem && <p className="form-error">{ata.erro_mensagem}</p>}
+                <p className="ops-empty-hint">Vinculação pendente — {explicacaoPendencia(ata)}</p>
+                {ata.erro_mensagem && (
+                  <details className="revisao-ata-erro-tecnico">
+                    <summary className="field-hint">Detalhe técnico</summary>
+                    <p className="form-error">{ata.erro_mensagem}</p>
+                  </details>
+                )}
                 {ata.resumo && <p>{ata.resumo}</p>}
 
                 <div className="form-grid">
