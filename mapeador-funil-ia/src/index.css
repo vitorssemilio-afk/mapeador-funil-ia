@@ -2972,6 +2972,59 @@ a.entity-card {
 }
 
 /* ============================================================
+   Prompt 63 — redesign da ata de reunião (ImplementacaoDetalhe)
+   ============================================================ */
+
+/* Card da ata: cada seção (resumo/decisões/pendências/próximos passos) em
+   bloco próprio, uma embaixo da outra — nunca mais lado a lado em colunas
+   estreitas (seção 2 do pedido). */
+.ata-card {
+  gap: 20px;
+}
+
+/* Container de leitura confortável pra ata completa expandida (seção 13/15):
+   largura máxima pra não estourar linhas longas, espaçamento generoso entre
+   parágrafos/títulos, listas com recuo. No mobile ocupa a coluna toda. */
+.ata-leitura {
+  max-width: 680px;
+  margin-top: 10px;
+}
+
+.ata-markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  line-height: 1.7;
+  color: var(--color-text);
+}
+
+.ata-markdown h4,
+.ata-markdown h5,
+.ata-markdown h6 {
+  margin: 4px 0 0;
+}
+
+.ata-markdown p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ata-markdown ul,
+.ata-markdown ol {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .ata-leitura {
+    max-width: 100%;
+  }
+}
+
+/* ============================================================
    Operação CRM — dashboard inicial
    ============================================================ */
 

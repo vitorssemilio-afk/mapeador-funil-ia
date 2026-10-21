@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AplicarTemplateModal } from '../components/AplicarTemplateModal';
+import { ListaComPreview } from '../components/ListaComPreview';
 import { AtividadeDetalhesDrawer } from '../components/checklist/AtividadeDetalhesDrawer';
 import { AtividadeGrupo } from '../components/checklist/AtividadeGrupo';
 import { AtividadeLinha } from '../components/checklist/AtividadeLinha';
@@ -75,6 +76,7 @@ import {
   STATUS_TRIAL_TONE,
 } from '../lib/trialKommo';
 import { emOuAposProntoKickoff, emOuAposRevisaoInterna, funilJaGerado } from '../lib/statusFluxo';
+import { renderMarkdown, splitTextoLivreEmItens } from '../lib/markdown';
 import { extrairMensagemErroEdgeFunction } from '../lib/edgeFunctionError';
 import { PX_POR_DIA, calcularEscala, diaParaPx, fasesImplementacao, tempoAteReuniao } from '../lib/cronograma';
 import { supabase } from '../lib/supabaseClient';
@@ -2250,10 +2252,71 @@ export function ImplementacaoDetalhe() {
 
     const acoes = acoesDaAta(ata.id);
     const pendentes = acoes.filter((a) => a.status === 'pendente_revisao');
-    const selecionaveis = pendentes;
+    // Prompt 63, seções 9/10 — na prática o App de Atas quase nunca envia
+    // responsavel_tipo preenchido (confirmado em auditoria real nos dados),
+    // só responsavel_nome em texto livre. Sem isso, toda ação cairia na
+    // mesma seção. Em vez de inventar um responsável, usa só o que já é
+    // exibido na tela (o nome) comparado à lista de consultores já
+    // carregada: nome batendo com um consultor → pendência interna; nome
+    // de outra pessoa → pendência do cliente; sem nome nenhum → interna
+    // (ambiguidade fica com a consultoria, nunca "perdida" pro cliente).
+    function classificarAcao(acao: AtaAcaoIdentificada): 'cliente' | 'interna' {
+      if (acao.responsavel_tipo) return acao.responsavel_tipo;
+      const nome = acao.responsavel_nome?.trim().toLowerCase();
+      if (!nome) return 'interna';
+      const ehConsultor = consultores.some(
+        (c) => nome.includes(c.nome.trim().toLowerCase()) || c.nome.trim().toLowerCase().includes(nome),
+      );
+      return ehConsultor ? 'interna' : 'cliente';
+    }
+    const acoesCliente = acoes.filter((a) => classificarAcao(a) === 'cliente');
+    const acoesInternas = acoes.filter((a) => classificarAcao(a) === 'interna');
+
+    // Prompt 63, seção 12 — o item de uma pendência de ação identificada é o
+    // mesmo markup nas duas seções (cliente/interna), só filtradas pelo
+    // responsavel_tipo já existente desde a migration 0080.
+    function itemAcao(acao: AtaAcaoIdentificada, ataAtual: AtaReuniao) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="observacao-item-header">
+            <span className="observacao-item-meta">
+              <span className={`status-badge status-tone-${STATUS_ACAO_ATA_TONE[acao.status]}`}>
+                {STATUS_ACAO_ATA_LABELS[acao.status]}
+              </span>{' '}
+              <strong style={{ color: 'var(--color-text)' }}>{acao.titulo}</strong>
+            </span>
+            {acao.status === 'pendente_revisao' && (
+              <span>
+                <button type="button" className="btn btn-secondary btn-auto" onClick={() => abrirFormPendenciaDeAcao(acao, ataAtual)}>
+                  Revisar e criar pendência
+                </button>{' '}
+                <button type="button" className="btn btn-ghost btn-auto" onClick={() => handleDescartarAcaoAta(acao, ataAtual)}>
+                  Não virar pendência
+                </button>
+              </span>
+            )}
+            {acao.status === 'convertida_pendencia' && acao.pendencia_id && cliente && (
+              <Link to={`/clientes/${cliente.id}`} className="btn btn-ghost btn-auto">
+                Pendência vinculada — ver
+              </Link>
+            )}
+          </div>
+          {acao.descricao && (
+            <p className="field-hint" style={{ margin: 0 }}>
+              {acao.descricao}
+            </p>
+          )}
+          <p className="field-hint" style={{ margin: 0 }}>
+            Responsável: {acao.responsavel_nome ?? (acao.responsavel_tipo ? RESPONSAVEL_TIPO_ACAO_LABELS[acao.responsavel_tipo] : 'Não identificado')}
+            {' · '}
+            Prazo: {acao.prazo_sugerido ? new Date(`${acao.prazo_sugerido}T12:00:00`).toLocaleDateString('pt-BR') : 'Não informado'}
+          </p>
+        </div>
+      );
+    }
 
     return (
-      <div className="card form-card" style={{ background: 'var(--color-surface-raised)' }}>
+      <div className="card form-card ata-card" style={{ background: 'var(--color-surface-raised)' }}>
         <div className="page-header-actions page-header-actions-split">
           <h3 style={{ marginBottom: 0 }}>Ata</h3>
           <span className={`status-badge status-tone-${STATUS_ATA_TONE[ata.status]}`}>
@@ -2271,98 +2334,83 @@ export function ImplementacaoDetalhe() {
           </p>
         )}
 
-        {ata.resumo && <p className="field-hint">{ata.resumo}</p>}
-
-        {ata.decisoes.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <p style={{ margin: 0 }}>
-              <strong>Decisões</strong>
+        <div>
+          <p style={{ margin: '0 0 6px' }}>
+            <strong>Resumo</strong>
+          </p>
+          {ata.resumo ? (
+            renderMarkdown(ata.resumo)
+          ) : (
+            <p className="field-hint" style={{ margin: 0 }}>
+              Resumo não disponível.
             </p>
-            <ul className="observacoes-lista">
-              {ata.decisoes.map((d, i) => (
-                <li key={i} className="observacao-item">
-                  <strong>{d.titulo ?? 'Decisão'}</strong>
-                  {d.descricao && <p className="field-hint">{d.descricao}</p>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+          )}
+        </div>
 
-        {acoes.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div className="page-header-actions page-header-actions-split">
-              <p style={{ margin: 0 }}>
-                <strong>Ações identificadas</strong> ({pendentes.length} aguardando revisão)
-              </p>
-              {selecionaveis.length > 1 && (
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-auto"
-                  disabled={salvandoPendenciaDeAcao}
-                  onClick={() => handleCriarTodasPendenciasDaAta(ata, selecionaveis)}
-                >
-                  Criar todas ({selecionaveis.length})
-                </button>
-              )}
+        <ListaComPreview
+          titulo="Decisões"
+          vazio="Nenhuma decisão registrada nesta ata."
+          itens={ata.decisoes.map((d, i) => (
+            <div key={i}>
+              <strong>{d.titulo ?? `Decisão ${i + 1}`}</strong>
+              {d.descricao && <p className="field-hint" style={{ margin: '4px 0 0' }}>{d.descricao}</p>}
             </div>
-            <ul className="observacoes-lista">
-              {acoes.map((acao) => (
-                <li key={acao.id} className="observacao-item" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <div className="observacao-item-header">
-                    <span className="observacao-item-meta">
-                      <span className={`status-badge status-tone-${STATUS_ACAO_ATA_TONE[acao.status]}`}>
-                        {STATUS_ACAO_ATA_LABELS[acao.status]}
-                      </span>{' '}
-                      <strong style={{ color: 'var(--color-text)' }}>{acao.titulo}</strong>
-                    </span>
-                    {acao.status === 'pendente_revisao' && (
-                      <span>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-auto"
-                          onClick={() => abrirFormPendenciaDeAcao(acao, ata)}
-                        >
-                          Criar pendência
-                        </button>{' '}
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-auto"
-                          onClick={() => handleDescartarAcaoAta(acao, ata)}
-                        >
-                          Não virar pendência
-                        </button>
-                      </span>
-                    )}
-                    {acao.status === 'convertida_pendencia' && acao.pendencia_id && cliente && (
-                      <Link to={`/clientes/${cliente.id}`} className="btn btn-ghost btn-auto">
-                        Ver pendência
-                      </Link>
-                    )}
-                  </div>
-                  {acao.descricao && (
-                    <p className="field-hint" style={{ margin: 0 }}>
-                      {acao.descricao}
-                    </p>
-                  )}
-                  <p className="field-hint" style={{ margin: 0 }}>
-                    {acao.responsavel_nome ? `Responsável sugerido: ${acao.responsavel_nome}` : 'Responsável não definido'}
-                    {acao.prazo_sugerido ? ` · Prazo sugerido: ${new Date(`${acao.prazo_sugerido}T12:00:00`).toLocaleDateString('pt-BR')}` : ''}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
+          ))}
+        />
+
+        <ListaComPreview
+          titulo="Pendências do cliente"
+          vazio="Nenhuma pendência do cliente identificada nesta ata."
+          itens={acoesCliente.map((acao) => (
+            <div key={acao.id}>{itemAcao(acao, ata)}</div>
+          ))}
+        />
+
+        <ListaComPreview
+          titulo="Pendências internas"
+          vazio="Nenhuma pendência interna identificada nesta ata."
+          itens={acoesInternas.map((acao) => (
+            <div key={acao.id}>{itemAcao(acao, ata)}</div>
+          ))}
+        />
+
+        {pendentes.length > 1 && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-auto"
+            disabled={salvandoPendenciaDeAcao}
+            onClick={() => handleCriarTodasPendenciasDaAta(ata, pendentes)}
+          >
+            Criar todas as pendências ({pendentes.length})
+          </button>
         )}
 
         {ata.conteudo_original && (
           <details>
-            <summary className="field-hint">Transcrição completa</summary>
-            <p className="field-hint" style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.6 }}>
-              {ata.conteudo_original}
-            </p>
+            <summary className="field-hint">Ata completa — expandir documento</summary>
+            <div className="ata-leitura">{renderMarkdown(ata.conteudo_original)}</div>
           </details>
         )}
+      </div>
+    );
+  }
+
+  // Prompt 63, seções 8-11 — os campos manuais da reunião (preenchidos à
+  // mão no form, sem passar pelo App de Atas) são texto livre. Quando o
+  // próprio texto já tem mais de uma linha/marcador, mostra cada linha como
+  // um item (sem inventar responsável/prazo, que esses campos não têm);
+  // com uma linha só, mostra como parágrafo corrido via Markdown.
+  function renderCampoTextoAta(titulo: string, texto: string | null, vazio: string) {
+    const itens = splitTextoLivreEmItens(texto);
+    if (itens) {
+      return <ListaComPreview titulo={titulo} vazio={vazio} itens={itens.map((item, i) => <span key={i}>{item}</span>)} />;
+    }
+    return (
+      <div>
+        <p style={{ margin: '0 0 6px' }}>
+          <strong>{titulo}</strong>
+        </p>
+        {texto ? renderMarkdown(texto) : <p className="field-hint" style={{ margin: 0 }}>{vazio}</p>}
       </div>
     );
   }
@@ -4767,25 +4815,26 @@ export function ImplementacaoDetalhe() {
                           informação e deixava os campos manuais com cara de "quebrado"
                           (tudo em branco). */}
                       {!atasIntegracao.some((a) => a.reuniao_id === reuniao.id) && (
-                        <div className="form-grid">
-                          <p>
-                            <strong>Ata:</strong> {reuniao.ata ?? '—'}
-                          </p>
-                          <p>
-                            <strong>Resumo:</strong> {reuniao.resumo ?? '—'}
-                          </p>
-                          <p>
-                            <strong>Decisões:</strong> {reuniao.decisoes ?? '—'}
-                          </p>
-                          <p>
-                            <strong>Pendências do cliente:</strong> {reuniao.pendencias_cliente ?? '—'}
-                          </p>
-                          <p>
-                            <strong>Pendências internas:</strong> {reuniao.pendencias_internas ?? '—'}
-                          </p>
-                          <p>
-                            <strong>Próximos passos:</strong> {reuniao.proximos_passos ?? '—'}
-                          </p>
+                        <div className="card form-card ata-card" style={{ background: 'var(--color-surface-raised)' }}>
+                          {renderCampoTextoAta('Resumo', reuniao.resumo, 'Resumo não disponível.')}
+                          {renderCampoTextoAta('Decisões', reuniao.decisoes, 'Nenhuma decisão registrada nesta ata.')}
+                          {renderCampoTextoAta(
+                            'Pendências do cliente',
+                            reuniao.pendencias_cliente,
+                            'Nenhuma pendência do cliente identificada nesta ata.',
+                          )}
+                          {renderCampoTextoAta(
+                            'Pendências internas',
+                            reuniao.pendencias_internas,
+                            'Nenhuma pendência interna identificada nesta ata.',
+                          )}
+                          {renderCampoTextoAta('Próximos passos', reuniao.proximos_passos, 'Nenhum próximo passo registrado nesta ata.')}
+                          {reuniao.ata && (
+                            <details>
+                              <summary className="field-hint">Ata completa — expandir documento</summary>
+                              <div className="ata-leitura">{renderMarkdown(reuniao.ata)}</div>
+                            </details>
+                          )}
                         </div>
                       )}
                       {podeRemarcar && remarcandoReuniaoId !== reuniao.id && (
