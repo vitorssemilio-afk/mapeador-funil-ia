@@ -181,13 +181,14 @@ function faseAtualLabel(vendas: Mapeamento | null, implementacao: ImplementacaoC
 }
 
 function proximaAcaoLabel(params: {
+  cliente: Cliente;
   vendas: Mapeamento | null;
   posVenda: Mapeamento | null;
   implementacao: ImplementacaoCrm | null;
   precisaPosVenda: boolean;
   temAtividadeAtrasada: boolean;
 }): string {
-  const { vendas, posVenda, implementacao, precisaPosVenda, temAtividadeAtrasada } = params;
+  const { cliente, vendas, posVenda, implementacao, precisaPosVenda, temAtividadeAtrasada } = params;
 
   if (!vendas) return 'Criar mapeamento de vendas';
   if (vendas.status === 'em_preenchimento') {
@@ -196,6 +197,21 @@ function proximaAcaoLabel(params: {
   if (vendas.status === 'aguardando_esclarecimento') return 'Responder esclarecimento da IA';
   if (vendas.status === 'processando_ia') return 'Aguardando geração do funil';
   if (vendas.status === 'erro') return 'Revisar e tentar gerar o funil de novo';
+  if (vendas.status === 'funil_gerado') return 'Revisar funil';
+  if (vendas.status === 'em_revisao_interna') return 'Concluir revisão interna';
+
+  // Prompt 62, ETAPA 4/6/7 (tabela da seção 33) — a partir daqui o Kickoff já
+  // pode ter sido agendado/realizado mesmo que a implementação ainda não
+  // exista no banco (ela só é criada quando alguém clica em "Iniciar
+  // implementação de CRM"), então a leitura de cliente.kickoff_* precisa
+  // valer tanto com quanto sem `implementacao` — nunca repete o cálculo do
+  // motor de cronograma, só lê os dois marcos já oficiais.
+  if (vendas.status === 'pronto_kickoff' || vendas.status === 'kickoff_agendado') {
+    if (!cliente.kickoff_agendado_para && !cliente.kickoff_realizado_em) return 'Agendar Kickoff';
+    if (!cliente.kickoff_realizado_em) return 'Acompanhar reunião de Kickoff';
+    return 'Registrar validação do cliente';
+  }
+  if (vendas.status === 'ajustes_solicitados') return 'Ajustar funil';
 
   if (!implementacao) {
     return funilValidado(vendas.status)
@@ -358,6 +374,7 @@ export function construirResumoClientes(params: {
       }),
       progresso: implementacao ? progressoImplementacao(implementacao.id, atividades, statusRows) : null,
       proximaAcao: proximaAcaoLabel({
+        cliente,
         vendas,
         posVenda,
         implementacao,

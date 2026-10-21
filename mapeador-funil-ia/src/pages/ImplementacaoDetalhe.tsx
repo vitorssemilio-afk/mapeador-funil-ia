@@ -53,8 +53,7 @@ import {
   USO_RELATORIOS_DECISAO_LABELS,
 } from '../lib/diagnosticoAdocao';
 import {
-  aprovarVersao,
-  statusMapeamentoPorValidacao,
+  registrarValidacaoFunil,
   VALIDACAO_FUNIL_KICKOFF_LABELS,
   type ValidacaoFunilKickoff,
 } from '../lib/funilVersoes';
@@ -105,6 +104,7 @@ import type {
   ImplementacaoStatus,
   ImplementacaoStatusHistorico,
   Mapeamento,
+  MapeamentoStatus,
   ImpactoResponsavel,
   ImplementacaoConsultorHistorico,
   MarcoRemarcacao,
@@ -385,8 +385,16 @@ export function ImplementacaoDetalhe() {
   const [editandoReuniaoTipo, setEditandoReuniaoTipo] = useState<TipoReuniao | null>(null);
   const [editandoReuniaoId, setEditandoReuniaoId] = useState<string | null>(null);
   const [formReuniao, setFormReuniao] = useState<FormReuniao | null>(null);
-  const [statusOriginalReuniaoEmEdicao, setStatusOriginalReuniaoEmEdicao] = useState<StatusReuniao | null>(null);
   const [validacaoFunilKickoff, setValidacaoFunilKickoff] = useState<ValidacaoFunilKickoff | ''>('');
+  // Prompt 62 — "Registrar validação do cliente" é uma seção própria
+  // (aberta/fechada por este estado), independente do formulário de
+  // edição da reunião — pode ser usada a qualquer momento depois que o
+  // Kickoff foi realizado, inclusive dias depois (ETAPA 7/validação
+  // posterior, seção 27).
+  const [validandoFunilAberto, setValidandoFunilAberto] = useState(false);
+  const [reuniaoKickoffParaValidar, setReuniaoKickoffParaValidar] = useState<string | null>(null);
+  const [salvandoValidacaoFunilKickoff, setSalvandoValidacaoFunilKickoff] = useState(false);
+  const [erroValidacaoFunilKickoff, setErroValidacaoFunilKickoff] = useState<string | null>(null);
   const [salvandoReuniao, setSalvandoReuniao] = useState(false);
   const [remarcandoReuniaoId, setRemarcandoReuniaoId] = useState<string | null>(null);
   const [formRemarcacaoReuniao, setFormRemarcacaoReuniao] = useState({
@@ -1369,11 +1377,6 @@ export function ImplementacaoDetalhe() {
     setEditandoReuniaoTipo(tipo);
     setEditandoReuniaoId(reuniao?.id ?? null);
     setFormReuniao(reuniao ? paraFormReuniao(reuniao) : formReuniaoVazio(tipo));
-    setStatusOriginalReuniaoEmEdicao(reuniao?.status ?? null);
-    setValidacaoFunilKickoff('');
-    // Pré-seleciona a versão mais recente só como ponto de partida — a
-    // aprovação exige confirmação explícita (ver handleSalvarReuniao).
-    setVersaoParaValidarKickoff(versoesMapeamentoOrigem[0] ? String(versoesMapeamentoOrigem[0].versao) : '');
   }
 
   // Deep link da Home (seções 9/17/25/26 do resolvedor de ações
@@ -1395,18 +1398,12 @@ export function ImplementacaoDetalhe() {
     setEditandoReuniaoTipo(tipo);
     setEditandoReuniaoId(existente?.id ?? null);
     setFormReuniao(existente ? paraFormReuniao(existente) : formReuniaoVazio(tipo));
-    setStatusOriginalReuniaoEmEdicao(existente?.status ?? null);
-    setValidacaoFunilKickoff('');
-    setVersaoParaValidarKickoff(versoesMapeamentoOrigem[0] ? String(versoesMapeamentoOrigem[0].versao) : '');
   }, [loading, aba, searchParams, reunioes, versoesMapeamentoOrigem]);
 
   function fecharFormReuniao() {
     setEditandoReuniaoTipo(null);
     setEditandoReuniaoId(null);
     setFormReuniao(null);
-    setStatusOriginalReuniaoEmEdicao(null);
-    setValidacaoFunilKickoff('');
-    setVersaoParaValidarKickoff('');
   }
 
   // Kickoff/Treinamento continuam também escrevendo em
@@ -1449,14 +1446,13 @@ export function ImplementacaoDetalhe() {
     setKickoffRealizadoEm(data.kickoff_realizado_em);
   }
 
-  // Só quando o Kickoff está virando "Realizado" agora (não quando já
-  // estava e a edição é só de outro campo) — é o gatilho da pergunta "o
-  // cliente validou o funil?", que não deve reaparecer numa edição comum.
-  const confirmandoRealizacaoKickoff =
-    formReuniao?.tipo === 'kickoff' &&
-    formReuniao.status === 'realizada' &&
-    statusOriginalReuniaoEmEdicao !== 'realizada';
-
+  // Prompt 62, regra inegociável #2 e #5 — agendar/realizar o Kickoff
+  // (campos da própria reunião) e "o cliente validou o funil?" (decisão do
+  // cliente sobre o conteúdo) são ações independentes. Marcar a reunião
+  // como realizada nunca mais exige nem grava essa decisão no mesmo clique
+  // — ver a seção própria "Validação do funil com o cliente", renderizada
+  // junto do card da reunião de Kickoff, que chama registrarValidacaoFunil
+  // isoladamente, a qualquer momento (inclusive bem depois da reunião).
   async function handleSalvarReuniao(e: FormEvent) {
     e.preventDefault();
     if (!implementacao || !formReuniao) return;
@@ -1464,24 +1460,6 @@ export function ImplementacaoDetalhe() {
     if (!clienteId) {
       setError('Esta implementação ainda não está vinculada a um cliente.');
       return;
-    }
-    if (confirmandoRealizacaoKickoff && !validacaoFunilKickoff) {
-      setError('Selecione se o cliente validou o funil antes de confirmar o Kickoff como realizado.');
-      return;
-    }
-    // P1-A1: a versão aprovada precisa ser uma escolha explícita e
-    // confirmada — nunca inferida automaticamente como "a mais recente".
-    if (confirmandoRealizacaoKickoff && validacaoFunilKickoff !== 'precisa_revisar') {
-      if (!versaoParaValidarKickoff) {
-        setError('Selecione qual versão do funil está sendo validada.');
-        return;
-      }
-      const confirmado = await confirmarAcao({
-        titulo: `Aprovar a Versão ${versaoParaValidarKickoff}?`,
-        descricao: 'Esta versão passa a ser a usada na implementação.',
-        confirmarLabel: 'Aprovar',
-      });
-      if (!confirmado) return;
     }
 
     setSalvandoReuniao(true);
@@ -1531,34 +1509,86 @@ export function ImplementacaoDetalhe() {
 
     if (cliente) await sincronizarMarcoCliente(data, cliente);
 
-    if (confirmandoRealizacaoKickoff && mapeamentoOrigem) {
-      const novoStatusMapeamento = statusMapeamentoPorValidacao(validacaoFunilKickoff as ValidacaoFunilKickoff);
+    // Prompt 62, ETAPA 4 — só sincroniza o RÓTULO do status do funil
+    // ("Pronto para Kickoff" → "Kickoff agendado") quando o Kickoff acabou
+    // de ganhar uma data de verdade; nunca mexe em validação/aprovação
+    // aqui. Não reage a remarcação nem a edição de uma reunião já agendada
+    // (só a primeira vez que ela sai de "sem data/status" pra ter uma).
+    if (
+      !editandoReuniaoId &&
+      formReuniao.tipo === 'kickoff' &&
+      mapeamentoOrigem?.status === 'pronto_kickoff' &&
+      data.status !== 'nao_agendada' &&
+      data.status !== 'cancelada'
+    ) {
       const { data: mapeamentoAtualizado, error: statusError } = await supabase
         .from('mapeamentos')
-        .update({ status: novoStatusMapeamento })
+        .update({ status: 'kickoff_agendado' satisfies MapeamentoStatus })
         .eq('id', mapeamentoOrigem.id)
         .select('id, nome_negocio, enviado_em, created_at, status')
         .single();
-
-      if (statusError) {
-        setError(statusError.message);
-      } else {
-        setMapeamentoOrigem(mapeamentoAtualizado);
-      }
-
-      if (novoStatusMapeamento === 'funil_validado') {
-        const { error: aprovacaoError } = await aprovarVersao(
-          supabase,
-          mapeamentoOrigem.id,
-          Number(versaoParaValidarKickoff),
-          { aprovadoPorEmail: user?.email ?? null, kickoffReuniaoId: data.id },
-        );
-        if (aprovacaoError) setError(aprovacaoError);
-      }
+      if (!statusError) setMapeamentoOrigem(mapeamentoAtualizado);
     }
 
     setSalvandoReuniao(false);
     fecharFormReuniao();
+  }
+
+  function abrirValidarFunilKickoff(reuniaoKickoffId: string | null) {
+    setValidandoFunilAberto(true);
+    setValidacaoFunilKickoff('');
+    setVersaoParaValidarKickoff(versoesMapeamentoOrigem[0] ? String(versoesMapeamentoOrigem[0].versao) : '');
+    setErroValidacaoFunilKickoff(null);
+    setReuniaoKickoffParaValidar(reuniaoKickoffId);
+  }
+
+  function fecharValidarFunilKickoff() {
+    setValidandoFunilAberto(false);
+    setValidacaoFunilKickoff('');
+    setVersaoParaValidarKickoff('');
+    setErroValidacaoFunilKickoff(null);
+  }
+
+  // Prompt 62, ETAPA 7 — ação isolada: só registra a decisão do cliente
+  // sobre o funil (validado / ajustes solicitados), nunca mexe em
+  // reunioes nem em clientes.kickoff_realizado_em. Pode ser chamada a
+  // qualquer momento depois do Kickoff realizado, inclusive mais de uma
+  // vez (ex: ajustes solicitados → nova versão → validada depois —
+  // seção 27, "validação posterior").
+  async function handleRegistrarValidacaoFunilKickoff() {
+    if (!mapeamentoOrigem || !validacaoFunilKickoff) {
+      setErroValidacaoFunilKickoff('Selecione se o cliente validou o funil.');
+      return;
+    }
+
+    if (validacaoFunilKickoff !== 'precisa_revisar') {
+      const confirmado = await confirmarAcao({
+        titulo: `Aprovar a Versão ${versaoParaValidarKickoff}?`,
+        descricao: 'Esta versão passa a ser a usada na implementação.',
+        confirmarLabel: 'Aprovar',
+      });
+      if (!confirmado) return;
+    }
+
+    setSalvandoValidacaoFunilKickoff(true);
+    setErroValidacaoFunilKickoff(null);
+
+    const { status, error: registroError } = await registrarValidacaoFunil(
+      supabase,
+      mapeamentoOrigem.id,
+      validacaoFunilKickoff,
+      versaoParaValidarKickoff,
+      { aprovadoPorEmail: user?.email ?? null, kickoffReuniaoId: reuniaoKickoffParaValidar },
+    );
+
+    setSalvandoValidacaoFunilKickoff(false);
+
+    if (registroError) {
+      setErroValidacaoFunilKickoff(registroError);
+      return;
+    }
+    if (status) setMapeamentoOrigem({ ...mapeamentoOrigem, status });
+    fecharValidarFunilKickoff();
   }
 
   function abrirRemarcacaoReuniao(reuniao: Reuniao) {
@@ -1694,55 +1724,11 @@ export function ImplementacaoDetalhe() {
           </label>
         </div>
 
-        {confirmandoRealizacaoKickoff && (
-          <fieldset className="field">
-            <legend>O cliente validou o funil?</legend>
-            {(Object.entries(VALIDACAO_FUNIL_KICKOFF_LABELS) as [ValidacaoFunilKickoff, string][]).map(
-              ([valor, rotulo]) => (
-                <label key={valor} className="option-checkbox">
-                  <input
-                    type="radio"
-                    name="validacao-funil-kickoff"
-                    required
-                    checked={validacaoFunilKickoff === valor}
-                    onChange={() => setValidacaoFunilKickoff(valor)}
-                  />
-                  <span>{rotulo}</span>
-                </label>
-              ),
-            )}
-            <span className="field-hint">
-              {validacaoFunilKickoff === 'precisa_revisar'
-                ? 'O funil da implementação vai para "Ajustes solicitados".'
-                : validacaoFunilKickoff
-                  ? 'O funil da implementação vai para "Funil validado".'
-                  : 'Isso também atualiza o status do funil desta implementação.'}
-            </span>
-          </fieldset>
-        )}
-
-        {confirmandoRealizacaoKickoff && validacaoFunilKickoff && validacaoFunilKickoff !== 'precisa_revisar' && (
-          <label className="field">
-            <span>Qual versão do funil está sendo validada?</span>
-            <select
-              required
-              value={versaoParaValidarKickoff}
-              onChange={(e) => setVersaoParaValidarKickoff(e.target.value)}
-            >
-              <option value="">Selecione…</option>
-              {versoesMapeamentoOrigem.map((v) => (
-                <option key={v.versao} value={v.versao}>
-                  Versão {v.versao}
-                  {v.status === 'aprovada' ? ' — já aprovada' : ' — rascunho'}
-                  {' · '}
-                  {new Date(v.created_at).toLocaleDateString('pt-BR')}
-                </option>
-              ))}
-            </select>
-            <span className="field-hint">
-              Só essa versão será marcada como aprovada — outras versões em rascunho continuam como estão.
-            </span>
-          </label>
+        {formReuniao.tipo === 'kickoff' && formReuniao.status === 'realizada' && (
+          <p className="field-hint">
+            Marcar como realizado não registra a decisão do cliente sobre o funil — isso fica numa seção própria,
+            logo abaixo, disponível a qualquer momento depois de salvar.
+          </p>
         )}
 
         <label className="field">
@@ -1811,6 +1797,104 @@ export function ImplementacaoDetalhe() {
           </button>
         </div>
       </form>
+    );
+  }
+
+  // Prompt 62, ETAPA 7 — "Validação do funil com o cliente": seção própria,
+  // sempre disponível (e reabrível) depois que o Kickoff já está
+  // "Realizada", sem nenhuma relação com o formulário de edição da reunião
+  // em si. Mostra o estado atual (aguardando / validado / ajustes
+  // solicitados) e deixa registrar — ou corrigir depois — a decisão.
+  function renderValidacaoFunilKickoff(reuniaoKickoffId: string) {
+    if (!mapeamentoOrigem) return null;
+    const statusAtual = mapeamentoOrigem.status;
+
+    return (
+      <div className="card form-card" style={{ marginTop: 12, background: 'var(--color-surface-raised)' }}>
+        <div className="page-header-actions page-header-actions-split">
+          <h3 style={{ marginBottom: 0 }}>Validação do funil com o cliente</h3>
+          {statusAtual === 'funil_validado' && (
+            <span className="status-badge status-tone-success">Validado pelo cliente</span>
+          )}
+          {statusAtual === 'ajustes_solicitados' && (
+            <span className="status-badge status-tone-warning">Ajustes solicitados</span>
+          )}
+          {statusAtual === 'kickoff_agendado' && (
+            <span className="status-badge status-tone-warning">Aguardando validação</span>
+          )}
+        </div>
+
+        {!validandoFunilAberto && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-auto"
+            onClick={() => abrirValidarFunilKickoff(reuniaoKickoffId)}
+          >
+            {statusAtual === 'kickoff_agendado' ? 'Registrar validação do cliente' : 'Registrar nova decisão'}
+          </button>
+        )}
+
+        {validandoFunilAberto && (
+          <>
+            <fieldset className="field">
+              <legend>O cliente validou o funil?</legend>
+              {(Object.entries(VALIDACAO_FUNIL_KICKOFF_LABELS) as [ValidacaoFunilKickoff, string][]).map(
+                ([valor, rotulo]) => (
+                  <label key={valor} className="option-checkbox">
+                    <input
+                      type="radio"
+                      name="validacao-funil-kickoff-standalone"
+                      checked={validacaoFunilKickoff === valor}
+                      onChange={() => setValidacaoFunilKickoff(valor)}
+                    />
+                    <span>{rotulo}</span>
+                  </label>
+                ),
+              )}
+            </fieldset>
+
+            {validacaoFunilKickoff && validacaoFunilKickoff !== 'precisa_revisar' && (
+              <label className="field">
+                <span>Qual versão do funil está sendo validada?</span>
+                <select
+                  required
+                  value={versaoParaValidarKickoff}
+                  onChange={(e) => setVersaoParaValidarKickoff(e.target.value)}
+                >
+                  <option value="">Selecione…</option>
+                  {versoesMapeamentoOrigem.map((v) => (
+                    <option key={v.versao} value={v.versao}>
+                      Versão {v.versao}
+                      {v.status === 'aprovada' ? ' — já aprovada' : ' — rascunho'}
+                      {' · '}
+                      {new Date(v.created_at).toLocaleDateString('pt-BR')}
+                    </option>
+                  ))}
+                </select>
+                <span className="field-hint">
+                  Só essa versão será marcada como aprovada — outras versões em rascunho continuam como estão.
+                </span>
+              </label>
+            )}
+
+            {erroValidacaoFunilKickoff && <p className="form-error">{erroValidacaoFunilKickoff}</p>}
+
+            <div className="wizard-actions">
+              <button type="button" className="btn btn-secondary" onClick={fecharValidarFunilKickoff}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleRegistrarValidacaoFunilKickoff}
+                disabled={salvandoValidacaoFunilKickoff || !validacaoFunilKickoff}
+              >
+                {salvandoValidacaoFunilKickoff ? 'Salvando…' : 'Confirmar'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     );
   }
 
@@ -4714,6 +4798,10 @@ export function ImplementacaoDetalhe() {
                         </button>
                       )}
                       {renderAtaDaReuniao(reuniao)}
+                      {tipo === 'kickoff' &&
+                        reuniao.status === 'realizada' &&
+                        mapeamentoOrigem &&
+                        renderValidacaoFunilKickoff(reuniao.id)}
                     </>
                   ) : (
                     <p className="field-hint">Ainda não agendada.</p>

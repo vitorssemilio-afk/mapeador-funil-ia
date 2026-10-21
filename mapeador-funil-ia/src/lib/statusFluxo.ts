@@ -73,16 +73,25 @@ export const MAPEAMENTO_STATUS_MANUAIS: MapeamentoStatus[] = [
 ];
 
 // Pra qual(is) status dá pra avançar manualmente a partir de cada status
-// atual. 'funil_gerado' só pode ir pra revisão interna; da revisão em
-// diante já é possível seguir o fluxo linear ou voltar um passo.
+// atual, pelos botões genéricos de Mapeamento.tsx. 'funil_gerado' só pode ir
+// pra revisão interna; da revisão em diante já é possível seguir o fluxo
+// linear ou voltar um passo.
+//
+// Prompt 62 (ETAPA 4/7, regras inegociáveis #2 e #5): 'kickoff_agendado' e
+// toda transição que representa uma DECISÃO DO CLIENTE sobre o funil
+// (funil_validado/ajustes_solicitados a partir daqui) saíram desta tabela —
+// elas não são mais um botão genérico de troca de status. 'kickoff_agendado'
+// agora só é alcançado de verdade ao agendar a reunião (ver
+// ImplementacaoDetalhe.tsx, handleSalvarReuniao), e a decisão do cliente só
+// é registrada pela ação própria "Registrar validação do cliente" (mesmo
+// arquivo, registrarValidacaoFunil em funilVersoes.ts) — nunca mais como
+// efeito colateral de avançar um status aqui. 'ajustes_solicitados' →
+// 'em_revisao_interna' continua manual: é o time decidindo agir sobre um
+// pedido já registrado, não uma nova decisão do cliente.
 export const PROXIMOS_STATUS_MAPEAMENTO: Partial<Record<MapeamentoStatus, MapeamentoStatus[]>> = {
   funil_gerado: ['em_revisao_interna'],
   em_revisao_interna: ['pronto_kickoff'],
-  pronto_kickoff: ['kickoff_agendado', 'em_revisao_interna'],
-  kickoff_agendado: ['funil_validado', 'ajustes_solicitados'],
-  ajustes_solicitados: ['em_revisao_interna', 'funil_validado'],
-  funil_validado: ['ajustes_solicitados'],
-  concluido: ['ajustes_solicitados'],
+  ajustes_solicitados: ['em_revisao_interna'],
 };
 
 export const MAPEAMENTO_STATUS_LABELS: Record<MapeamentoStatus, string> = {

@@ -89,3 +89,39 @@ export function rotuloVersao(versao: FunilVersao, versaoMaisRecente: number): st
   const base = versao.versao === versaoMaisRecente ? `Versão ${versao.versao} (atual)` : `Versão ${versao.versao}`;
   return versao.status === 'aprovada' ? `${base} — Aprovada` : base;
 }
+
+// Prompt 62 — ponto único pra "registrar a decisão do cliente sobre o
+// funil" (ETAPA 7), chamado tanto por Mapeamento.tsx quanto por
+// ImplementacaoDetalhe.tsx. Antes essa decisão só existia colada no mesmo
+// clique que marcava o Kickoff como realizado (ver histórico dos dois
+// arquivos) — essa função assume que a realização do Kickoff já aconteceu
+// (ou nem precisa ter acontecido, no caso de "ajustes_solicitados") e só
+// cuida da parte "o que o cliente decidiu", sem nunca tocar em
+// reunioes/clientes.kickoff_realizado_em.
+export async function registrarValidacaoFunil(
+  supabase: SupabaseClient<Database>,
+  mapeamentoId: string,
+  resposta: ValidacaoFunilKickoff,
+  versao: string,
+  params: { aprovadoPorEmail: string | null; kickoffReuniaoId?: string | null },
+): Promise<{ status: 'funil_validado' | 'ajustes_solicitados' | null; error: string | null }> {
+  const novoStatus = statusMapeamentoPorValidacao(resposta);
+
+  if (novoStatus !== 'ajustes_solicitados' && !versao) {
+    return { status: null, error: 'Selecione qual versão do funil está sendo validada.' };
+  }
+
+  const { error: statusError } = await supabase
+    .from('mapeamentos')
+    .update({ status: novoStatus })
+    .eq('id', mapeamentoId);
+
+  if (statusError) return { status: null, error: statusError.message };
+
+  if (novoStatus === 'funil_validado') {
+    const { error: aprovacaoError } = await aprovarVersao(supabase, mapeamentoId, Number(versao), params);
+    if (aprovacaoError) return { status: novoStatus, error: aprovacaoError };
+  }
+
+  return { status: novoStatus, error: null };
+}

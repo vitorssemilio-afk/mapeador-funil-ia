@@ -124,10 +124,43 @@ function acaoDoTextoOficial(resumo: ClienteResumo): AcaoOperacional {
   if (texto === 'Revisar e tentar gerar o funil de novo') {
     return { label: 'Ver detalhes', to: linkMapeamento(vendas?.id, cliente.id), tipo: 'detalhes' };
   }
-  if (texto.startsWith('Avançar o funil')) {
-    // Cobre funil_gerado/em_revisao_interna/ajustes_solicitados — "revisar"
-    // é a ação certa em qualquer um desses pontos da progressão manual.
+  if (texto === 'Revisar funil' || texto === 'Concluir revisão interna' || texto.startsWith('Avançar o funil')) {
+    // 'Avançar o funil' é o fallback genérico que ainda sobra pra algum
+    // status manual não coberto explicitamente aqui.
     return { label: 'Revisar funil', to: linkMapeamento(vendas?.id, cliente.id), tipo: 'funil' };
+  }
+  // Prompt 62, ETAPA 4/6/7 (regras inegociáveis #1/#2/#5) — agendar o
+  // Kickoff, acompanhar a reunião já agendada e registrar a decisão do
+  // cliente sobre o funil são três ações DIFERENTES, mesmo quando o texto
+  // de origem (operacaoResumo.ts) já diferencia os três estados. Todas
+  // apontam pra aba Reuniões da implementação (onde o Kickoff de verdade é
+  // agendado/confirmado — ver ImplementacaoDetalhe.tsx); se a implementação
+  // ainda nem existe (consultor não clicou em "Iniciar implementação" após
+  // o funil ficar pronto pra apresentação), cai no mapeamento, que é onde
+  // esse botão mora agora.
+  if (texto === 'Agendar Kickoff') {
+    return {
+      label: 'Agendar Kickoff',
+      to: resumo.implementacao ? linkReuniao(resumo, 'kickoff') : linkMapeamento(vendas?.id, cliente.id),
+      tipo: 'reuniao',
+    };
+  }
+  if (texto === 'Acompanhar reunião de Kickoff') {
+    return {
+      label: 'Ver Kickoff',
+      to: resumo.implementacao ? linkReuniao(resumo, null) : linkMapeamento(vendas?.id, cliente.id),
+      tipo: 'reuniao',
+    };
+  }
+  if (texto === 'Registrar validação do cliente') {
+    return {
+      label: 'Registrar validação',
+      to: resumo.implementacao ? linkReuniao(resumo, null) : linkMapeamento(vendas?.id, cliente.id),
+      tipo: 'funil',
+    };
+  }
+  if (texto === 'Ajustar funil') {
+    return { label: 'Ajustar funil', to: linkMapeamento(vendas?.id, cliente.id), tipo: 'funil' };
   }
   if (texto === 'Iniciar implementação de CRM') {
     return { label: 'Iniciar implementação', to: `/clientes/${cliente.id}?aba=implementacao`, tipo: 'implementacao' };
