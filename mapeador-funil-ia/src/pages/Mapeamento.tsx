@@ -87,6 +87,11 @@ export function Mapeamento() {
   const [implementacaoExistente, setImplementacaoExistente] = useState<ImplementacaoCrm | null>(null);
   const [iniciandoImplementacao, setIniciandoImplementacao] = useState(false);
   const [implementacaoRecemCriadaId, setImplementacaoRecemCriadaId] = useState<string | null>(null);
+  // Prompt 62.2 — onde navegar depois que o AplicarTemplateModal fechar. Nulo
+  // = destino padrão (abrir a implementação); setado só quando a implementação
+  // foi criada como efeito colateral de "Agendar Kickoff" (seção 3), pra cair
+  // direto no formulário de agendamento em vez da tela geral.
+  const [destinoAposAplicarTemplate, setDestinoAposAplicarTemplate] = useState<string | null>(null);
   const [blocosFormulario, setBlocosFormulario] = useState<BlocoFormulario[]>([]);
   const [mostrarRespostas, setMostrarRespostas] = useState(false);
   const [posVendaExistente, setPosVendaExistente] = useState<MapeamentoType | null>(null);
@@ -389,9 +394,14 @@ export function Mapeamento() {
     navigate('/');
   }
 
-  async function handleIniciarImplementacao() {
-    if (!mapeamento || !user) return;
-    setIniciandoImplementacao(true);
+  // Prompt 62.2, causa raiz (seção 1/3) — este insert nunca define data de
+  // início nem toca marcos de Kickoff; só existia um único gatilho pra ele
+  // (o botão do cabeçalho), e por isso agendar o Kickoff ficava preso atrás
+  // de clicar nele primeiro. Agora "Agendar Kickoff" também pode disparar a
+  // mesma criação, como efeito colateral transparente — nunca ativa o
+  // cronograma (isso continua dependendo só de cliente.kickoff_realizado_em).
+  async function criarImplementacaoCrm(): Promise<ImplementacaoCrm | null> {
+    if (!mapeamento || !user) return null;
 
     const { data, error: insertError } = await supabase
       .from('implementacoes_crm')
@@ -405,13 +415,42 @@ export function Mapeamento() {
       .select()
       .single();
 
-    setIniciandoImplementacao(false);
-
     if (insertError) {
       setError(insertError.message);
+      return null;
+    }
+
+    return data;
+  }
+
+  async function handleIniciarImplementacao() {
+    setIniciandoImplementacao(true);
+    const data = await criarImplementacaoCrm();
+    setIniciandoImplementacao(false);
+    if (!data) return;
+    setDestinoAposAplicarTemplate(null);
+    setImplementacaoRecemCriadaId(data.id);
+  }
+
+  // Prompt 62.2, seção 3/4 — o consultor não pode ser obrigado a clicar em
+  // "Preparar implementação" antes de conseguir agendar o Kickoff. Se a
+  // implementação ainda não existe, cria (sem iniciar nada) e, ao fechar o
+  // AplicarTemplateModal, já cai direto no formulário de agendamento — nunca
+  // numa tela intermediária exigindo um segundo clique.
+  async function handleAgendarKickoff() {
+    const destino = (id: string) =>
+      `/implementacoes/${id}?aba=reunioes${clienteResumo?.kickoff_agendado_para ? '' : '&tipo=kickoff&acao=agendar'}`;
+
+    if (implementacaoExistente) {
+      navigate(destino(implementacaoExistente.id));
       return;
     }
 
+    setIniciandoImplementacao(true);
+    const data = await criarImplementacaoCrm();
+    setIniciandoImplementacao(false);
+    if (!data) return;
+    setDestinoAposAplicarTemplate(destino(data.id));
     setImplementacaoRecemCriadaId(data.id);
   }
 
@@ -623,10 +662,15 @@ export function Mapeamento() {
           {/* Prompt 62, ETAPA 4 — a implementação (e o Agendar Kickoff que
               mora nela) não pode mais depender de funilValidado: o Kickoff
               acontece ANTES da validação do cliente, não depois. Basta a
-              revisão interna estar concluída (pronto_kickoff ou além). Isso
-              corrige a dependência circular que forçava "Validar funil" a
-              criar o Kickoff escondido por baixo dos panos (ver
-              handleValidarFunil). */}
+              revisão interna estar concluída (pronto_kickoff ou além).
+              Prompt 62.2, seção 4 — este botão criava a implementação sob o
+              nome "Iniciar implementação de CRM", dando a impressão de que
+              clicar nele já começava os 40 dias (ele nunca fez isso — só
+              cria o registro em preparacao_crm) e, pior, de que era um passo
+              obrigatório antes do Kickoff. Renomeado pra deixar claro que é
+              só preparação administrativa opcional; "Agendar Kickoff" (seção
+              abaixo) já cria a implementação por conta própria quando
+              necessário, sem depender deste botão. */}
           {mapeamento.tipo === 'vendas' &&
             emOuAposProntoKickoff(mapeamento.status) &&
             (implementacaoExistente ? (
@@ -645,7 +689,7 @@ export function Mapeamento() {
                   onClick={handleIniciarImplementacao}
                   disabled={iniciandoImplementacao}
                 >
-                  {iniciandoImplementacao ? 'Iniciando…' : 'Iniciar implementação de CRM'}
+                  {iniciandoImplementacao ? 'Preparando…' : 'Preparar implementação'}
                 </button>
               )
             ))}
@@ -864,9 +908,16 @@ export function Mapeamento() {
           em diante) agendar o Kickoff, confirmar a realização e registrar a
           decisão do cliente acontecem todos dentro da implementação (aba
           Reuniões), nunca mais aqui: evita duas fontes de verdade pro mesmo
-          Kickoff. O botão "Iniciar/Ver implementação de CRM" no cabeçalho
-          já leva pra lá. */}
-      {mapeamento.tipo === 'vendas' && emOuAposProntoKickoff(mapeamento.status) && (
+          Kickoff.
+          Prompt 62.2, seção 3/5 — antes este botão só aparecia quando
+          `implementacaoExistente` já existia, deixando o consultor sem
+          nenhuma ação quando não existia (precisava subir até o cabeçalho e
+          clicar em "Iniciar implementação" primeiro — exatamente a
+          dependência que este prompt pede pra remover). Agora
+          handleAgendarKickoff cria a implementação por conta própria quando
+          preciso, então o botão aparece sempre que o funil estiver pronto
+          pra apresentação, com ou sem implementação ainda criada. */}
+      {mapeamento.tipo === 'vendas' && emOuAposProntoKickoff(mapeamento.status) && modo === 'tecnica' && (
         <section className="card">
           <h2>Kickoff</h2>
           {clienteResumo?.kickoff_realizado_em ? (
@@ -881,19 +932,27 @@ export function Mapeamento() {
             </p>
           ) : (
             <p className="field-hint">
-              Funil pronto para apresentação. Agende o Kickoff na implementação, aba Reuniões — não é preciso o
-              cliente validar o funil antes de agendar.
+              Funil pronto para apresentação. Não é preciso preparar a implementação nem o cliente validar o funil
+              antes de agendar.
             </p>
           )}
-          {implementacaoExistente && (
-            <Link
-              to={`/implementacoes/${implementacaoExistente.id}?aba=reunioes${
-                clienteResumo?.kickoff_agendado_para ? '' : '&tipo=kickoff&acao=agendar'
-              }`}
-              className="btn btn-primary btn-auto"
-            >
-              {clienteResumo?.kickoff_agendado_para ? 'Ver Kickoff na implementação' : 'Agendar Kickoff'}
+          {clienteResumo?.kickoff_realizado_em && implementacaoExistente ? (
+            <Link to={`/implementacoes/${implementacaoExistente.id}?aba=reunioes`} className="btn btn-secondary btn-auto">
+              Ver na implementação
             </Link>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary btn-auto"
+              onClick={handleAgendarKickoff}
+              disabled={iniciandoImplementacao}
+            >
+              {iniciandoImplementacao
+                ? 'Preparando…'
+                : clienteResumo?.kickoff_agendado_para
+                  ? 'Ver Kickoff na implementação'
+                  : 'Agendar Kickoff'}
+            </button>
           )}
         </section>
       )}
@@ -1163,7 +1222,7 @@ export function Mapeamento() {
       {implementacaoRecemCriadaId && (
         <AplicarTemplateModal
           implementacaoId={implementacaoRecemCriadaId}
-          onConcluido={() => navigate(`/implementacoes/${implementacaoRecemCriadaId}`)}
+          onConcluido={() => navigate(destinoAposAplicarTemplate ?? `/implementacoes/${implementacaoRecemCriadaId}`)}
         />
       )}
     </div>
