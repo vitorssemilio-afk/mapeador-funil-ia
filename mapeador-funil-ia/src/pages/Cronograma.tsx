@@ -222,8 +222,8 @@ export function Cronograma() {
       {!loading && implementacoes.length > 0 && (
         <>
           <div className="cronograma-mobile">
-            <div className="field-row">
-              <label htmlFor="cronograma-cliente-mobile">Cliente</label>
+            <label className="field" htmlFor="cronograma-cliente-mobile">
+              <span>Cliente</span>
               <select
                 id="cronograma-cliente-mobile"
                 value={clienteSelecionadoMobileId}
@@ -236,7 +236,7 @@ export function Cronograma() {
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
 
             {!implementacaoSelecionadaMobile && (
               <p className="field-hint">Escolha um cliente para ver o ciclo e os marcos da implementação.</p>

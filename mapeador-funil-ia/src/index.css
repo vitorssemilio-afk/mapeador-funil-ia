@@ -982,6 +982,12 @@ img.brand-mark {
   gap: 4px;
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 20px;
+  /* Prompt 61, seção 3/44 — Configuracoes.tsx (8 abas), TemplateDetalhe.tsx
+     e as demais telas que usam .tabs não cabem numa linha só em ~375px;
+     isso rola a barra de abas (só ela) em vez de estourar a página
+     inteira. Largura que já cabe sem rolar não muda em nada. */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tab-button {
@@ -992,6 +998,8 @@ img.brand-mark {
   padding: 10px 16px;
   font-size: 14px;
   font-weight: 600;
+  white-space: nowrap;
+  flex: 0 0 auto;
   color: var(--color-text-muted);
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease;
@@ -1058,9 +1066,30 @@ img.brand-mark {
   margin-bottom: 14px;
 }
 
+/* Prompt 61, seção 33/37 — cada bloco agora é um <details>, recolhido por
+   padrão (só o primeiro abre), pra não forçar rolar a página inteira. */
+.freq-bloco > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  list-style: none;
+}
+
+.freq-bloco > summary::-webkit-details-marker {
+  display: none;
+}
+
+.freq-bloco[open] > summary h2 {
+  margin-bottom: 0;
+}
+
 .freq-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  /* Prompt 61 — minmax(360px, 1fr) sozinho estoura a largura em telas
+     bem estreitas (320px): min() limita o mínimo da coluna à largura
+     disponível quando ela é menor que 360px. */
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
   gap: 16px;
 }
 
@@ -2496,7 +2525,7 @@ a.entity-card {
 .etapa-card-corpo,
 .etapa-card-corpo-leitura {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 14px;
   padding-top: 6px;
   border-top: 1px solid var(--color-border);
@@ -3202,6 +3231,16 @@ a.entity-card {
 .ops-search {
   flex: 1 1 220px;
   min-width: 180px;
+}
+
+/* Prompt 61 — 180px de mínimo + o botão "Filtros (N)" ao lado não cabem
+   mais numa única linha a partir de ~320px de viewport; sem isso a busca
+   empurrava o botão pra fora da tela (achado ao testar 320px pela primeira
+   vez nesta rodada). Larguras maiores não mudam em nada. */
+@media (max-width: 360px) {
+  .ops-search {
+    min-width: 0;
+  }
 }
 
 .ops-filters-bar input,
@@ -4064,6 +4103,40 @@ a.entity-card {
   align-items: center;
 }
 
+/* Prompt 61, seção 9/21 — mesmo drawer mobile de Clientes.tsx/
+   CentralNotificacoes.tsx, aplicado aos filtros do Dashboard Gerencial e
+   de Templates (mesmo CSS, dois nomes de classe pra cada tela controlar o
+   próprio estado React sem compartilhar nada). */
+.gestao-filtros-drawer,
+.templates-filtros-drawer {
+  display: contents;
+}
+
+@media (max-width: 860px) {
+  .gestao-filtros-drawer,
+  .templates-filtros-drawer {
+    display: none;
+  }
+
+  .gestao-filtros-drawer.mobile-filtros-drawer-aberta,
+  .templates-filtros-drawer.mobile-filtros-drawer-aberta {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    position: fixed;
+    inset: auto 0 0 0;
+    top: 10vh;
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-border);
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    z-index: 30;
+    overflow-y: auto;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.3);
+  }
+}
+
 .notification-card-acoes-mobile {
   display: none;
 }
@@ -4444,7 +4517,7 @@ a.entity-card {
 /* ── Templates de Implementação — lista de cards ── */
 .templates-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 16px;
 }
 

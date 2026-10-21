@@ -185,11 +185,27 @@ export function RelatorioRespostas() {
         </div>
       )}
 
+      {/* Navegação rápida por bloco (Prompt 61, seção 37) — só uma âncora
+          pro usuário não precisar rolar a página inteira pra achar um
+          bloco específico; nenhum dado novo, nenhuma seção nova. */}
+      {!loading && !error && resumosPorBloco.length > 1 && (
+        <div className="agenda-abas-mobile" role="tablist" aria-label="Bloco do formulário">
+          {resumosPorBloco.map((bloco) => (
+            <a key={bloco.titulo} href={`#bloco-${bloco.titulo}`} className="agenda-aba-botao">
+              {bloco.titulo}
+            </a>
+          ))}
+        </div>
+      )}
+
       {!loading &&
         !error &&
-        resumosPorBloco.map((bloco) => (
-          <section key={bloco.titulo} className="freq-bloco">
-            <h2>{bloco.titulo}</h2>
+        resumosPorBloco.map((bloco, indice) => (
+          <details key={bloco.titulo} id={`bloco-${bloco.titulo}`} className="freq-bloco" open={indice === 0}>
+            <summary>
+              <h2 style={{ display: 'inline' }}>{bloco.titulo}</h2>
+              <span className="field-hint"> ({bloco.resumos.length})</span>
+            </summary>
             <div className="freq-grid">
               {bloco.resumos.map((resumo) => (
                 <div key={resumo.pergunta.id} className="card freq-card">
@@ -242,7 +258,7 @@ export function RelatorioRespostas() {
                 </div>
               ))}
             </div>
-          </section>
+          </details>
         ))}
     </div>
   );

@@ -30,6 +30,9 @@ export function Templates() {
   const [filtroStatus, setFiltroStatus] = useState<StatusTemplate | ''>('');
   const [filtroCategoria, setFiltroCategoria] = useState('');
   const [ordenacao, setOrdenacao] = useState<Ordenacao>('atualizacao');
+  // Prompt 61, seção 21 — busca continua sempre visível; status/categoria/
+  // ordenação vão pro mesmo drawer mobile já usado em Clientes.tsx.
+  const [drawerFiltrosAberto, setDrawerFiltrosAberto] = useState(false);
 
   async function carregar() {
     setLoading(true);
@@ -151,39 +154,72 @@ export function Templates() {
 
       {error && <p className="form-error">{error}</p>}
 
-      <div className="form-grid" style={{ marginBottom: 20 }}>
-        <label className="field">
-          <span>Buscar por nome</span>
-          <input type="text" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Ex: CRM Padrão" />
-        </label>
-        <label className="field">
-          <span>Status</span>
-          <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value as StatusTemplate | '')}>
-            <option value="">Todos</option>
-            <option value="rascunho">Rascunho</option>
-            <option value="ativo">Ativo</option>
-            <option value="arquivado">Arquivado</option>
-          </select>
-        </label>
-        <label className="field">
-          <span>Categoria</span>
-          <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
-            <option value="">Todas</option>
-            {categorias.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Ordenar por</span>
-          <select value={ordenacao} onChange={(e) => setOrdenacao(e.target.value as Ordenacao)}>
-            <option value="atualizacao">Atualização mais recente</option>
-            <option value="nome">Nome</option>
-            <option value="uso">Mais usados</option>
-          </select>
-        </label>
+      <div className="ops-search-row">
+        <input
+          type="text"
+          className="ops-search"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por nome"
+        />
+        <button
+          type="button"
+          className="btn btn-secondary mobile-filtros-trigger"
+          onClick={() => setDrawerFiltrosAberto(true)}
+        >
+          Filtros{[!!filtroStatus, !!filtroCategoria].filter(Boolean).length > 0
+            ? ` (${[!!filtroStatus, !!filtroCategoria].filter(Boolean).length})`
+            : ''}
+        </button>
+      </div>
+
+      {drawerFiltrosAberto && (
+        <button
+          type="button"
+          className="mobile-filtros-drawer-backdrop"
+          aria-label="Fechar filtros"
+          onClick={() => setDrawerFiltrosAberto(false)}
+        />
+      )}
+
+      <div className={`templates-filtros-drawer${drawerFiltrosAberto ? ' mobile-filtros-drawer-aberta' : ''}`}>
+        <div className="form-grid">
+          <label className="field">
+            <span>Status</span>
+            <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value as StatusTemplate | '')}>
+              <option value="">Todos</option>
+              <option value="rascunho">Rascunho</option>
+              <option value="ativo">Ativo</option>
+              <option value="arquivado">Arquivado</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Categoria</span>
+            <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+              <option value="">Todas</option>
+              {categorias.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Ordenar por</span>
+            <select value={ordenacao} onChange={(e) => setOrdenacao(e.target.value as Ordenacao)}>
+              <option value="atualizacao">Atualização mais recente</option>
+              <option value="nome">Nome</option>
+              <option value="uso">Mais usados</option>
+            </select>
+          </label>
+        </div>
+        {drawerFiltrosAberto && (
+          <div className="mobile-filtros-drawer-acoes">
+            <button type="button" className="btn btn-primary" onClick={() => setDrawerFiltrosAberto(false)}>
+              Aplicar filtros
+            </button>
+          </div>
+        )}
       </div>
 
       {templatesFiltrados.length === 0 ? (

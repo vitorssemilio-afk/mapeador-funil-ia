@@ -97,6 +97,19 @@ function CardIndicador({
   );
 }
 
+// Prompt 61, seção 5/6 — agrupa as seções já existentes (nenhuma nova) em 7
+// paradas de navegação mobile; cada uma aponta pro id da PRIMEIRA seção real
+// daquele grupo (as demais do grupo continuam logo abaixo, sem mudança).
+const GESTAO_SECOES_NAV: { id: string; label: string }[] = [
+  { id: 'gestao-indicadores', label: 'Visão geral' },
+  { id: 'gestao-saude', label: 'Implementações' },
+  { id: 'gestao-consultor', label: 'Consultores' },
+  { id: 'gestao-trial', label: 'Trial' },
+  { id: 'gestao-reunioes', label: 'Processos' },
+  { id: 'gestao-entrega', label: 'Entrega' },
+  { id: 'gestao-tempos', label: 'Tempos' },
+];
+
 export function GestaoDashboard() {
   const { user } = useAuth();
   const meuEmail = (user?.email ?? '').toLowerCase();
@@ -132,6 +145,11 @@ export function GestaoDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [filtros, setFiltros] = useState<FiltrosGestao>(FILTROS_GESTAO_PADRAO);
   const [painel, setPainel] = useState<PainelDrillDown>(null);
+  // Prompt 61, seção 9/6 — filtros recolhidos num drawer mobile (mesmo
+  // mecanismo de Clientes.tsx/CentralNotificacoes.tsx) e navegação por
+  // âncoras entre as seções já existentes (nenhuma seção nova, só um atalho
+  // pra não precisar rolar a página inteira).
+  const [drawerFiltrosAberto, setDrawerFiltrosAberto] = useState(false);
 
   const hoje = useMemo(() => inicioDoDia(new Date()), []);
 
@@ -238,6 +256,15 @@ export function GestaoDashboard() {
     () => aplicarFiltrosGestao(resumos, filtros, meuEmail, hoje),
     [resumos, filtros, meuEmail, hoje],
   );
+
+  const quantidadeFiltrosAtivos = [
+    filtros.consultor !== 'todos',
+    !!filtros.clienteId,
+    filtros.status !== 'todos',
+    !!filtros.saude,
+    !!filtros.ciclo,
+    !!filtros.periodoDias,
+  ].filter(Boolean).length;
 
   const clientesFiltradosIds = useMemo(() => new Set(resumosFiltrados.map((r) => r.cliente.id)), [resumosFiltrados]);
   const clientesPorId = useMemo(() => new Map(clientes.map((c) => [c.id, c])), [clientes]);
@@ -389,8 +416,42 @@ export function GestaoDashboard() {
         </div>
       </div>
 
+      {/* Navegação por âncoras entre seções (Prompt 61, seção 6) — abas
+          roláveis só no mobile; desktop continua com todas as seções
+          empilhadas, sem nenhuma mudança. */}
+      <div className="agenda-abas-mobile" role="tablist" aria-label="Seção do dashboard">
+        {GESTAO_SECOES_NAV.map((s) => (
+          <a key={s.id} href={`#${s.id}`} className="agenda-aba-botao">
+            {s.label}
+          </a>
+        ))}
+      </div>
+
       {/* 2. Filtros */}
       <section className="card form-card">
+        <div className="ops-search-row">
+          <p className="field-hint" style={{ margin: 0 }}>
+            Filtros aplicados a todos os indicadores abaixo.
+          </p>
+          <button
+            type="button"
+            className="btn btn-secondary mobile-filtros-trigger"
+            onClick={() => setDrawerFiltrosAberto(true)}
+          >
+            Filtros{quantidadeFiltrosAtivos > 0 ? ` (${quantidadeFiltrosAtivos})` : ''}
+          </button>
+        </div>
+
+        {drawerFiltrosAberto && (
+          <button
+            type="button"
+            className="mobile-filtros-drawer-backdrop"
+            aria-label="Fechar filtros"
+            onClick={() => setDrawerFiltrosAberto(false)}
+          />
+        )}
+
+        <div className={`gestao-filtros-drawer${drawerFiltrosAberto ? ' mobile-filtros-drawer-aberta' : ''}`}>
         <div className="form-grid">
           <label className="field">
             <span>Consultor</span>
@@ -472,11 +533,19 @@ export function GestaoDashboard() {
             </select>
           </label>
         </div>
-        {(filtros.consultor !== 'todos' || filtros.clienteId || filtros.status !== 'todos' || filtros.saude || filtros.ciclo || filtros.periodoDias) && (
-          <button type="button" className="btn btn-ghost btn-auto" onClick={() => setFiltros(FILTROS_GESTAO_PADRAO)}>
-            Limpar filtros
-          </button>
-        )}
+          {quantidadeFiltrosAtivos > 0 && (
+            <button type="button" className="btn btn-ghost btn-auto" onClick={() => setFiltros(FILTROS_GESTAO_PADRAO)}>
+              Limpar filtros
+            </button>
+          )}
+          {drawerFiltrosAberto && (
+            <div className="mobile-filtros-drawer-acoes">
+              <button type="button" className="btn btn-primary" onClick={() => setDrawerFiltrosAberto(false)}>
+                Aplicar filtros
+              </button>
+            </div>
+          )}
+        </div>
       </section>
 
       {painel && (
@@ -504,7 +573,7 @@ export function GestaoDashboard() {
       )}
 
       {/* 3. Indicadores principais */}
-      <section className="card">
+      <section className="card" id="gestao-indicadores">
         <h2>Indicadores principais</h2>
         <div className="stats-grid">
           <CardIndicador
@@ -580,7 +649,7 @@ export function GestaoDashboard() {
          Fica logo após os indicadores principais (seção 19 do polimento
          visual: saúde da carteira precisa estar no primeiro viewport, não
          depois de 10 outras seções). */}
-      <section className="card">
+      <section className="card" id="gestao-saude">
         <h2>Saúde da implementação</h2>
         <div className="stats-grid">
           {saude.map((s) => (
@@ -604,7 +673,7 @@ export function GestaoDashboard() {
       </section>
 
       {/* 4. Tempos do processo */}
-      <section className="card">
+      <section className="card" id="gestao-tempos">
         <h2>Tempos do processo</h2>
         <p className="field-hint">Só considera marcos realmente registrados — nunca estima data inexistente.</p>
         {tempos.every((t) => t.amostras === 0) ? (
@@ -735,7 +804,7 @@ export function GestaoDashboard() {
       </section>
 
       {/* 7. Consultor — gestão de capacidade, não ranking. */}
-      <section className="card">
+      <section className="card" id="gestao-consultor">
         <h2>Por consultor</h2>
         <p className="field-hint">
           Visão de capacidade e carga de trabalho — não é um ranking de desempenho entre consultores.
@@ -773,7 +842,7 @@ export function GestaoDashboard() {
       </section>
 
       {/* 8. Trial Kommo */}
-      <section className="card">
+      <section className="card" id="gestao-trial">
         <h2>Trial Kommo</h2>
         <div className="stats-grid">
           <CardIndicador
@@ -821,7 +890,7 @@ export function GestaoDashboard() {
       </section>
 
       {/* 9. Reuniões */}
-      <section className="card">
+      <section className="card" id="gestao-reunioes">
         <h2>Reuniões</h2>
         <div className="stats-grid">
           <CardIndicador titulo="Kickoffs realizados" valor={reunioesResumo.kickoffsRealizados} />
@@ -889,7 +958,7 @@ export function GestaoDashboard() {
       </section>
 
       {/* 12. Entrega — nunca misturado com adoção. */}
-      <section className="card">
+      <section className="card" id="gestao-entrega">
         <h2>Entrega</h2>
         <div className="stats-grid">
           <CardIndicador
