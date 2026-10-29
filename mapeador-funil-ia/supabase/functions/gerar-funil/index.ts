@@ -135,12 +135,35 @@ async function carregarBlocosFormulario(
   }));
 }
 
+// Antes mandava só nome+objetivo de cada etapa — um esqueleto raso demais
+// pra guiar o pós-venda. O cliente percebeu isso na prática: o pós-venda só
+// "sabia" a última etapa de vendas (via gatilho_entrada, ver chamador),
+// nunca o que esse negócio de fato vende/como vende — isso vinha só das
+// respostas do formulário de vendas (texto livre), não do funil que a IA já
+// tinha desenhado. Agora inclui gatilhos de entrada/saída, SLA e automações
+// de cada etapa, pra dar à geração do pós-venda o mesmo contexto
+// operacional rico que o funil de vendas já tem, reduzindo a dependência
+// das respostas (às vezes fracas ou contraditórias) do formulário de
+// pós-venda sozinho.
 function formatFunisResumoTexto(
   funis: { nome_funil: string; tipo_funil: string; etapas: EtapaFunil[] }[],
 ): string {
   return funis
     .map((funil) => {
-      const etapas = funil.etapas.map((e) => `  - ${e.nome}: ${e.objetivo}`).join('\n');
+      const etapas = funil.etapas
+        .map((e) => {
+          const linhas = [
+            `  - ${e.nome}: ${e.objetivo}`,
+            `    Gatilho de entrada: ${e.gatilho_entrada}`,
+            `    Gatilho de saída: ${e.gatilho_saida}`,
+            `    SLA: ${e.sla}`,
+          ];
+          if (e.automacao.length > 0) {
+            linhas.push(`    Automações: ${e.automacao.join('; ')}`);
+          }
+          return linhas.join('\n');
+        })
+        .join('\n');
       return `### ${funil.nome_funil} (${funil.tipo_funil})\n${etapas}`;
     })
     .join('\n\n');
