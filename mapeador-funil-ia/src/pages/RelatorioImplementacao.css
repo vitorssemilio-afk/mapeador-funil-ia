@@ -144,6 +144,228 @@
   text-align: center;
 }
 
+/* ── Playbook do CRM — visual da skill "playbook-crm-v4" (V4 Company):
+   capa preta, cards numerados com faixa vermelha, Space Grotesk/DM Sans.
+   Tokens isolados sob .doc-playbook pra não vazar pros outros tipos de
+   documento (funil, adoção, consolidado), que seguem o estilo genérico
+   .doc-* acima. ── */
+.doc-playbook {
+  --pb-capa: #000000;
+  --pb-capa-card: #141414;
+  --pb-capa-linha: #2a2a2a;
+  --pb-escuro: #1c1c1f;
+  --pb-vermelho: #c8202b;
+  --pb-vermelho-claro: #f0534a;
+  --pb-papel: #f4f2ee;
+  --pb-card: #faf9f6;
+  --pb-destaque: #ebe7e1;
+  --pb-linha: #dad6cf;
+  --pb-texto: #1c1c1f;
+  --pb-texto-suave: #55555b;
+  --pb-texto-capa: #f4f2ee;
+  --pb-texto-capa-suave: #a9a9ae;
+  --font-pb-heading: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+  --font-pb-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: var(--pb-papel);
+  color: var(--pb-texto);
+  font-family: var(--font-pb-sans);
+  padding: 0;
+}
+
+.doc-playbook-capa {
+  background: var(--pb-capa);
+  color: var(--pb-texto-capa);
+  padding: 64px 56px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100%;
+}
+
+.doc-playbook-capa-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.doc-playbook-capa-marca {
+  font-family: var(--font-pb-heading);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--pb-vermelho-claro);
+}
+
+.doc-playbook-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 14px;
+  border: 1px solid rgba(244, 242, 238, 0.4);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--pb-texto-capa);
+}
+
+.doc-playbook-regua {
+  width: 56px;
+  height: 4px;
+  background: var(--pb-vermelho);
+}
+
+.doc-playbook-capa-titulo {
+  font-family: var(--font-pb-heading);
+  font-weight: 700;
+  font-size: 40px;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  margin: 8px 0 0;
+  color: var(--pb-texto-capa);
+}
+
+.doc-playbook-capa-sub {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--pb-texto-capa-suave);
+  max-width: 440px;
+  margin: 0;
+}
+
+.doc-playbook-capa-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.doc-playbook-capa-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--pb-capa-card);
+  border: 1px solid var(--pb-capa-linha);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  color: var(--pb-texto-capa);
+}
+
+.doc-playbook-capa-card-num {
+  font-family: var(--font-pb-heading);
+  font-weight: 700;
+  color: var(--pb-vermelho-claro);
+  flex-shrink: 0;
+}
+
+.doc-playbook-capa-rodape {
+  margin-top: auto;
+  padding-top: 24px;
+  border-top: 1px solid var(--pb-capa-linha);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--pb-texto-capa-suave);
+}
+
+.doc-playbook-capa-logo {
+  max-height: 26px;
+}
+
+.doc-playbook-capa-marca-rodape {
+  font-family: var(--font-pb-heading);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--pb-texto-capa);
+}
+
+.doc-playbook .doc-playbook-secao {
+  background: var(--pb-card);
+  border: 1px solid var(--pb-linha);
+  border-top: 4px solid var(--pb-vermelho);
+  border-radius: 10px;
+  padding: 24px 56px;
+  margin: 0 0 20px;
+}
+
+.doc-playbook .doc-playbook-secao h2 {
+  font-family: var(--font-pb-heading);
+  font-size: 16px;
+  color: var(--pb-texto);
+  border-left: none;
+  padding-left: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.doc-playbook-secao-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--pb-vermelho);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.doc-playbook .doc-playbook-secao h3 {
+  font-family: var(--font-pb-heading);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pb-texto-suave);
+}
+
+.doc-playbook .doc-paragrafo,
+.doc-playbook .doc-lista {
+  color: var(--pb-texto);
+}
+
+.doc-playbook .doc-vazio {
+  color: var(--pb-texto-suave);
+}
+
+.doc-playbook .doc-quote {
+  border-left-color: var(--pb-vermelho);
+  color: var(--pb-texto-suave);
+}
+
+.doc-playbook .doc-tabela th,
+.doc-playbook .doc-tabela td {
+  border-color: var(--pb-linha);
+}
+
+.doc-playbook .doc-tabela th {
+  background: var(--pb-escuro);
+  color: #fff;
+  font-family: var(--font-pb-heading);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+
+.doc-playbook .doc-tabela td {
+  background: var(--pb-card);
+}
+
+.doc-playbook-rodape-final {
+  background: var(--pb-capa);
+  color: var(--pb-texto-capa);
+  text-align: center;
+  padding: 32px 24px;
+  margin-top: 8px;
+  font-family: var(--font-pb-heading);
+  font-size: 15px;
+  border-radius: 10px;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -164,6 +386,20 @@
   .doc-capa {
     break-after: page;
     padding-top: 30vh;
+  }
+
+  .doc-playbook-capa {
+    break-after: page;
+    min-height: 100vh;
+  }
+
+  .doc-playbook-secao {
+    break-inside: avoid;
+    margin: 0 24px 20px;
+  }
+
+  .doc-playbook-rodape-final {
+    margin: 0 24px;
   }
 
   .doc-secao {

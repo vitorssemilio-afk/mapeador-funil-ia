@@ -109,6 +109,8 @@ export type SnapshotPlaybook = {
     crm: string;
     kickoffEmIso: string | null;
     dataEntregaIso: string | null;
+    cidade: string | null;
+    uf: string | null;
   };
   visaoGeral: Array<{ componente: string; status: 'Implementado' | 'Não aplicável' }>;
   jornadaComercial: string[];
@@ -236,6 +238,8 @@ export function construirSnapshotPlaybook(input: {
       crm: 'Kommo',
       kickoffEmIso: cliente?.kickoff_realizado_em ?? null,
       dataEntregaIso: new Date().toISOString(),
+      cidade: cliente?.cidade ?? null,
+      uf: cliente?.uf ?? null,
     },
     visaoGeral,
     jornadaComercial: (funilVendas?.etapas ?? []).map((e) => e.nome),
