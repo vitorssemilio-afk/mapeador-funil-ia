@@ -1,12 +1,14 @@
 :root {
-  --color-bg: #0b0b0d;
-  --color-surface: #17171b;
-  --color-surface-raised: #1d1d23;
-  --color-border: rgba(255, 255, 255, 0.09);
-  --color-border-strong: rgba(255, 255, 255, 0.18);
-  --color-text: #f4f4f6;
-  --color-text-muted: rgba(244, 244, 246, 0.6);
-  --color-placeholder: rgba(244, 244, 246, 0.32);
+  /* Tokens do design system "Inimigos da Inércia" (V4 Company) — tema
+     Deck de cliente (escuro), mapeado pra interface de app em vez de slide. */
+  --color-bg: #000000;
+  --color-surface: #0a0a0a;
+  --color-surface-raised: #130b0a;
+  --color-border: #3a3940;
+  --color-border-strong: #55545a;
+  --color-text: #ffffff;
+  --color-text-muted: #a9a9ae;
+  --color-placeholder: rgba(255, 255, 255, 0.32);
   --color-accent: #d42a42;
   --color-accent-hover: #b81f35;
   --color-accent-soft: rgba(212, 42, 66, 0.16);
@@ -18,27 +20,31 @@
   --color-warning-soft: rgba(251, 191, 36, 0.14);
   --color-danger: #f87171;
   --color-danger-soft: rgba(248, 113, 113, 0.14);
-  --radius: 12px;
-  --radius-sm: 8px;
+  --radius: 10px;
+  --radius-sm: 7px;
   --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.35);
   --shadow-card-hover: 0 6px 16px rgba(0, 0, 0, 0.4), 0 16px 32px rgba(0, 0, 0, 0.45);
   --shadow-accent: 0 1px 2px rgba(212, 42, 66, 0.35), 0 4px 14px rgba(212, 42, 66, 0.28);
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Anton', 'Space Grotesk', sans-serif;
+  --font-heading: 'Space Grotesk', 'DM Sans', system-ui, sans-serif;
+  --font-sans: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   color-scheme: dark;
 }
 
 :root[data-theme='light'] {
-  --color-bg: #f5f5f7;
-  --color-surface: #ffffff;
-  --color-surface-raised: #f0f0f2;
-  --color-border: rgba(0, 0, 0, 0.09);
-  --color-border-strong: rgba(0, 0, 0, 0.16);
-  --color-text: #17171b;
-  --color-text-muted: rgba(23, 23, 27, 0.62);
-  --color-placeholder: rgba(23, 23, 27, 0.32);
-  --color-accent: #d42a42;
-  --color-accent-hover: #b81f35;
-  --color-accent-soft: rgba(212, 42, 66, 0.1);
+  /* Tema Onboarding (claro) do mesmo design system. */
+  --color-bg: #f6f4ef;
+  --color-surface: #fbfaf7;
+  --color-surface-raised: #ece8e0;
+  --color-border: #ddd8cd;
+  --color-border-strong: #c4c3bf;
+  --color-text: #1b1b1f;
+  --color-text-muted: #55545a;
+  --color-placeholder: rgba(27, 27, 31, 0.32);
+  --color-accent: #c4161c;
+  --color-accent-hover: #9c1216;
+  --color-accent-soft: rgba(196, 22, 28, 0.1);
   --color-info: #2563eb;
   --color-info-soft: rgba(37, 99, 235, 0.1);
   --color-success: #059669;
@@ -76,13 +82,14 @@ h1,
 h2,
 h3 {
   margin: 0;
-  font-weight: 600;
+  font-family: var(--font-heading);
+  font-weight: 700;
   letter-spacing: -0.015em;
   color: var(--color-text);
 }
 
 h1 {
-  font-family: 'Anton', 'Inter', sans-serif;
+  font-family: var(--font-display);
   font-weight: 400;
   font-size: 28px;
   letter-spacing: 0.01em;
@@ -2305,7 +2312,7 @@ a.entity-card {
 }
 
 .stat-value {
-  font-family: 'Anton', 'Inter', sans-serif;
+  font-family: var(--font-display);
   font-size: 28px;
   font-weight: 400;
   color: var(--color-text);
@@ -3063,7 +3070,7 @@ a.entity-card {
 }
 
 .ops-kpi-value {
-  font-family: 'Anton', 'Inter', sans-serif;
+  font-family: var(--font-display);
   font-weight: 400;
   font-size: 32px;
   line-height: 1.1;
@@ -3117,7 +3124,7 @@ a.entity-card {
 }
 
 .ops-section-count {
-  font-family: 'Anton', 'Inter', sans-serif;
+  font-family: var(--font-display);
   font-size: 13px;
   color: var(--color-text-muted);
   background: var(--color-surface-raised);
