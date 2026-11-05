@@ -5,16 +5,19 @@ import type { EtapaFunil, FunilGerado, GeracaoMeta } from '../types/database';
 // fundo 0d0d0f/050506, accent D42A42) — o PPTX usa as mesmas cores, mais o
 // mesmo tratamento visual (cards com fundo sutil + barra de destaque,
 // glow vermelho no canto) em vez de só texto solto num fundo escuro.
-const COR_FUNDO = '0D0D0F';
-const COR_ACCENT = 'D42A42';
-const COR_TEXTO = 'F4F4F6';
-const COR_TEXTO_MUTED = 'A9A9AE';
-const FONTE = 'Arial';
+// Exportadas pro deck de Kick Off (exportKickoffPptx.ts) reaproveitar o
+// mesmo conteúdo de funil/etapa dessas slides, em vez de duplicar — ver
+// esse arquivo pra entender por quê.
+export const COR_FUNDO = '0D0D0F';
+export const COR_ACCENT = 'D42A42';
+export const COR_TEXTO = 'F4F4F6';
+export const COR_TEXTO_MUTED = 'A9A9AE';
+export const FONTE = 'Arial';
 
-const LARGURA = 13.33;
-const ALTURA = 7.5;
-const MARGEM_X = 0.5;
-const LARGURA_CONTEUDO = LARGURA - MARGEM_X * 2;
+export const LARGURA = 13.33;
+export const ALTURA = 7.5;
+export const MARGEM_X = 0.5;
+export const LARGURA_CONTEUDO = LARGURA - MARGEM_X * 2;
 
 const TIPO_FUNIL_LABELS: Record<string, string> = {
   qualificacao: 'Qualificação',
@@ -40,12 +43,12 @@ function nomeArquivo(nomeNegocio: string): string {
   return `${slug || 'funil'}-apresentacao.pptx`;
 }
 
-type Pptx = InstanceType<typeof import('pptxgenjs').default>;
-type Slide = ReturnType<Pptx['addSlide']>;
+export type Pptx = InstanceType<typeof import('pptxgenjs').default>;
+export type Slide = ReturnType<Pptx['addSlide']>;
 
 // Fundo escuro + glow vermelho sutil no canto superior direito, equivalente
 // ao radial-gradient de .relatorio-slide::after no PDF.
-function slideBase(pptx: Pptx): Slide {
+export function slideBase(pptx: Pptx): Slide {
   const slide = pptx.addSlide();
   slide.background = { color: COR_FUNDO };
   slide.addShape('ellipse', {
@@ -293,7 +296,7 @@ function addMetaBar(slide: Slide, y: number, itens: string[]): number {
   return y + h + 0.2;
 }
 
-function slideEtapa(pptx: Pptx, etapa: EtapaFunil, index: number) {
+export function slideEtapa(pptx: Pptx, etapa: EtapaFunil, index: number) {
   let slide = slideBase(pptx);
   addEyebrow(slide, `Etapa ${index + 1}`);
   addTitulo(slide, etapa.nome);
@@ -365,7 +368,7 @@ function slideEtapa(pptx: Pptx, etapa: EtapaFunil, index: number) {
 
 // Grade de cards do pipeline, equivalente a .relatorio-pipeline/.relatorio-pc
 // no PDF — cada card com barra de destaque no topo, nome da etapa e SLA.
-function slidePipeline(pptx: Pptx, funil: FunilGerado, indice: number, total: number) {
+export function slidePipeline(pptx: Pptx, funil: FunilGerado, indice: number, total: number) {
   const slide = slideBase(pptx);
   addEyebrow(
     slide,
@@ -439,7 +442,7 @@ function slidePipeline(pptx: Pptx, funil: FunilGerado, indice: number, total: nu
   });
 }
 
-function slideMeta(pptx: Pptx, meta: GeracaoMeta) {
+export function slideMeta(pptx: Pptx, meta: GeracaoMeta) {
   if (meta.transicoes_entre_funis.length === 0 && !meta.nivel_complexidade) return;
 
   const slide = slideBase(pptx);
@@ -504,7 +507,7 @@ function slideIndicadoresDashboard(pptx: Pptx, indicadores: string[]) {
 // Cada ponto a validar vira um card individual com barra de destaque à
 // esquerda, igual a .relatorio-validar-item no PDF — pagina em mais de um
 // slide quando não cabem todos numa tela só.
-function slidesValidarComCliente(pptx: Pptx, pontos: string[]) {
+export function slidesValidarComCliente(pptx: Pptx, pontos: string[]) {
   if (pontos.length === 0) return;
 
   const yInicio = 2.1;
