@@ -486,48 +486,173 @@ function conteudoSecaoPlaybook(chave: SecaoPlaybookChave, snapshot: SnapshotPlay
   }
 }
 
+const MESES_PT = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+
+function mesAnoPt(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${MESES_PT[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+// Capa no padrão visual da skill playbook-crm-v4 (V4 Company): fundo preto,
+// grade de cards com um por parte visível, logo e local/mês no rodapé.
+function CapaPlaybook({
+  snapshot,
+  partes,
+  logoUrl,
+}: {
+  snapshot: SnapshotPlaybook;
+  partes: { chave: SecaoPlaybookChave; titulo: string }[];
+  logoUrl: string | null;
+}) {
+  const localMes = [
+    [snapshot.capa.cidade, snapshot.capa.uf].filter(Boolean).join(', '),
+    mesAnoPt(snapshot.capa.dataEntregaIso),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <section className="doc-playbook-capa">
+      <div className="doc-playbook-capa-top">
+        <span className="doc-playbook-capa-marca">V4 COMPANY × {snapshot.capa.cliente.toUpperCase()}</span>
+        <span className="doc-playbook-pill">IMPLEMENTAÇÃO CRM</span>
+      </div>
+      <div className="doc-playbook-regua" />
+      <h1 className="doc-playbook-capa-titulo">
+        Playbook de uso
+        <br />
+        do CRM {snapshot.capa.crm}
+      </h1>
+      <p className="doc-playbook-capa-sub">
+        Como o lead anda dentro do {snapshot.capa.crm} da {snapshot.capa.cliente}, do primeiro contato até o
+        pós-venda.
+      </p>
+      {partes.length > 0 && (
+        <div className="doc-playbook-capa-grid">
+          {partes.map((parte, i) => (
+            <div className="doc-playbook-capa-card" key={parte.chave}>
+              <span className="doc-playbook-capa-card-num">{i + 1}</span>
+              <span>{parte.titulo}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="doc-playbook-capa-rodape">
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="doc-playbook-capa-logo" />
+        ) : (
+          <span className="doc-playbook-capa-marca-rodape">V4 COMPANY</span>
+        )}
+        {localMes && <span>{localMes}</span>}
+      </div>
+    </section>
+  );
+}
+
+// Seção do playbook no padrão visual da skill: card com faixa vermelha no
+// topo e número sequencial (ordem de exibição, que o consultor controla em
+// `textoEditavel.ordem` — não é a numeração fixa de "partes" da skill
+// original, que pressupõe uma estrutura de dados que o app ainda não tem).
+function SecaoPlaybook({
+  numero,
+  titulo,
+  children,
+}: {
+  numero: number;
+  titulo: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="doc-secao doc-playbook-secao">
+      <h2>
+        <span className="doc-playbook-secao-num">{numero}</span>
+        {titulo}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
 function PlaybookDoc({
   snapshot,
   textoEditavel,
+  logoUrl,
 }: {
   snapshot: SnapshotPlaybook;
   textoEditavel: PlaybookTextoEditavel;
+  logoUrl: string | null;
 }) {
   const ordem = ordemPlaybook(textoEditavel).filter((chave) => !textoEditavel.ocultas.includes(chave));
 
-  return (
-    <>
-      {ordem.map((chave) => {
-        const manifesto = SECOES_PLAYBOOK.find((s) => s.chave === chave);
-        if (!manifesto) return null;
+  type SecaoRenderizada = { chave: SecaoPlaybookChave; titulo: string; conteudo: ReactNode };
 
-        if (manifesto.origem === 'manual') {
-          const texto = textoEditavel.overrides[chave];
-          if (!texto?.trim()) return null;
-          return (
-            <Secao key={chave} titulo={manifesto.titulo}>
-              <p className="doc-paragrafo" style={{ whiteSpace: 'pre-wrap' }}>
-                {texto}
-              </p>
-            </Secao>
-          );
-        }
+  const secoes = ordem
+    .map((chave): SecaoRenderizada | null => {
+      const manifesto = SECOES_PLAYBOOK.find((s) => s.chave === chave);
+      if (!manifesto) return null;
 
-        const override = textoEditavel.overrides[chave];
-        const conteudoAutomatico = conteudoSecaoPlaybook(chave, snapshot);
-        if (!override && !conteudoAutomatico) return null;
+      if (manifesto.origem === 'manual') {
+        const texto = textoEditavel.overrides[chave];
+        if (!texto?.trim()) return null;
+        return {
+          chave,
+          titulo: manifesto.titulo,
+          conteudo: (
+            <p className="doc-paragrafo" style={{ whiteSpace: 'pre-wrap' }}>
+              {texto}
+            </p>
+          ),
+        };
+      }
 
-        return (
-          <Secao key={chave} titulo={manifesto.titulo}>
+      const override = textoEditavel.overrides[chave];
+      const conteudoAutomatico = conteudoSecaoPlaybook(chave, snapshot);
+      if (!override && !conteudoAutomatico) return null;
+
+      return {
+        chave,
+        titulo: manifesto.titulo,
+        conteudo: (
+          <>
             {override && (
               <p className="doc-paragrafo" style={{ whiteSpace: 'pre-wrap' }}>
                 {override}
               </p>
             )}
             {conteudoAutomatico}
-          </Secao>
-        );
-      })}
+          </>
+        ),
+      };
+    })
+    .filter((s): s is SecaoRenderizada => s != null);
+
+  return (
+    <>
+      <CapaPlaybook
+        snapshot={snapshot}
+        partes={secoes.map(({ chave, titulo }) => ({ chave, titulo }))}
+        logoUrl={logoUrl}
+      />
+      {secoes.map((secao, i) => (
+        <SecaoPlaybook key={secao.chave} numero={i + 1} titulo={secao.titulo}>
+          {secao.conteudo}
+        </SecaoPlaybook>
+      ))}
+      <footer className="doc-playbook-rodape-final">Ficou com dúvida? Chama o Martech.</footer>
     </>
   );
 }
@@ -559,6 +684,7 @@ export function RelatorioImplementacaoView() {
   if (error || !relatorio) return <p className="form-error">{error ?? 'Relatório não encontrado.'}</p>;
 
   const ehFunil = relatorio.tipo === 'funil_vendas' || relatorio.tipo === 'funil_pos_venda';
+  const ehPlaybook = relatorio.tipo === 'playbook';
 
   return (
     <div className="doc-viewport" style={configOperacao?.cor_principal ? ({ '--doc-accent': configOperacao.cor_principal } as CSSProperties) : undefined}>
@@ -577,25 +703,28 @@ export function RelatorioImplementacaoView() {
         </button>
       </div>
 
-      <article className="doc-page">
-        <section className="doc-capa">
-          {configOperacao?.logo_url && <img src={configOperacao.logo_url} alt="" className="doc-logo" />}
-          <div className="doc-capa-tag">{configOperacao?.nome_operacao ?? 'Implementação de CRM'}</div>
-          <h1>{relatorio.titulo}</h1>
-          {relatorio.visao && <p className="doc-sub">{VISAO_RELATORIO_LABELS[relatorio.visao]}</p>}
-          <p className="doc-sub">
-            Versão {relatorio.versao} · {relatorio.gerado_em ? formatarDataHora(relatorio.gerado_em) : ''}
-          </p>
-        </section>
+      <article className={ehPlaybook ? 'doc-page doc-playbook' : 'doc-page'}>
+        {!ehPlaybook && (
+          <section className="doc-capa">
+            {configOperacao?.logo_url && <img src={configOperacao.logo_url} alt="" className="doc-logo" />}
+            <div className="doc-capa-tag">{configOperacao?.nome_operacao ?? 'Implementação de CRM'}</div>
+            <h1>{relatorio.titulo}</h1>
+            {relatorio.visao && <p className="doc-sub">{VISAO_RELATORIO_LABELS[relatorio.visao]}</p>}
+            <p className="doc-sub">
+              Versão {relatorio.versao} · {relatorio.gerado_em ? formatarDataHora(relatorio.gerado_em) : ''}
+            </p>
+          </section>
+        )}
 
         {ehFunil ? (
           <DocumentoFunilDoc relatorio={relatorio} snapshot={relatorio.conteudo_snapshot as unknown as SnapshotDocumentoFunil} />
         ) : relatorio.tipo === 'adocao' ? (
           <RelatorioAdocaoDoc snapshot={relatorio.conteudo_snapshot as unknown as SnapshotRelatorioAdocao} />
-        ) : relatorio.tipo === 'playbook' ? (
+        ) : ehPlaybook ? (
           <PlaybookDoc
             snapshot={relatorio.conteudo_snapshot as unknown as SnapshotPlaybook}
             textoEditavel={relatorio.texto_editavel as unknown as PlaybookTextoEditavel}
+            logoUrl={configOperacao?.logo_url ?? null}
           />
         ) : (
           <RelatorioConsolidadoDoc
@@ -604,7 +733,9 @@ export function RelatorioImplementacaoView() {
           />
         )}
 
-        {configOperacao?.texto_padrao_rodape && <footer className="doc-rodape">{configOperacao.texto_padrao_rodape}</footer>}
+        {!ehPlaybook && configOperacao?.texto_padrao_rodape && (
+          <footer className="doc-rodape">{configOperacao.texto_padrao_rodape}</footer>
+        )}
       </article>
     </div>
   );
