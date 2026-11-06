@@ -3,9 +3,40 @@
 // cliente). checkpoint_30d_respondido_em não é campo de MarcosCliente — vem
 // de checkpoints_adocao.respondido_em, passado à parte pra quem monta a
 // timeline.
-import type { MarcosCliente } from '../types/database';
+import type { Cliente, MarcosCliente, Reuniao } from '../types/database';
 
 export type CampoMarco = keyof MarcosCliente;
+
+// Prompt 64, Bloco 2 (seção 13: "agendar não é realizar") — extraída de
+// ImplementacaoDetalhe.tsx (sincronizarMarcoCliente) só pra poder testar
+// isoladamente a regra mais sensível da jornada: o Dia 1 dos 40 dias (e do
+// treinamento) só nasce de uma reunião com status 'realizada' E data, e
+// NUNCA sobrescreve um marco de "realizado" já preenchido — uma vez
+// registrado, nenhuma remarcação, edição ou nova reunião do mesmo tipo
+// consegue tocá-lo. `*_agendado_para` já segue outra regra (mais solta:
+// acompanha a data da reunião atual enquanto ela não for cancelada).
+type CampoMarcoReuniao = 'kickoff_realizado_em' | 'kickoff_agendado_para' | 'treinamento_realizado_em' | 'treinamento_agendado_para';
+
+export function resolverPatchMarcoReuniao(
+  reuniao: Pick<Reuniao, 'tipo' | 'status' | 'data_hora'>,
+  clienteAtual: Pick<Cliente, CampoMarcoReuniao>,
+): Partial<Pick<Cliente, CampoMarcoReuniao>> {
+  if (reuniao.tipo !== 'kickoff' && reuniao.tipo !== 'treinamento') return {};
+
+  const campoRealizado: CampoMarcoReuniao = reuniao.tipo === 'kickoff' ? 'kickoff_realizado_em' : 'treinamento_realizado_em';
+  const campoAgendado: CampoMarcoReuniao = reuniao.tipo === 'kickoff' ? 'kickoff_agendado_para' : 'treinamento_agendado_para';
+
+  const patch: Partial<Pick<Cliente, CampoMarcoReuniao>> = {};
+
+  if (reuniao.status === 'realizada' && reuniao.data_hora && !clienteAtual[campoRealizado]) {
+    patch[campoRealizado] = reuniao.data_hora;
+  }
+  if (reuniao.data_hora && reuniao.status !== 'cancelada') {
+    patch[campoAgendado] = reuniao.data_hora;
+  }
+
+  return patch;
+}
 
 // true = data (sem hora, ex: "contratado em"), false = timestamp completo.
 export const MARCOS_ORDENADOS: { campo: CampoMarco; label: string; apenasData: boolean }[] = [
