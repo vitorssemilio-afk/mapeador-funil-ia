@@ -25,6 +25,7 @@ import {
 } from '../lib/atividadesCronograma';
 import { gerarItensDerivados } from '../lib/checklistDerivado';
 import { agruparAtividades, contarConcluidas } from '../lib/checklistGrupos';
+import { resolverPatchMarcoReuniao } from '../lib/marcosCliente';
 import {
   fonteAtaLabel,
   RESPONSAVEL_TIPO_ACAO_LABELS,
@@ -1415,21 +1416,7 @@ export function ImplementacaoDetalhe() {
   // src/lib/atividadesCronograma.ts). Nunca sobrescreve uma data já
   // realizada (isso seria uma remarcação silenciosa de um evento concluído).
   async function sincronizarMarcoCliente(reuniao: Reuniao, clienteAtual: Cliente) {
-    if (reuniao.tipo !== 'kickoff' && reuniao.tipo !== 'treinamento') return;
-
-    const campoRealizado = reuniao.tipo === 'kickoff' ? 'kickoff_realizado_em' : 'treinamento_realizado_em';
-    const campoAgendado = reuniao.tipo === 'kickoff' ? 'kickoff_agendado_para' : 'treinamento_agendado_para';
-
-    const patch: Partial<
-      Pick<Cliente, 'kickoff_realizado_em' | 'kickoff_agendado_para' | 'treinamento_realizado_em' | 'treinamento_agendado_para'>
-    > = {};
-
-    if (reuniao.status === 'realizada' && reuniao.data_hora && !clienteAtual[campoRealizado]) {
-      patch[campoRealizado] = reuniao.data_hora;
-    }
-    if (reuniao.data_hora && reuniao.status !== 'cancelada') {
-      patch[campoAgendado] = reuniao.data_hora;
-    }
+    const patch = resolverPatchMarcoReuniao(reuniao, clienteAtual);
     if (Object.keys(patch).length === 0) return;
 
     const { data, error: updateError } = await supabase
