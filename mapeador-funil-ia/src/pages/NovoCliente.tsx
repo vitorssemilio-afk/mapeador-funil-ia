@@ -3,7 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { buscarMeuConsultor } from '../lib/consultores';
 import { supabase } from '../lib/supabaseClient';
-import type { Consultor } from '../types/database';
+import type { Consultor, KommoJaPossui } from '../types/database';
+
+const KOMMO_JA_POSSUI_LABELS: Record<KommoJaPossui, string> = {
+  sim: 'Sim',
+  nao: 'Não',
+  nao_confirmado: 'Ainda não confirmado',
+};
 
 export function NovoCliente() {
   const navigate = useNavigate();
@@ -13,6 +19,7 @@ export function NovoCliente() {
   const [telefone, setTelefone] = useState('');
   const [email, setEmail] = useState('');
   const [segmento, setSegmento] = useState('');
+  const [kommoJaPossui, setKommoJaPossui] = useState<KommoJaPossui>('nao_confirmado');
   const [salvando, setSalvando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +68,7 @@ export function NovoCliente() {
         telefone: telefone.trim() || null,
         email: email.trim() || null,
         segmento: segmento.trim() || null,
+        kommo_ja_possui: kommoJaPossui,
         // Só manda um valor explícito quando o campo de admin está visível e
         // preenchido — senão omite e deixa o trigger atribuir quem está
         // criando (comportamento de sempre pra quem não é administrador).
@@ -140,6 +148,20 @@ export function NovoCliente() {
               onChange={(e) => setSegmento(e.target.value)}
               placeholder="Ex: Educação, Varejo, Saúde"
             />
+          </label>
+
+          <label className="field">
+            <span>O cliente já possui uma conta Kommo CRM?</span>
+            <select
+              value={kommoJaPossui}
+              onChange={(e) => setKommoJaPossui(e.target.value as KommoJaPossui)}
+            >
+              {(Object.keys(KOMMO_JA_POSSUI_LABELS) as KommoJaPossui[]).map((valor) => (
+                <option key={valor} value={valor}>
+                  {KOMMO_JA_POSSUI_LABELS[valor]}
+                </option>
+              ))}
+            </select>
           </label>
 
           {souAdministrador && (

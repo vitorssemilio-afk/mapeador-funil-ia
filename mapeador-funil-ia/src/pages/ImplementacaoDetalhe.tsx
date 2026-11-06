@@ -3896,6 +3896,14 @@ export function ImplementacaoDetalhe() {
               const chave = atividadesTemplate.find((t) => t.id === a.id)?.chave;
               if (chave === 'conectar_whatsapp_business' && cliente?.canal_whatsapp_business === false) return false;
               if (chave === 'conectar_instagram' && cliente?.canal_instagram === false) return false;
+              // Prompt 64, Bloco 1: conta ativa existente não precisa de
+              // e-mail pra criação nem passa pelo fluxo de criação via V4 —
+              // essas duas somem e dão lugar a "Confirmar acesso" (inverso).
+              const contaAtivaExistente = cliente?.kommo_situacao_conta === 'ativa_contratada';
+              if ((chave === 'email_confirmado_criacao_conta' || chave === 'conta_kommo_criada_via_v4') && contaAtivaExistente) {
+                return false;
+              }
+              if (chave === 'confirmar_acesso_conta_kommo_existente' && !contaAtivaExistente) return false;
               return true;
             });
             const janelaCiclo = configuracao.ciclos.find((c) => c.nome === ciclo);

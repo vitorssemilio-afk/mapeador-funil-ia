@@ -41,6 +41,8 @@ import type {
   ImplementacaoConsultorHistorico,
   ImplementacaoCrm,
   ImplementacaoSettingsSnapshot,
+  KommoJaPossui,
+  KommoSituacaoConta,
   Mapeamento,
   ReuniaoRemarcacao,
   Reuniao,
@@ -167,6 +169,16 @@ type FormInfoCliente = {
   // explícita, nunca por omissão).
   canal_whatsapp_business: boolean;
   canal_instagram: boolean;
+  // Situação da conta Kommo (prompt 64, Bloco 1) — kommo_situacao_conta e os
+  // campos abaixo só se aplicam quando kommo_ja_possui = 'sim'.
+  kommo_ja_possui: KommoJaPossui;
+  kommo_situacao_conta: KommoSituacaoConta | '';
+  kommo_dominio: string;
+  kommo_email_admin: string;
+  kommo_plano: string;
+  kommo_trial_inicio_em: string;
+  kommo_trial_vencimento_em: string;
+  kommo_observacoes: string;
 };
 
 function paraFormInfo(cliente: Cliente): FormInfoCliente {
@@ -179,8 +191,29 @@ function paraFormInfo(cliente: Cliente): FormInfoCliente {
     uf: cliente.uf ?? '',
     canal_whatsapp_business: cliente.canal_whatsapp_business ?? true,
     canal_instagram: cliente.canal_instagram ?? true,
+    kommo_ja_possui: cliente.kommo_ja_possui,
+    kommo_situacao_conta: cliente.kommo_situacao_conta ?? '',
+    kommo_dominio: cliente.kommo_dominio ?? '',
+    kommo_email_admin: cliente.kommo_email_admin ?? '',
+    kommo_plano: cliente.kommo_plano ?? '',
+    kommo_trial_inicio_em: cliente.kommo_trial_inicio_em?.slice(0, 10) ?? '',
+    kommo_trial_vencimento_em: cliente.kommo_trial_vencimento_em?.slice(0, 10) ?? '',
+    kommo_observacoes: cliente.kommo_observacoes ?? '',
   };
 }
+
+const KOMMO_JA_POSSUI_LABELS: Record<KommoJaPossui, string> = {
+  sim: 'Sim',
+  nao: 'Não',
+  nao_confirmado: 'Ainda não confirmado',
+};
+
+const KOMMO_SITUACAO_CONTA_LABELS: Record<KommoSituacaoConta, string> = {
+  ativa_contratada: 'Ativa — plano contratado',
+  trial: 'Em período de teste (Trial)',
+  inativa_suspensa: 'Inativa ou suspensa',
+  nao_confirmado: 'Ainda não confirmado',
+};
 
 type FormContato = {
   nome: string;
@@ -911,6 +944,14 @@ export function ClienteDetalhe() {
         uf: formInfo.uf.trim() || null,
         canal_whatsapp_business: formInfo.canal_whatsapp_business,
         canal_instagram: formInfo.canal_instagram,
+        kommo_ja_possui: formInfo.kommo_ja_possui,
+        kommo_situacao_conta: formInfo.kommo_ja_possui === 'sim' ? formInfo.kommo_situacao_conta || null : null,
+        kommo_dominio: formInfo.kommo_dominio.trim() || null,
+        kommo_email_admin: formInfo.kommo_email_admin.trim() || null,
+        kommo_plano: formInfo.kommo_plano.trim() || null,
+        kommo_trial_inicio_em: formInfo.kommo_trial_inicio_em || null,
+        kommo_trial_vencimento_em: formInfo.kommo_trial_vencimento_em || null,
+        kommo_observacoes: formInfo.kommo_observacoes.trim() || null,
       })
       .eq('id', cliente.id)
       .select()
@@ -2105,6 +2146,100 @@ export function ClienteDetalhe() {
               </label>
             </fieldset>
 
+            <fieldset className="field">
+              <legend>Conta Kommo</legend>
+              <label className="field">
+                <span>O cliente já possui uma conta Kommo CRM?</span>
+                <select
+                  value={formInfo.kommo_ja_possui}
+                  onChange={(e) => setFormInfo({ ...formInfo, kommo_ja_possui: e.target.value as KommoJaPossui })}
+                >
+                  {(Object.keys(KOMMO_JA_POSSUI_LABELS) as KommoJaPossui[]).map((valor) => (
+                    <option key={valor} value={valor}>
+                      {KOMMO_JA_POSSUI_LABELS[valor]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {formInfo.kommo_ja_possui === 'sim' && (
+                <>
+                  <label className="field">
+                    <span>Qual é a situação atual da conta Kommo?</span>
+                    <select
+                      value={formInfo.kommo_situacao_conta}
+                      onChange={(e) =>
+                        setFormInfo({ ...formInfo, kommo_situacao_conta: e.target.value as KommoSituacaoConta })
+                      }
+                    >
+                      <option value="">Selecione…</option>
+                      {(Object.keys(KOMMO_SITUACAO_CONTA_LABELS) as KommoSituacaoConta[]).map((valor) => (
+                        <option key={valor} value={valor}>
+                          {KOMMO_SITUACAO_CONTA_LABELS[valor]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <div className="form-grid">
+                    <label className="field">
+                      <span>Domínio ou identificação da conta</span>
+                      <input
+                        type="text"
+                        value={formInfo.kommo_dominio}
+                        onChange={(e) => setFormInfo({ ...formInfo, kommo_dominio: e.target.value })}
+                        placeholder="ex: suaempresa.kommo.com"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>E-mail administrativo</span>
+                      <input
+                        type="email"
+                        value={formInfo.kommo_email_admin}
+                        onChange={(e) => setFormInfo({ ...formInfo, kommo_email_admin: e.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Plano contratado</span>
+                      <input
+                        type="text"
+                        value={formInfo.kommo_plano}
+                        onChange={(e) => setFormInfo({ ...formInfo, kommo_plano: e.target.value })}
+                      />
+                    </label>
+                    {formInfo.kommo_situacao_conta === 'trial' && (
+                      <>
+                        <label className="field">
+                          <span>Data de início do Trial</span>
+                          <input
+                            type="date"
+                            value={formInfo.kommo_trial_inicio_em}
+                            onChange={(e) => setFormInfo({ ...formInfo, kommo_trial_inicio_em: e.target.value })}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Data de vencimento conhecida</span>
+                          <input
+                            type="date"
+                            value={formInfo.kommo_trial_vencimento_em}
+                            onChange={(e) => setFormInfo({ ...formInfo, kommo_trial_vencimento_em: e.target.value })}
+                          />
+                        </label>
+                      </>
+                    )}
+                  </div>
+                  <label className="field">
+                    <span>Observações</span>
+                    <textarea
+                      rows={2}
+                      value={formInfo.kommo_observacoes}
+                      onChange={(e) => setFormInfo({ ...formInfo, kommo_observacoes: e.target.value })}
+                    />
+                  </label>
+                </>
+              )}
+            </fieldset>
+
             <div className="wizard-actions">
               <button
                 type="button"
@@ -2150,6 +2285,42 @@ export function ClienteDetalhe() {
                 .filter(Boolean)
                 .join(', ') || 'Nenhum'}
             </p>
+            <p>
+              <strong>Kommo CRM:</strong>{' '}
+              {cliente.kommo_ja_possui === 'sim'
+                ? `Conta existente — ${
+                    cliente.kommo_situacao_conta ? KOMMO_SITUACAO_CONTA_LABELS[cliente.kommo_situacao_conta] : 'situação não confirmada'
+                  }`
+                : cliente.kommo_ja_possui === 'nao'
+                  ? 'Não possui conta ainda'
+                  : 'Ainda não confirmado'}
+              {' · '}
+              <strong>Trial:</strong> {cliente.kommo_situacao_conta === 'ativa_contratada' ? 'Não aplicável' : resumoTrial ? STATUS_TRIAL_LABELS[resumoTrial.status] : 'Não iniciado'}
+            </p>
+            {cliente.kommo_ja_possui === 'sim' && (
+              <>
+                {cliente.kommo_dominio && (
+                  <p>
+                    <strong>Domínio:</strong> {cliente.kommo_dominio}
+                  </p>
+                )}
+                {cliente.kommo_email_admin && (
+                  <p>
+                    <strong>E-mail administrativo:</strong> {cliente.kommo_email_admin}
+                  </p>
+                )}
+                {cliente.kommo_plano && (
+                  <p>
+                    <strong>Plano:</strong> {cliente.kommo_plano}
+                  </p>
+                )}
+                {cliente.kommo_observacoes && (
+                  <p>
+                    <strong>Observações:</strong> {cliente.kommo_observacoes}
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
       </section>

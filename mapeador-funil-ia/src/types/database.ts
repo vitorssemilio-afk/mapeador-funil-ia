@@ -24,6 +24,13 @@ export type MapeamentoStatus =
 
 export type MapeamentoTipo = 'vendas' | 'pos_venda';
 
+// Prompt 64, Bloco 1 — situação da conta Kommo do cliente, independente de
+// qualquer conta que a V4 venha a criar (ver conta_kommo_criada_em em
+// MarcosCliente, que é só sobre criação PELA V4). 'nao_confirmado' é o
+// padrão: cliente pode ser cadastrado sem essa informação, editável depois.
+export type KommoJaPossui = 'sim' | 'nao' | 'nao_confirmado';
+export type KommoSituacaoConta = 'ativa_contratada' | 'trial' | 'inativa_suspensa' | 'nao_confirmado';
+
 // Marcos do ciclo de vida do cliente (contratação → ... → adoção). Datados
 // automaticamente pelo produto quando dá (triggers no banco — ver migration
 // 0034), sempre editáveis manualmente na ficha do cliente. Campos "_para"
@@ -71,6 +78,17 @@ export type Cliente = MarcosCliente & {
   // do checklist em vez de aparecerem como pendentes.
   canal_whatsapp_business: boolean | null;
   canal_instagram: boolean | null;
+  // Situação da conta Kommo (prompt 64, Bloco 1) — preenchido no cadastro,
+  // editável na ficha. kommo_situacao_conta e os campos abaixo só fazem
+  // sentido quando kommo_ja_possui = 'sim'.
+  kommo_ja_possui: KommoJaPossui;
+  kommo_situacao_conta: KommoSituacaoConta | null;
+  kommo_dominio: string | null;
+  kommo_email_admin: string | null;
+  kommo_plano: string | null;
+  kommo_trial_inicio_em: string | null;
+  kommo_trial_vencimento_em: string | null;
+  kommo_observacoes: string | null;
   // Preenchido automaticamente por trigger com quem cria o cliente (ver
   // migration 0051) — controla o acesso por vínculo (fase 2 de segurança).
   consultor_responsavel_id: string | null;
