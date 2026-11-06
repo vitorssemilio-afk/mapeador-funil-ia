@@ -561,6 +561,11 @@ export type CriterioEntrega = {
   nome: string;
   ordem: number;
   obrigatorio: boolean;
+  // Prompt 64, Bloco 4 — fonte de comprovação automática: 'marco:<campo de
+  // clientes>' ou '<chave de atividades_cronograma>'. null = validação
+  // manual, sem fonte confiável (ver resolverCriterioEfetivo em
+  // criteriosEntrega.ts).
+  atividade_chave_fonte: string | null;
   created_at: string;
 };
 
