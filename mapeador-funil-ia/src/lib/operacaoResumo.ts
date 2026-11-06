@@ -113,11 +113,17 @@ export type AlertaOperacao = {
   severidade: 'atencao' | 'critico';
 };
 
-function preRequisitoCompleto(impl: ImplementacaoCrm): boolean {
+// Prompt 64, Bloco 3 (seções 17/21): removida a exigência genérica de
+// credenciais do Facebook — nunca fez parte do que importa pra configurar o
+// CRM, era só um detalhe técnico da autenticação do WhatsApp. O WhatsApp
+// corporativo só entra como pré-requisito quando o canal está de fato
+// previsto no escopo do cliente (canal_whatsapp_business !== false) —
+// cliente que não quer WhatsApp não trava aqui.
+function preRequisitoCompleto(impl: ImplementacaoCrm, cliente: Cliente): boolean {
+  const precisaWhatsapp = cliente.canal_whatsapp_business !== false;
   return (
     (impl.email_conta_kommo ?? '').trim().length > 0 &&
-    impl.whatsapp_corporativo_confirmado &&
-    impl.acesso_facebook_confirmado
+    (!precisaWhatsapp || impl.whatsapp_corporativo_confirmado)
   );
 }
 
@@ -219,7 +225,7 @@ function proximaAcaoLabel(params: {
       : `Avançar o funil — ${MAPEAMENTO_STATUS_LABELS[vendas.status]}`;
   }
   if (implementacao.status === 'concluida') return 'Nenhuma — implementação concluída';
-  if (implementacao.status === 'preparacao_crm' && !preRequisitoCompleto(implementacao)) {
+  if (implementacao.status === 'preparacao_crm' && !preRequisitoCompleto(implementacao, cliente)) {
     return 'Confirmar pré-requisitos (acessos)';
   }
   if (precisaPosVenda) return 'Enviar formulário de pós-venda';

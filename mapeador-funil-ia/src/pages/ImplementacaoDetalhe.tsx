@@ -247,7 +247,6 @@ type FormGeral = {
   conta_criada_via_v4: boolean;
   email_conta_kommo: string;
   whatsapp_corporativo_confirmado: boolean;
-  acesso_facebook_confirmado: boolean;
   plano_contratado: string;
   periodo_contratado: string;
   data_decisao_plano: string;
@@ -278,12 +277,12 @@ const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
   'concluida',
 ]);
 
-function preRequisitoCompleto(form: FormGeral): boolean {
-  return (
-    form.email_conta_kommo.trim().length > 0 &&
-    form.whatsapp_corporativo_confirmado &&
-    form.acesso_facebook_confirmado
-  );
+// Prompt 64, Bloco 3: ver comentário equivalente em operacaoResumo.ts — sem
+// Facebook, e WhatsApp só obrigatório quando está de fato no escopo deste
+// cliente.
+function preRequisitoCompleto(form: FormGeral, cliente: Cliente | null): boolean {
+  const precisaWhatsapp = cliente?.canal_whatsapp_business !== false;
+  return form.email_conta_kommo.trim().length > 0 && (!precisaWhatsapp || form.whatsapp_corporativo_confirmado);
 }
 
 function paraFormGeral(impl: ImplementacaoCrm): FormGeral {
@@ -296,7 +295,6 @@ function paraFormGeral(impl: ImplementacaoCrm): FormGeral {
     conta_criada_via_v4: impl.conta_criada_via_v4,
     email_conta_kommo: impl.email_conta_kommo ?? '',
     whatsapp_corporativo_confirmado: impl.whatsapp_corporativo_confirmado,
-    acesso_facebook_confirmado: impl.acesso_facebook_confirmado,
     plano_contratado: impl.plano_contratado ?? '',
     periodo_contratado: impl.periodo_contratado ?? '',
     data_decisao_plano: impl.data_decisao_plano ?? '',
@@ -1217,10 +1215,12 @@ export function ImplementacaoDetalhe() {
     if (
       implementacao.status === 'preparacao_crm' &&
       STATUS_BLOQUEADOS_SEM_PRE_REQUISITO.has(formGeral.status) &&
-      !preRequisitoCompleto(formGeral)
+      !preRequisitoCompleto(formGeral, cliente)
     ) {
       setError(
-        'Não dá pra avançar pra CRM em configuração sem o pré-requisito completo: e-mail da conta Kommo, WhatsApp Corporativo e acesso ao Facebook confirmados.',
+        cliente?.canal_whatsapp_business === false
+          ? 'Não dá pra avançar pra CRM em configuração sem o e-mail da conta Kommo confirmado.'
+          : 'Não dá pra avançar pra CRM em configuração sem o pré-requisito completo: e-mail da conta Kommo e WhatsApp Corporativo confirmados.',
       );
       return;
     }
@@ -1241,7 +1241,6 @@ export function ImplementacaoDetalhe() {
         conta_criada_via_v4: formGeral.conta_criada_via_v4,
         email_conta_kommo: formGeral.email_conta_kommo.trim() || null,
         whatsapp_corporativo_confirmado: formGeral.whatsapp_corporativo_confirmado,
-        acesso_facebook_confirmado: formGeral.acesso_facebook_confirmado,
         plano_contratado: formGeral.plano_contratado || null,
         periodo_contratado: formGeral.periodo_contratado.trim() || null,
         data_decisao_plano: formGeral.data_decisao_plano || null,
@@ -2869,7 +2868,7 @@ export function ImplementacaoDetalhe() {
   if (error && !implementacao) return <p className="form-error">{error}</p>;
   if (!implementacao || !formGeral) return <p className="form-error">Implementação não encontrada.</p>;
 
-  const gateSemanaUmBloqueado = implementacao.status === 'preparacao_crm' && !preRequisitoCompleto(formGeral);
+  const gateSemanaUmBloqueado = implementacao.status === 'preparacao_crm' && !preRequisitoCompleto(formGeral, cliente);
 
   async function handleCopiarIdImplementacao() {
     await navigator.clipboard.writeText(implementacao!.id);
@@ -3482,8 +3481,9 @@ export function ImplementacaoDetalhe() {
                 </select>
                 {gateSemanaUmBloqueado && (
                   <span className="field-hint">
-                    Bloqueado até confirmar o pré-requisito: e-mail da conta Kommo, WhatsApp
-                    Corporativo e acesso ao Facebook (campos "Acessos" abaixo).
+                    {cliente?.canal_whatsapp_business === false
+                      ? 'Bloqueado até confirmar o e-mail da conta Kommo (campo "Acessos" abaixo).'
+                      : 'Bloqueado até confirmar o pré-requisito: e-mail da conta Kommo e WhatsApp Corporativo (campos "Acessos" abaixo).'}
                   </span>
                 )}
               </label>
@@ -3618,15 +3618,6 @@ export function ImplementacaoDetalhe() {
                 }
               />
               <span>WhatsApp Corporativo (business) confirmado</span>
-            </label>
-
-            <label className="option-checkbox">
-              <input
-                type="checkbox"
-                checked={formGeral.acesso_facebook_confirmado}
-                onChange={(e) => setFormGeral({ ...formGeral, acesso_facebook_confirmado: e.target.checked })}
-              />
-              <span>Acesso às credenciais do Facebook confirmado</span>
             </label>
 
             <div className="form-grid">
