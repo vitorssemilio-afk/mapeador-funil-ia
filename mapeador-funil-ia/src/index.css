@@ -1157,6 +1157,54 @@ img.brand-mark {
   background: var(--color-accent);
 }
 
+.freq-bar-fill-success {
+  background: var(--color-success);
+}
+
+.freq-bar-fill-warning {
+  background: var(--color-warning);
+}
+
+.freq-bar-fill-danger {
+  background: var(--color-danger);
+}
+
+.freq-bar-fill-info {
+  background: var(--color-info);
+}
+
+/* Prompt 64, Bloco 5 — acordeões do Nível 3 (análise detalhada) reaproveitam
+   o mesmo <details> já usado no Relatório de Respostas (.freq-bloco), só
+   dentro de um card em vez de direto na página. */
+.gestao-nivel-titulo {
+  margin: 28px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.gestao-nivel-titulo:first-child {
+  margin-top: 0;
+}
+
+.gestao-accordion-card > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  list-style: none;
+}
+
+.gestao-accordion-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.gestao-accordion-card[open] > summary h2 {
+  margin-bottom: 0;
+}
+
 .freq-bar-count {
   font-size: 12px;
   font-weight: 600;
