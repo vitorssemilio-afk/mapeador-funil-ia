@@ -65,6 +65,38 @@ function Barra({ percentual, tone = 'normal' }: { percentual: number | null; ton
   );
 }
 
+// Prompt 64, Bloco 5 (seções 32-33) — comparação de magnitude entre poucas
+// categorias/entidades: forma mais simples e segura (skill de dataviz,
+// "choosing a form") — nunca um gráfico novo quando a tabela já basta, só
+// onde a leitura visual ajuda mais que a linha de uma tabela. Reaproveita a
+// mesma marcação de barra de frequência do Relatório de Respostas
+// (.freq-bar-*), sem nenhuma lib de gráfico nova.
+function GraficoBarras({
+  itens,
+  formatar = (v) => String(v),
+}: {
+  itens: { label: string; valor: number; tone?: 'success' | 'warning' | 'danger' | 'info' }[];
+  formatar?: (valor: number) => string;
+}) {
+  const maximo = Math.max(1, ...itens.map((i) => i.valor));
+  return (
+    <div className="freq-bar-list">
+      {itens.map((item) => (
+        <div className="freq-bar-row" key={item.label} title={`${item.label}: ${formatar(item.valor)}`}>
+          <span className="freq-bar-label">{item.label}</span>
+          <span className="freq-bar-track">
+            <span
+              className={`freq-bar-fill${item.tone ? ` freq-bar-fill-${item.tone}` : ' freq-bar-fill-top'}`}
+              style={{ width: `${(item.valor / maximo) * 100}%` }}
+            />
+          </span>
+          <span className="freq-bar-count">{formatar(item.valor)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CardIndicador({
   titulo,
   valor,
@@ -579,6 +611,8 @@ export function GestaoDashboard() {
         </section>
       )}
 
+      <h2 className="gestao-nivel-titulo">Visão executiva</h2>
+
       {/* 3. Indicadores principais */}
       <section className="card" id="gestao-indicadores">
         <h2>Indicadores principais</h2>
@@ -652,6 +686,8 @@ export function GestaoDashboard() {
         </div>
       </section>
 
+      <h2 className="gestao-nivel-titulo">Análise operacional</h2>
+
       {/* 3b. Saúde da implementação — mesma fonte oficial de Home/Dashboard.
          Fica logo após os indicadores principais (seção 19 do polimento
          visual: saúde da carteira precisa estar no primeiro viewport, não
@@ -677,69 +713,27 @@ export function GestaoDashboard() {
             />
           ))}
         </div>
-      </section>
-
-      {/* 4. Tempos do processo */}
-      <section className="card" id="gestao-tempos">
-        <h2>Tempos do processo</h2>
-        <p className="field-hint">Só considera marcos realmente registrados — nunca estima data inexistente.</p>
-        {tempos.every((t) => t.amostras === 0) ? (
-          <div className="empty-state">
-            <p>Nenhum marco suficiente para calcular tempos ainda.</p>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table data-table-cards-mobile">
-              <thead>
-                <tr>
-                  <th>Etapa</th>
-                  <th>Média</th>
-                  <th>Mediana</th>
-                  <th>Amostras</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tempos.map((t) => (
-                  <tr key={t.label}>
-                    <td data-label="Etapa">{t.label}</td>
-                    <td data-label="Média">{t.mediaDias != null ? `${t.mediaDias}d` : '—'}</td>
-                    <td data-label="Mediana">{t.medianaDias != null ? `${t.medianaDias}d` : '—'}</td>
-                    <td data-label="Amostras">
-                      {t.amostras === 0 ? '—' : t.amostras}
-                      {t.baseBaixa && (
-                        <span
-                          className="field-hint"
-                          title="Baseado em apenas 1 implementação — pouca base estatística pra representar a etapa."
-                        >
-                          {' '}
-                          (base baixa)
-                        </span>
-                      )}
-                      {t.amostrasInconsistentes > 0 && (
-                        <span
-                          className="field-hint"
-                          title="Implementações em que a data final está registrada antes da inicial (ordem cronológica impossível pra essa etapa — dado incorreto ou corrigido depois). Excluídas da média/mediana, não contam como tempo negativo."
-                        >
-                          {' '}
-                          · {t.amostrasInconsistentes} inconsistente{t.amostrasInconsistentes > 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        {saude.some((s) => s.valor > 0) && (
+          <GraficoBarras
+            itens={saude.map((s) => ({
+              label: SAUDE_LABELS[s.saude],
+              valor: s.valor,
+              tone:
+                s.saude === 'critico' ? 'danger' : s.saude === 'atencao' ? 'warning' : s.saude === 'aguardando_cliente' ? 'info' : 'success',
+            }))}
+          />
         )}
-        <p className="field-hint">
-          "Treinamento → primeira automação" não é mostrado: não existe hoje uma data isolada de "primeira
-          automação concluída" no produto.
-        </p>
       </section>
 
       {/* 5. Ciclos */}
-      <section className="card">
+      <section className="card" id="gestao-jornada">
         <h2>Desempenho por ciclo</h2>
+        {ciclos.some((c) => c.percentualNoPrazo != null) && (
+          <GraficoBarras
+            itens={ciclos.filter((c) => c.percentualNoPrazo != null).map((c) => ({ label: c.nome, valor: c.percentualNoPrazo ?? 0, tone: 'success' as const }))}
+            formatar={(v) => `${v}%`}
+          />
+        )}
         <div className="table-wrap">
           <table className="data-table data-table-cards-mobile">
             <thead>
@@ -777,45 +771,17 @@ export function GestaoDashboard() {
         </div>
       </section>
 
-      {/* 6. Causas de atraso */}
-      <section className="card">
-        <h2>Principais causas de atraso</h2>
-        {causas.porResponsavel.every((c) => c.quantidade === 0) ? (
-          <div className="empty-state">
-            <p>Nenhuma ocorrência registrada no período filtrado.</p>
-          </div>
-        ) : (
-          <>
-            <ul className="historico-status-lista">
-              {causas.porResponsavel.map((c) => (
-                <li key={c.responsavel} className="historico-status-item">
-                  <span style={{ minWidth: 140, display: 'inline-block' }}>{c.label}</span>
-                  <Barra percentual={c.percentual} />
-                  <span>
-                    {c.percentual != null ? `${c.percentual}%` : '0%'} ({c.quantidade})
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <h3>Motivos mais frequentes</h3>
-            <ul className="historico-status-lista">
-              {causas.motivosFrequentes.map((m) => (
-                <li key={m.categoria} className="historico-status-item">
-                  <span>{m.categoria}</span>
-                  <span>{m.quantidade}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
-
       {/* 7. Consultor — gestão de capacidade, não ranking. */}
       <section className="card" id="gestao-consultor">
         <h2>Por consultor</h2>
         <p className="field-hint">
           Visão de capacidade e carga de trabalho — não é um ranking de desempenho entre consultores.
         </p>
+        {consultoresDesempenho.some((c) => c.clientesAtivos > 0) && (
+          <GraficoBarras
+            itens={consultoresDesempenho.filter((c) => c.clientesAtivos > 0).map((c) => ({ label: c.nome, valor: c.clientesAtivos }))}
+          />
+        )}
         <div className="table-wrap">
           <table className="data-table data-table-cards-mobile">
             <thead>
@@ -894,6 +860,17 @@ export function GestaoDashboard() {
             valor={trial.percentualUsouSegundaExtensao != null ? `${trial.percentualUsouSegundaExtensao}%` : '—'}
           />
         </div>
+        {(trial.ativos.valor > 0 || trial.proximosVencimento.valor > 0 || trial.extensaoPendente.valor > 0) && (
+          <GraficoBarras
+            itens={[
+              { label: 'Trial inicial (até 14d)', valor: trial.trialInicial.valor },
+              { label: 'Em +14 dias', valor: trial.em14Dias.valor },
+              { label: 'Em +7 dias', valor: trial.em7Dias.valor },
+              { label: 'Próximos do vencimento', valor: trial.proximosVencimento.valor, tone: 'warning' as const },
+              { label: 'Extensão pendente', valor: trial.extensaoPendente.valor, tone: 'danger' as const },
+            ]}
+          />
+        )}
       </section>
 
       {/* 9. Reuniões */}
@@ -918,50 +895,6 @@ export function GestaoDashboard() {
             />
           )}
         </div>
-      </section>
-
-      {/* 10. Funil de vendas */}
-      <section className="card">
-        <h2>Funil de vendas (mapeamento)</h2>
-        <div className="stats-grid">
-          <CardIndicador titulo="Formulários enviados" valor={funilVendas.formulariosEnviados} />
-          <CardIndicador titulo="Formulários respondidos" valor={funilVendas.formulariosRespondidos} />
-          <CardIndicador titulo="Funis gerados" valor={funilVendas.funisGerados} />
-          <CardIndicador titulo="Funis em revisão" valor={funilVendas.funisEmRevisao} />
-          <CardIndicador titulo="Funis validados" valor={funilVendas.funisValidados} tone="success" />
-          <CardIndicador
-            titulo="Tempo médio resposta → validação"
-            valor={funilVendas.tempoMedioRespostaValidacaoDias != null ? `${funilVendas.tempoMedioRespostaValidacaoDias}d` : '—'}
-          />
-        </div>
-      </section>
-
-      {/* 11. Pós-venda */}
-      <section className="card">
-        <h2>Pós-venda</h2>
-        <div className="stats-grid">
-          <CardIndicador titulo="Não iniciado" valor={posVenda.naoIniciado} />
-          <CardIndicador titulo="Enviado (aguardando resposta)" valor={posVenda.enviado} />
-          <CardIndicador titulo="Respondido" valor={posVenda.respondido} />
-          <CardIndicador titulo="Funil gerado" valor={posVenda.funilGerado} />
-          <CardIndicador titulo="Funil validado" valor={posVenda.funilValidado} tone="success" />
-          <CardIndicador
-            titulo="% de clientes com pós-venda implementado"
-            valor={posVenda.percentualImplementado != null ? `${posVenda.percentualImplementado}%` : '—'}
-          />
-          <CardIndicador
-            titulo="Tempo médio de resposta"
-            valor={posVenda.tempoMedioRespostaDias != null ? `${posVenda.tempoMedioRespostaDias}d` : '—'}
-          />
-          <CardIndicador
-            titulo="Tempo médio resposta → validação"
-            valor={posVenda.tempoMedioRespostaValidacaoDias != null ? `${posVenda.tempoMedioRespostaValidacaoDias}d` : '—'}
-          />
-        </div>
-        <p className="field-hint">
-          "Em configuração" e "concluído" não aparecem como estágios próprios do pós-venda: não existe hoje um
-          status de mapeamento distinto para essas duas fases (ver relatório final).
-        </p>
       </section>
 
       {/* 12. Entrega — nunca misturado com adoção. */}
@@ -1043,6 +976,157 @@ export function GestaoDashboard() {
           </div>
         )}
       </section>
+
+      <h2 className="gestao-nivel-titulo">Análise detalhada</h2>
+
+      {/* 4. Tempos do processo */}
+      <details className="card gestao-accordion-card" id="gestao-tempos">
+        <summary>
+          <h2>Tempos do processo</h2>
+        </summary>
+        <p className="field-hint">Só considera marcos realmente registrados — nunca estima data inexistente.</p>
+        {tempos.every((t) => t.amostras === 0) ? (
+          <div className="empty-state">
+            <p>Nenhum marco suficiente para calcular tempos ainda.</p>
+          </div>
+        ) : (
+          <>
+            <GraficoBarras
+              itens={tempos.filter((t) => t.amostras > 0).map((t) => ({ label: t.label, valor: t.mediaDias ?? 0 }))}
+              formatar={(v) => `${v}d`}
+            />
+            <div className="table-wrap">
+              <table className="data-table data-table-cards-mobile">
+                <thead>
+                  <tr>
+                    <th>Etapa</th>
+                    <th>Média</th>
+                    <th>Mediana</th>
+                    <th>Amostras</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tempos.map((t) => (
+                    <tr key={t.label}>
+                      <td data-label="Etapa">{t.label}</td>
+                      <td data-label="Média">{t.mediaDias != null ? `${t.mediaDias}d` : '—'}</td>
+                      <td data-label="Mediana">{t.medianaDias != null ? `${t.medianaDias}d` : '—'}</td>
+                      <td data-label="Amostras">
+                        {t.amostras === 0 ? '—' : t.amostras}
+                        {t.baseBaixa && (
+                          <span
+                            className="field-hint"
+                            title="Baseado em apenas 1 implementação — pouca base estatística pra representar a etapa."
+                          >
+                            {' '}
+                            (base baixa)
+                          </span>
+                        )}
+                        {t.amostrasInconsistentes > 0 && (
+                          <span
+                            className="field-hint"
+                            title="Implementações em que a data final está registrada antes da inicial (ordem cronológica impossível pra essa etapa — dado incorreto ou corrigido depois). Excluídas da média/mediana, não contam como tempo negativo."
+                          >
+                            {' '}
+                            · {t.amostrasInconsistentes} inconsistente{t.amostrasInconsistentes > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        <p className="field-hint">
+          "Treinamento → primeira automação" não é mostrado: não existe hoje uma data isolada de "primeira
+          automação concluída" no produto.
+        </p>
+      </details>
+
+      {/* 6. Causas de atraso */}
+      <details className="card gestao-accordion-card">
+        <summary>
+          <h2>Principais causas de atraso</h2>
+        </summary>
+        {causas.porResponsavel.every((c) => c.quantidade === 0) ? (
+          <div className="empty-state">
+            <p>Nenhuma ocorrência registrada no período filtrado.</p>
+          </div>
+        ) : (
+          <>
+            <ul className="historico-status-lista">
+              {causas.porResponsavel.map((c) => (
+                <li key={c.responsavel} className="historico-status-item">
+                  <span style={{ minWidth: 140, display: 'inline-block' }}>{c.label}</span>
+                  <Barra percentual={c.percentual} />
+                  <span>
+                    {c.percentual != null ? `${c.percentual}%` : '0%'} ({c.quantidade})
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <h3>Motivos mais frequentes</h3>
+            <ul className="historico-status-lista">
+              {causas.motivosFrequentes.map((m) => (
+                <li key={m.categoria} className="historico-status-item">
+                  <span>{m.categoria}</span>
+                  <span>{m.quantidade}</span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </details>
+
+      {/* 10. Funil de vendas */}
+      <details className="card gestao-accordion-card">
+        <summary>
+          <h2>Funil de vendas (mapeamento)</h2>
+        </summary>
+        <div className="stats-grid">
+          <CardIndicador titulo="Formulários enviados" valor={funilVendas.formulariosEnviados} />
+          <CardIndicador titulo="Formulários respondidos" valor={funilVendas.formulariosRespondidos} />
+          <CardIndicador titulo="Funis gerados" valor={funilVendas.funisGerados} />
+          <CardIndicador titulo="Funis em revisão" valor={funilVendas.funisEmRevisao} />
+          <CardIndicador titulo="Funis validados" valor={funilVendas.funisValidados} tone="success" />
+          <CardIndicador
+            titulo="Tempo médio resposta → validação"
+            valor={funilVendas.tempoMedioRespostaValidacaoDias != null ? `${funilVendas.tempoMedioRespostaValidacaoDias}d` : '—'}
+          />
+        </div>
+      </details>
+
+      {/* 11. Pós-venda */}
+      <details className="card gestao-accordion-card">
+        <summary>
+          <h2>Pós-venda</h2>
+        </summary>
+        <div className="stats-grid">
+          <CardIndicador titulo="Não iniciado" valor={posVenda.naoIniciado} />
+          <CardIndicador titulo="Enviado (aguardando resposta)" valor={posVenda.enviado} />
+          <CardIndicador titulo="Respondido" valor={posVenda.respondido} />
+          <CardIndicador titulo="Funil gerado" valor={posVenda.funilGerado} />
+          <CardIndicador titulo="Funil validado" valor={posVenda.funilValidado} tone="success" />
+          <CardIndicador
+            titulo="% de clientes com pós-venda implementado"
+            valor={posVenda.percentualImplementado != null ? `${posVenda.percentualImplementado}%` : '—'}
+          />
+          <CardIndicador
+            titulo="Tempo médio de resposta"
+            valor={posVenda.tempoMedioRespostaDias != null ? `${posVenda.tempoMedioRespostaDias}d` : '—'}
+          />
+          <CardIndicador
+            titulo="Tempo médio resposta → validação"
+            valor={posVenda.tempoMedioRespostaValidacaoDias != null ? `${posVenda.tempoMedioRespostaValidacaoDias}d` : '—'}
+          />
+        </div>
+        <p className="field-hint">
+          "Em configuração" e "concluído" não aparecem como estágios próprios do pós-venda: não existe hoje um
+          status de mapeamento distinto para essas duas fases (ver relatório final).
+        </p>
+      </details>
     </div>
   );
 }
