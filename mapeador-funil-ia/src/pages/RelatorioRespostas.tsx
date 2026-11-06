@@ -1,71 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { BlocoFormulario, OpcaoPergunta, Pergunta } from '../data/formSchema';
+import type { BlocoFormulario } from '../data/formSchema';
 import { carregarFormSchema } from '../lib/formSchemaService';
 import { supabase } from '../lib/supabaseClient';
 import { STATUS_COM_FUNIL_GERADO } from '../lib/statusFluxo';
+import { resumirEscolha, resumirNumero, type ResumoPergunta } from '../lib/relatorioRespostas';
 import type { MapeamentoRespostaFlat } from '../types/database';
-
-type ItemFrequencia = { valor: string; label: string; contagem: number };
-
-type ResumoEscolha = {
-  tipo: 'escolha';
-  pergunta: Pergunta;
-  itens: ItemFrequencia[];
-  totalRespondentes: number;
-};
-
-type ResumoNumero = {
-  tipo: 'numero';
-  pergunta: Pergunta;
-  totalRespondentes: number;
-  media: number;
-  minimo: number;
-  maximo: number;
-};
-
-type ResumoPergunta = ResumoEscolha | ResumoNumero;
-
-function labelDaOpcao(opcoes: OpcaoPergunta[] | undefined, valor: string): string {
-  return opcoes?.find((o) => o.value === valor)?.label ?? valor;
-}
-
-function resumirEscolha(pergunta: Pergunta, linhas: MapeamentoRespostaFlat[]): ResumoEscolha {
-  const contagens = new Map<string, number>();
-
-  for (const linha of linhas) {
-    const bruta = linha.resposta_bruta;
-    const valores = Array.isArray(bruta) ? (bruta as string[]) : [String(bruta)];
-    for (const valor of valores) {
-      if (!valor) continue;
-      contagens.set(valor, (contagens.get(valor) ?? 0) + 1);
-    }
-  }
-
-  const itens: ItemFrequencia[] = [...contagens.entries()]
-    .map(([valor, contagem]) => ({ valor, label: labelDaOpcao(pergunta.opcoes, valor), contagem }))
-    .sort((a, b) => b.contagem - a.contagem);
-
-  return { tipo: 'escolha', pergunta, itens, totalRespondentes: linhas.length };
-}
-
-function resumirNumero(pergunta: Pergunta, linhas: MapeamentoRespostaFlat[]): ResumoNumero | null {
-  const valores = linhas
-    .map((linha) => Number(linha.resposta_bruta))
-    .filter((n) => Number.isFinite(n));
-
-  if (valores.length === 0) return null;
-
-  const soma = valores.reduce((s, v) => s + v, 0);
-
-  return {
-    tipo: 'numero',
-    pergunta,
-    totalRespondentes: valores.length,
-    media: soma / valores.length,
-    minimo: Math.min(...valores),
-    maximo: Math.max(...valores),
-  };
-}
 
 function formatarNumero(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
@@ -213,6 +152,15 @@ export function RelatorioRespostas() {
                     <p className="freq-card-title">{resumo.pergunta.label}</p>
                     <p className="freq-card-subtitle">
                       {resumo.totalRespondentes} de {totalEnviados} responderam
+                      {resumo.baseBaixa && (
+                        <span
+                          className="field-hint"
+                          title="Poucas respostas pra essa pergunta — percentual/média pouco representativo, não é uma tendência confirmada."
+                        >
+                          {' '}
+                          (base baixa)
+                        </span>
+                      )}
                     </p>
                   </div>
 
