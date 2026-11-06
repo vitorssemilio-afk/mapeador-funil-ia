@@ -94,21 +94,35 @@ export const CONFIGURACAO_TRIAL_PADRAO: ConfiguracaoTrialKommo = {
   diasAlerta: DIAS_ALERTA,
 };
 
-// null = Trial ainda não começou (conta Kommo ainda não foi criada) — nunca
-// mostra período/vencimento antes disso. `config` é opcional e default pros
-// 3 períodos + alertas hardcoded — a área de Configurações resolve o valor
-// certo por cliente (snapshot do Kickoff, ou a config global pra quem
-// ainda não teve Kickoff) e passa aqui.
+// null = Trial não aplicável ou ainda não começou. Dois motivos pra não
+// aplicável (prompt 64, Bloco 1): conta com plano já contratado nunca tem
+// trial fictício calculado, e conta sem nenhuma data de início conhecida
+// (nem criada pela V4, nem trial pré-existente com data registrada) também
+// não mostra período/vencimento. `config` é opcional e default pros 3
+// períodos + alertas hardcoded — a área de Configurações resolve o valor
+// certo por cliente (snapshot do Kickoff, ou a config global pra quem ainda
+// não teve Kickoff) e passa aqui.
 export function resolverResumoTrialKommo(
   cliente: Cliente,
   hoje: Date,
   config: ConfiguracaoTrialKommo = CONFIGURACAO_TRIAL_PADRAO,
 ): ResumoTrialKommo | null {
-  if (!cliente.conta_kommo_criada_em) return null;
+  if (cliente.kommo_situacao_conta === 'ativa_contratada') return null;
+
+  // conta_kommo_criada_em = conta criada PELA V4 (trial sempre começa aí).
+  // Sem isso, só conta como trial em andamento se o cliente já tinha uma
+  // conta pré-existente E essa situação foi registrada como 'trial' com uma
+  // data real de início — nunca assume hoje como início por omissão.
+  const inicioBruto =
+    cliente.conta_kommo_criada_em ??
+    (cliente.kommo_ja_possui === 'sim' && cliente.kommo_situacao_conta === 'trial'
+      ? cliente.kommo_trial_inicio_em
+      : null);
+  if (!inicioBruto) return null;
 
   const { diasInicial, diasExtensao14, diasExtensao7, diasAlerta } = config;
 
-  const inicio = new Date(cliente.conta_kommo_criada_em);
+  const inicio = new Date(inicioBruto);
   const vencimentoTrialInicial = adicionarDias(inicio, diasInicial);
   // Primeira extensão concedida = +7 dias (campos extensao_7_*); segunda =
   // +14 dias (campos extensao_14_*) — ordem invertida em relação ao nome
