@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { formatCampoEtapaLabel } from '../data/etapaCampos';
+import { exportarKickoffPptx } from '../lib/exportKickoffPptx';
 import { exportarFunilParaPptx } from '../lib/exportPptx';
 import { supabase } from '../lib/supabaseClient';
 import type { EtapaFunil, FunilGerado, GeracaoMeta, Mapeamento } from '../types/database';
@@ -275,6 +276,7 @@ export function RelatorioFunil() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportandoPptx, setExportandoPptx] = useState(false);
+  const [exportandoKickoff, setExportandoKickoff] = useState(false);
   const [marcaOperacao, setMarcaOperacao] = useState('V4');
 
   useEffect(() => {
@@ -379,6 +381,16 @@ export function RelatorioFunil() {
     }
   }
 
+  async function handleExportarKickoff() {
+    if (!mapeamento) return;
+    setExportandoKickoff(true);
+    try {
+      await exportarKickoffPptx(mapeamento.nome_negocio, funis, geracaoMeta);
+    } finally {
+      setExportandoKickoff(false);
+    }
+  }
+
   return (
     <div className="relatorio-viewport">
       <div className="relatorio-toolbar no-print">
@@ -396,6 +408,17 @@ export function RelatorioFunil() {
         >
           {exportandoPptx ? 'Gerando…' : 'Baixar PPTX'}
         </button>
+        {marcaOperacao === 'V4' && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleExportarKickoff}
+            disabled={exportandoKickoff}
+            title="Deck de apresentação pra reunião de Kick Off com o cliente"
+          >
+            {exportandoKickoff ? 'Gerando…' : 'Baixar Kick Off'}
+          </button>
+        )}
         <button type="button" className="btn btn-primary" onClick={() => window.print()}>
           Baixar PDF
         </button>
