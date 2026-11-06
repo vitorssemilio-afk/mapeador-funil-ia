@@ -44,6 +44,7 @@ import type {
   KommoJaPossui,
   KommoSituacaoConta,
   Mapeamento,
+  WhatsappTipo,
   ReuniaoRemarcacao,
   Reuniao,
   StatusOcorrencia,
@@ -155,6 +156,29 @@ function paraForm(cliente: Cliente): FormCliente {
   };
 }
 
+// Prompt 64, Bloco 3 — mesmo tri-state de canal_whatsapp_business/
+// canal_instagram (boolean|null), só explícito na UI em vez de um checkbox
+// que esconde o "ainda não definido" atrás do valor marcado por padrão.
+type CanalDecisao = 'sim' | 'nao' | 'nao_definido';
+
+function canalParaDecisao(valor: boolean | null): CanalDecisao {
+  if (valor === true) return 'sim';
+  if (valor === false) return 'nao';
+  return 'nao_definido';
+}
+
+function decisaoParaCanal(decisao: CanalDecisao): boolean | null {
+  if (decisao === 'sim') return true;
+  if (decisao === 'nao') return false;
+  return null;
+}
+
+const CANAL_DECISAO_LABELS: Record<CanalDecisao, string> = {
+  sim: 'Sim',
+  nao: 'Não',
+  nao_definido: 'Ainda não definido',
+};
+
 type FormInfoCliente = {
   nome_fantasia: string;
   razao_social: string;
@@ -162,13 +186,21 @@ type FormInfoCliente = {
   site: string;
   cidade: string;
   uf: string;
-  // null = ainda não definido (clientes antigos) — trata como "sim" no
-  // formulário pra não mudar o comportamento de quem nunca mexeu nisso; só
-  // vira "não" quando alguém desmarca e salva de propósito (prompt 54,
-  // seções 23/28/29/55 — canal só é condicional depois de uma decisão
-  // explícita, nunca por omissão).
-  canal_whatsapp_business: boolean;
-  canal_instagram: boolean;
+  // Prompt 64, Bloco 3 (seções 18-22) — canal de atendimento: intenção
+  // (sim/não/ainda não definido), e detalhes só quando a intenção é "sim".
+  // A conexão em si (status) continua vivendo no checklist (atividade
+  // "Conectar WhatsApp/Instagram ao Kommo", dependente do treinamento
+  // realizado) — aqui é só o planejamento, nunca a execução.
+  canal_whatsapp_business: CanalDecisao;
+  whatsapp_tipo: WhatsappTipo | '';
+  whatsapp_numero: string;
+  whatsapp_responsavel: string;
+  whatsapp_situacao: string;
+  whatsapp_observacoes: string;
+  canal_instagram: CanalDecisao;
+  instagram_perfil: string;
+  instagram_responsavel: string;
+  instagram_observacoes: string;
   // Situação da conta Kommo (prompt 64, Bloco 1) — kommo_situacao_conta e os
   // campos abaixo só se aplicam quando kommo_ja_possui = 'sim'.
   kommo_ja_possui: KommoJaPossui;
@@ -189,8 +221,16 @@ function paraFormInfo(cliente: Cliente): FormInfoCliente {
     site: cliente.site ?? '',
     cidade: cliente.cidade ?? '',
     uf: cliente.uf ?? '',
-    canal_whatsapp_business: cliente.canal_whatsapp_business ?? true,
-    canal_instagram: cliente.canal_instagram ?? true,
+    canal_whatsapp_business: canalParaDecisao(cliente.canal_whatsapp_business),
+    whatsapp_tipo: cliente.whatsapp_tipo ?? '',
+    whatsapp_numero: cliente.whatsapp_numero ?? '',
+    whatsapp_responsavel: cliente.whatsapp_responsavel ?? '',
+    whatsapp_situacao: cliente.whatsapp_situacao ?? '',
+    whatsapp_observacoes: cliente.whatsapp_observacoes ?? '',
+    canal_instagram: canalParaDecisao(cliente.canal_instagram),
+    instagram_perfil: cliente.instagram_perfil ?? '',
+    instagram_responsavel: cliente.instagram_responsavel ?? '',
+    instagram_observacoes: cliente.instagram_observacoes ?? '',
     kommo_ja_possui: cliente.kommo_ja_possui,
     kommo_situacao_conta: cliente.kommo_situacao_conta ?? '',
     kommo_dominio: cliente.kommo_dominio ?? '',
@@ -942,8 +982,16 @@ export function ClienteDetalhe() {
         site: formInfo.site.trim() || null,
         cidade: formInfo.cidade.trim() || null,
         uf: formInfo.uf.trim() || null,
-        canal_whatsapp_business: formInfo.canal_whatsapp_business,
-        canal_instagram: formInfo.canal_instagram,
+        canal_whatsapp_business: decisaoParaCanal(formInfo.canal_whatsapp_business),
+        whatsapp_tipo: formInfo.canal_whatsapp_business === 'sim' ? formInfo.whatsapp_tipo || null : null,
+        whatsapp_numero: formInfo.whatsapp_numero.trim() || null,
+        whatsapp_responsavel: formInfo.whatsapp_responsavel.trim() || null,
+        whatsapp_situacao: formInfo.whatsapp_situacao.trim() || null,
+        whatsapp_observacoes: formInfo.whatsapp_observacoes.trim() || null,
+        canal_instagram: decisaoParaCanal(formInfo.canal_instagram),
+        instagram_perfil: formInfo.instagram_perfil.trim() || null,
+        instagram_responsavel: formInfo.instagram_responsavel.trim() || null,
+        instagram_observacoes: formInfo.instagram_observacoes.trim() || null,
         kommo_ja_possui: formInfo.kommo_ja_possui,
         kommo_situacao_conta: formInfo.kommo_ja_possui === 'sim' ? formInfo.kommo_situacao_conta || null : null,
         kommo_dominio: formInfo.kommo_dominio.trim() || null,
@@ -2123,27 +2171,122 @@ export function ClienteDetalhe() {
             </div>
 
             <fieldset className="field">
-              <legend>Canais previstos para este cliente</legend>
+              <legend>Canais de atendimento</legend>
               <p className="field-hint">
-                Desmarque o que não fizer parte da implementação — as atividades de conexão desse canal no
-                checklist deixam de aparecer como pendentes.
+                A conexão de verdade só acontece depois do treinamento realizado (ver Checklist) — aqui é só o
+                planejamento. "Não" tira a atividade de conexão desse canal do checklist; "ainda não definido"
+                mantém a atividade visível, sem presumir nada.
               </p>
-              <label className="option-checkbox">
-                <input
-                  type="checkbox"
-                  checked={formInfo.canal_whatsapp_business}
-                  onChange={(e) => setFormInfo({ ...formInfo, canal_whatsapp_business: e.target.checked })}
-                />
-                <span>WhatsApp Business</span>
+
+              <label className="field">
+                <span>O cliente deseja conectar o WhatsApp ao Kommo?</span>
+                <select
+                  value={formInfo.canal_whatsapp_business}
+                  onChange={(e) => setFormInfo({ ...formInfo, canal_whatsapp_business: e.target.value as CanalDecisao })}
+                >
+                  {(Object.keys(CANAL_DECISAO_LABELS) as CanalDecisao[]).map((valor) => (
+                    <option key={valor} value={valor}>
+                      {CANAL_DECISAO_LABELS[valor]}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label className="option-checkbox">
-                <input
-                  type="checkbox"
-                  checked={formInfo.canal_instagram}
-                  onChange={(e) => setFormInfo({ ...formInfo, canal_instagram: e.target.checked })}
-                />
-                <span>Instagram</span>
+              {formInfo.canal_whatsapp_business === 'sim' && (
+                <>
+                  <label className="field">
+                    <span>Qual tipo de WhatsApp será utilizado?</span>
+                    <select
+                      value={formInfo.whatsapp_tipo}
+                      onChange={(e) => setFormInfo({ ...formInfo, whatsapp_tipo: e.target.value as WhatsappTipo })}
+                    >
+                      <option value="">Selecione…</option>
+                      <option value="business_app">WhatsApp Business App</option>
+                      <option value="api_oficial">WhatsApp API Oficial</option>
+                      <option value="nao_definido">Ainda não definido</option>
+                    </select>
+                  </label>
+                  <div className="form-grid">
+                    <label className="field">
+                      <span>Número</span>
+                      <input
+                        type="text"
+                        value={formInfo.whatsapp_numero}
+                        onChange={(e) => setFormInfo({ ...formInfo, whatsapp_numero: e.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Responsável pelo número</span>
+                      <input
+                        type="text"
+                        value={formInfo.whatsapp_responsavel}
+                        onChange={(e) => setFormInfo({ ...formInfo, whatsapp_responsavel: e.target.value })}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Situação atual</span>
+                      <input
+                        type="text"
+                        value={formInfo.whatsapp_situacao}
+                        onChange={(e) => setFormInfo({ ...formInfo, whatsapp_situacao: e.target.value })}
+                        placeholder="ex: já em uso informal pelo time, número novo a ativar…"
+                      />
+                    </label>
+                  </div>
+                  <label className="field">
+                    <span>Observações</span>
+                    <textarea
+                      rows={2}
+                      value={formInfo.whatsapp_observacoes}
+                      onChange={(e) => setFormInfo({ ...formInfo, whatsapp_observacoes: e.target.value })}
+                    />
+                  </label>
+                </>
+              )}
+
+              <label className="field">
+                <span>O cliente deseja conectar o Instagram ao Kommo?</span>
+                <select
+                  value={formInfo.canal_instagram}
+                  onChange={(e) => setFormInfo({ ...formInfo, canal_instagram: e.target.value as CanalDecisao })}
+                >
+                  {(Object.keys(CANAL_DECISAO_LABELS) as CanalDecisao[]).map((valor) => (
+                    <option key={valor} value={valor}>
+                      {CANAL_DECISAO_LABELS[valor]}
+                    </option>
+                  ))}
+                </select>
               </label>
+              {formInfo.canal_instagram === 'sim' && (
+                <>
+                  <div className="form-grid">
+                    <label className="field">
+                      <span>Perfil</span>
+                      <input
+                        type="text"
+                        value={formInfo.instagram_perfil}
+                        onChange={(e) => setFormInfo({ ...formInfo, instagram_perfil: e.target.value })}
+                        placeholder="@perfil"
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Responsável pelo acesso</span>
+                      <input
+                        type="text"
+                        value={formInfo.instagram_responsavel}
+                        onChange={(e) => setFormInfo({ ...formInfo, instagram_responsavel: e.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <label className="field">
+                    <span>Observações</span>
+                    <textarea
+                      rows={2}
+                      value={formInfo.instagram_observacoes}
+                      onChange={(e) => setFormInfo({ ...formInfo, instagram_observacoes: e.target.value })}
+                    />
+                  </label>
+                </>
+              )}
             </fieldset>
 
             <fieldset className="field">
@@ -2277,13 +2420,22 @@ export function ClienteDetalhe() {
               <strong>UF:</strong> {cliente.uf ?? '—'}
             </p>
             <p>
-              <strong>Canais previstos:</strong>{' '}
-              {[
-                cliente.canal_whatsapp_business !== false && 'WhatsApp Business',
-                cliente.canal_instagram !== false && 'Instagram',
-              ]
-                .filter(Boolean)
-                .join(', ') || 'Nenhum'}
+              <strong>WhatsApp:</strong>{' '}
+              {CANAL_DECISAO_LABELS[canalParaDecisao(cliente.canal_whatsapp_business)]}
+              {cliente.canal_whatsapp_business && cliente.whatsapp_tipo
+                ? ` — ${
+                    cliente.whatsapp_tipo === 'business_app'
+                      ? 'WhatsApp Business App'
+                      : cliente.whatsapp_tipo === 'api_oficial'
+                        ? 'WhatsApp API Oficial'
+                        : 'tipo ainda não definido'
+                  }`
+                : ''}
+              {cliente.canal_whatsapp_business && cliente.whatsapp_numero ? ` · ${cliente.whatsapp_numero}` : ''}
+            </p>
+            <p>
+              <strong>Instagram:</strong> {CANAL_DECISAO_LABELS[canalParaDecisao(cliente.canal_instagram)]}
+              {cliente.canal_instagram && cliente.instagram_perfil ? ` — ${cliente.instagram_perfil}` : ''}
             </p>
             <p>
               <strong>Kommo CRM:</strong>{' '}

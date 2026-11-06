@@ -31,6 +31,11 @@ export type MapeamentoTipo = 'vendas' | 'pos_venda';
 export type KommoJaPossui = 'sim' | 'nao' | 'nao_confirmado';
 export type KommoSituacaoConta = 'ativa_contratada' | 'trial' | 'inativa_suspensa' | 'nao_confirmado';
 
+// Prompt 64, Bloco 3 — tipo de WhatsApp (as duas modalidades não são
+// tecnicamente equivalentes: a execução da conexão depende de qual
+// integração está de fato disponível).
+export type WhatsappTipo = 'business_app' | 'api_oficial' | 'nao_definido';
+
 // Marcos do ciclo de vida do cliente (contratação → ... → adoção). Datados
 // automaticamente pelo produto quando dá (triggers no banco — ver migration
 // 0034), sempre editáveis manualmente na ficha do cliente. Campos "_para"
@@ -78,6 +83,17 @@ export type Cliente = MarcosCliente & {
   // do checklist em vez de aparecerem como pendentes.
   canal_whatsapp_business: boolean | null;
   canal_instagram: boolean | null;
+  // Detalhes do canal (prompt 64, Bloco 3) — só fazem sentido quando o
+  // respectivo canal_* acima é true. Preenchidos conforme forem ficando
+  // conhecidos; nunca presumidos.
+  whatsapp_tipo: WhatsappTipo | null;
+  whatsapp_numero: string | null;
+  whatsapp_responsavel: string | null;
+  whatsapp_situacao: string | null;
+  whatsapp_observacoes: string | null;
+  instagram_perfil: string | null;
+  instagram_responsavel: string | null;
+  instagram_observacoes: string | null;
   // Situação da conta Kommo (prompt 64, Bloco 1) — preenchido no cadastro,
   // editável na ficha. kommo_situacao_conta e os campos abaixo só fazem
   // sentido quando kommo_ja_possui = 'sim'.
@@ -502,6 +518,9 @@ export type ImplementacaoCrm = {
   conta_criada_via_v4: boolean;
   email_conta_kommo: string | null;
   whatsapp_corporativo_confirmado: boolean;
+  // DEPRECATED (prompt 64, Bloco 3, seção 17) — exigência genérica removida
+  // do fluxo operacional (nunca mais lida nem escrita pela UI). Coluna
+  // preservada só por histórico; nunca reintroduzir no produto.
   acesso_facebook_confirmado: boolean;
   plano_contratado: string | null;
   periodo_contratado: string | null;

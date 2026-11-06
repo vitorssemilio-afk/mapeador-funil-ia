@@ -45,6 +45,14 @@ function clienteFixture(overrides: Partial<Cliente> = {}): Cliente {
     uf: null,
     canal_whatsapp_business: null,
     canal_instagram: null,
+    whatsapp_tipo: null,
+    whatsapp_numero: null,
+    whatsapp_responsavel: null,
+    whatsapp_situacao: null,
+    whatsapp_observacoes: null,
+    instagram_perfil: null,
+    instagram_responsavel: null,
+    instagram_observacoes: null,
     kommo_ja_possui: 'nao_confirmado',
     kommo_situacao_conta: null,
     kommo_dominio: null,
@@ -233,5 +241,98 @@ describe('construirResumoClientes — implementação cancelada', () => {
     });
 
     expect(resumo.diaCiclo?.dia).toBe(10);
+  });
+});
+
+function mapeamentoFixture(overrides: Partial<import('../types/database').Mapeamento> = {}): import('../types/database').Mapeamento {
+  return {
+    id: 'map-1',
+    user_id: 'user-1',
+    cliente_id: 'cli-1',
+    nome_negocio: 'BV Pneus',
+    status: 'funil_validado',
+    respostas: {},
+    enviado_pelo_cliente: true,
+    codigo_curto: 'abc123',
+    tipo: 'vendas',
+    mapeamento_origem_id: null,
+    enviado_em: '2026-01-01T00:00:00Z',
+    revisado_por_email: null,
+    revisado_em: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+// Prompt 64, Bloco 3 (seções 17/21): a exigência de credenciais do Facebook
+// foi removida de vez, e o WhatsApp Corporativo só é pré-requisito pra
+// avançar pro CRM em configuração quando o canal está de fato no escopo
+// deste cliente — cliente que não quer WhatsApp não trava mais aqui.
+describe('construirResumoClientes — pré-requisito de preparacao_crm (canais)', () => {
+  it('cliente sem WhatsApp no escopo: não bloqueia por WhatsApp não confirmado', () => {
+    const cliente = clienteFixture({ canal_whatsapp_business: false });
+    const implementacao = implementacaoFixture({
+      status: 'preparacao_crm',
+      email_conta_kommo: 'cliente@exemplo.com',
+      whatsapp_corporativo_confirmado: false,
+    });
+
+    const [resumo] = construirResumoClientes({
+      clientes: [cliente],
+      mapeamentos: [mapeamentoFixture()],
+      implementacoes: [implementacao],
+      historico: [],
+      atividades: [],
+      statusRows: [],
+      consultores: [],
+      hoje: new Date('2026-01-10T00:00:00Z'),
+    });
+
+    expect(resumo.proximaAcao).not.toBe('Confirmar pré-requisitos (acessos)');
+  });
+
+  it('cliente com WhatsApp no escopo e ainda não confirmado: continua bloqueando', () => {
+    const cliente = clienteFixture({ canal_whatsapp_business: true });
+    const implementacao = implementacaoFixture({
+      status: 'preparacao_crm',
+      email_conta_kommo: 'cliente@exemplo.com',
+      whatsapp_corporativo_confirmado: false,
+    });
+
+    const [resumo] = construirResumoClientes({
+      clientes: [cliente],
+      mapeamentos: [mapeamentoFixture()],
+      implementacoes: [implementacao],
+      historico: [],
+      atividades: [],
+      statusRows: [],
+      consultores: [],
+      hoje: new Date('2026-01-10T00:00:00Z'),
+    });
+
+    expect(resumo.proximaAcao).toBe('Confirmar pré-requisitos (acessos)');
+  });
+
+  it('cliente com WhatsApp no escopo e já confirmado: não bloqueia mais', () => {
+    const cliente = clienteFixture({ canal_whatsapp_business: true });
+    const implementacao = implementacaoFixture({
+      status: 'preparacao_crm',
+      email_conta_kommo: 'cliente@exemplo.com',
+      whatsapp_corporativo_confirmado: true,
+    });
+
+    const [resumo] = construirResumoClientes({
+      clientes: [cliente],
+      mapeamentos: [mapeamentoFixture()],
+      implementacoes: [implementacao],
+      historico: [],
+      atividades: [],
+      statusRows: [],
+      consultores: [],
+      hoje: new Date('2026-01-10T00:00:00Z'),
+    });
+
+    expect(resumo.proximaAcao).not.toBe('Confirmar pré-requisitos (acessos)');
   });
 });
