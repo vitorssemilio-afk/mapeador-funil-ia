@@ -365,8 +365,15 @@ export function GestaoDashboard() {
   );
 
   const entrega = useMemo(
-    () => construirResumoEntrega({ resumos: resumosFiltrados, criterios, criteriosStatus }),
-    [resumosFiltrados, criterios, criteriosStatus],
+    () =>
+      construirResumoEntrega({
+        resumos: resumosFiltrados,
+        criterios,
+        criteriosStatus,
+        atividadesTemplate: atividades,
+        atividadesStatus: statusRows,
+      }),
+    [resumosFiltrados, criterios, criteriosStatus, atividades, statusRows],
   );
 
   const adocao = useMemo(

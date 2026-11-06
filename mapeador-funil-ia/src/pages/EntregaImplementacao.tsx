@@ -359,8 +359,15 @@ export function EntregaImplementacao() {
   }, [implementacao, atividadesTemplate, atividadesStatus, historicoStatus, cliente, reunioes, hoje, configuracao]);
 
   const resumoCriterios = useMemo(
-    () => (implementacao ? resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id) : null),
-    [implementacao, criterios, criteriosStatus],
+    () =>
+      implementacao
+        ? resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id, {
+            cliente,
+            atividadesTemplate,
+            atividadesStatus,
+          })
+        : null,
+    [implementacao, criterios, criteriosStatus, cliente, atividadesTemplate, atividadesStatus],
   );
 
   const checklist = useMemo(

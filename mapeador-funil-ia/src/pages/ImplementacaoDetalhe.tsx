@@ -36,6 +36,7 @@ import {
 } from '../lib/atasIntegracao';
 import { CONFIGURACAO_PADRAO, resolverConfiguracaoCliente } from '../lib/configuracaoImplementacao';
 import {
+  resolverCriterioEfetivo,
   resolverResumoCriteriosEntrega,
   STATUS_CONTRATACAO_KOMMO_LABELS,
   STATUS_CONTRATACAO_KOMMO_TONE,
@@ -266,6 +267,33 @@ const FORM_CREDENCIAL_VAZIO: FormCredencial = { id: null, login: '', senha: '', 
 type FormCredencialKommo = {
   subdominio: string;
   token: string;
+};
+
+// Prompt 64, Bloco 4 (seção 26) — agrupamento visual da Prontidão para
+// Entrega. Mapeado pela `chave` de criterios_entrega (migration 0099);
+// critério sem chave (ou chave não mapeada aqui) cai em "outros".
+const GRUPOS_CRITERIO: { chave: string; titulo: string }[] = [
+  { chave: 'estrutura', titulo: 'Estrutura do CRM' },
+  { chave: 'usuarios', titulo: 'Usuários e treinamento' },
+  { chave: 'canais', titulo: 'Canais e automações' },
+  { chave: 'documentacao', titulo: 'Documentação e entrega final' },
+  { chave: 'outros', titulo: 'Outros critérios' },
+];
+
+const GRUPO_POR_CHAVE_CRITERIO: Record<string, string> = {
+  funil_processo_real: 'estrutura',
+  campos_configurados: 'estrutura',
+  motivos_perda_configurados: 'estrutura',
+  relatorios_configurados: 'estrutura',
+  dashboards_configurados: 'estrutura',
+  usuarios_cadastrados: 'usuarios',
+  usuarios_ativos: 'usuarios',
+  equipe_treinada: 'usuarios',
+  canais_funcionando: 'canais',
+  bot_funcionando: 'canais',
+  automacoes_funcionando: 'canais',
+  importacao_exportacao_testada: 'documentacao',
+  playbook_entregue: 'documentacao',
 };
 
 const STATUS_BLOQUEADOS_SEM_PRE_REQUISITO = new Set<ImplementacaoStatus>([
@@ -1047,13 +1075,31 @@ export function ImplementacaoDetalhe() {
 
   function abrirFormCriterio(criterioId: string) {
     const atual = criteriosStatus.find((s) => s.criterio_id === criterioId);
+    // Prompt 64, Bloco 4 (seções 25/27/28): sem decisão manual ainda, pré-
+    // preenche com o que a fonte automática (checklist/marco) já comprovou —
+    // o consultor confirma/ajusta em vez de digitar tudo de novo — e com o
+    // próprio consultor autenticado como responsável, sem precisar escolher.
+    const criterio = criterios.find((c) => c.id === criterioId);
+    const fonteAutomatica =
+      !atual && criterio && implementacao
+        ? resolverCriterioEfetivo({
+            criterio,
+            statusRow: null,
+            cliente,
+            atividadesTemplate,
+            atividadesStatus,
+            implementacaoId: implementacao.id,
+          })
+        : null;
+    const meuConsultorId = consultores.find((c) => c.user_id === user?.id)?.id ?? '';
+
     setEditandoCriterioId(criterioId);
     setFormCriterio({
-      status: atual?.status ?? 'pendente',
-      evidencia: atual?.evidencia ?? '',
+      status: atual?.status ?? (fonteAutomatica?.status === 'concluido' ? 'concluido' : 'pendente'),
+      evidencia: atual?.evidencia ?? fonteAutomatica?.evidencia ?? '',
       observacao: atual?.observacao ?? '',
       justificativa_nao_aplica: atual?.justificativa_nao_aplica ?? '',
-      responsavel_validacao_id: atual?.responsavel_validacao_id ?? '',
+      responsavel_validacao_id: atual?.responsavel_validacao_id ?? meuConsultorId,
     });
   }
 
@@ -3991,80 +4037,96 @@ export function ImplementacaoDetalhe() {
           );
         })()}
 
-      {aba === 'criterios' && implementacao && (
-        <section className="card form-card">
-          <div className="page-header-actions page-header-actions-split">
-            <h2 style={{ marginBottom: 0 }}>Critérios de Entrega</h2>
-            {(() => {
-              const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id);
-              return (
-                <span
-                  className={`status-badge status-tone-${resumoCriterios.todosObrigatoriosAtendidos ? 'success' : 'warning'}`}
-                >
-                  Critérios de entrega: {resumoCriterios.concluidos}/{resumoCriterios.total} concluídos
-                </span>
-              );
-            })()}
-          </div>
-          <p className="field-hint">
-            "A implementação foi corretamente entregue?" — técnico e objetivo, sob controle da V4.
-            Não inclui contratação do plano, adoção do cliente nem o Checkpoint 30 dias (isso fica em
-            "Indicadores de Adoção").
-          </p>
-          {(() => {
-            const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id);
-            return (
-              resumoCriterios.todosObrigatoriosAtendidos && (
-                <p className="field-hint" style={{ color: 'var(--color-success)' }}>
-                  Todos os critérios obrigatórios de entrega estão atendidos — a implementação já pode
-                  ser marcada como tecnicamente concluída.
-                </p>
-              )
-            );
-          })()}
+      {aba === 'criterios' && implementacao && (() => {
+        const contexto = { cliente, atividadesTemplate, atividadesStatus };
+        const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, implementacao.id, contexto);
+        const grupos = GRUPOS_CRITERIO.map((grupo) => ({
+          ...grupo,
+          itens: criterios.filter((c) => (c.chave ? GRUPO_POR_CHAVE_CRITERIO[c.chave] : 'outros') === grupo.chave),
+        })).filter((g) => g.itens.length > 0);
 
-          <ul className="observacoes-lista">
-            {criterios.map((criterio) => {
-              const statusRow = criteriosStatus.find((s) => s.criterio_id === criterio.id);
-              const status = statusRow?.status ?? 'pendente';
-              const editando = editandoCriterioId === criterio.id;
+        return (
+          <section className="card form-card">
+            <div className="page-header-actions page-header-actions-split">
+              <h2 style={{ marginBottom: 0 }}>Prontidão para Entrega</h2>
+              <span
+                className={`status-badge status-tone-${resumoCriterios.todosObrigatoriosAtendidos ? 'success' : 'warning'}`}
+              >
+                {resumoCriterios.concluidos}/{resumoCriterios.total} atendidos
+              </span>
+            </div>
+            <p className="field-hint">
+              "A implementação foi corretamente entregue?" — técnico e objetivo, sob controle da V4.
+              Não inclui contratação do plano, adoção do cliente nem o Checkpoint 30 dias (isso fica em
+              "Indicadores de Adoção"). O que o checklist já comprovou com evidência entra sozinho —
+              só o que ninguém confirmou ainda pede uma ação sua.
+            </p>
+            {resumoCriterios.todosObrigatoriosAtendidos && (
+              <p className="field-hint" style={{ color: 'var(--color-success)' }}>
+                Todos os critérios obrigatórios de entrega estão atendidos — a implementação já pode
+                ser marcada como tecnicamente concluída.
+              </p>
+            )}
 
-              return (
-                <li key={criterio.id} className="observacao-item">
-                  <div className="observacao-item-header">
-                    <span className="observacao-item-meta">
-                      <span className={`status-badge status-tone-${STATUS_CRITERIO_TONE[status]}`}>
-                        {STATUS_CRITERIO_LABELS[status]}
-                      </span>{' '}
-                      <strong style={{ color: 'var(--color-text)' }}>{criterio.nome}</strong>
-                      {!criterio.obrigatorio && <span className="field-hint"> (quando aplicável)</span>}
-                    </span>
-                    {!editando && (
-                      <button type="button" className="btn btn-secondary" onClick={() => abrirFormCriterio(criterio.id)}>
-                        Editar
-                      </button>
-                    )}
-                  </div>
+            {grupos.map((grupo) => (
+              <div key={grupo.chave} className="geracao-meta-bloco">
+                <h3>{grupo.titulo}</h3>
+                <ul className="observacoes-lista">
+                  {grupo.itens.map((criterio) => {
+                    const statusRow = criteriosStatus.find((s) => s.criterio_id === criterio.id) ?? null;
+                    const efetivo = resolverCriterioEfetivo({
+                      criterio,
+                      statusRow,
+                      cliente,
+                      atividadesTemplate,
+                      atividadesStatus,
+                      implementacaoId: implementacao.id,
+                    });
+                    const editando = editandoCriterioId === criterio.id;
+                    const precisaAcao = efetivo.status === 'pendente' || efetivo.status === 'em_validacao';
 
-                  {!editando && statusRow && (
-                    <div className="field-hint">
-                      {statusRow.evidencia && <p>Evidência: {statusRow.evidencia}</p>}
-                      {statusRow.observacao && <p>Observação: {statusRow.observacao}</p>}
-                      {statusRow.status === 'nao_se_aplica' && statusRow.justificativa_nao_aplica && (
-                        <p>Justificativa: {statusRow.justificativa_nao_aplica}</p>
-                      )}
-                      {statusRow.data_validacao && (
-                        <p>
-                          Validado em {formatarDataHoraLocal(statusRow.data_validacao)}
-                          {statusRow.responsavel_validacao_id
-                            ? ` por ${nomeConsultor(statusRow.responsavel_validacao_id, consultores) ?? '—'}`
-                            : ''}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                    return (
+                      <li key={criterio.id} className="observacao-item">
+                        <div className="observacao-item-header">
+                          <span className="observacao-item-meta">
+                            <span className={`status-badge status-tone-${STATUS_CRITERIO_TONE[efetivo.status]}`}>
+                              {STATUS_CRITERIO_LABELS[efetivo.status]}
+                            </span>{' '}
+                            <strong style={{ color: 'var(--color-text)' }}>{criterio.nome}</strong>
+                            {!criterio.obrigatorio && <span className="field-hint"> (quando aplicável)</span>}
+                            {efetivo.origem === 'automatico' && (
+                              <span className="field-hint"> — atendido automaticamente via checklist</span>
+                            )}
+                          </span>
+                          {!editando && (
+                            <button type="button" className="btn btn-secondary" onClick={() => abrirFormCriterio(criterio.id)}>
+                              {precisaAcao && !efetivo.temDecisaoManual ? 'Validar' : 'Editar'}
+                            </button>
+                          )}
+                        </div>
 
-                  {editando && formCriterio && (
+                        {!editando && (efetivo.evidencia || efetivo.observacao || efetivo.dataValidacaoIso) && (
+                          <div className="field-hint">
+                            {efetivo.evidencia && <p>Evidência: {efetivo.evidencia}</p>}
+                            {efetivo.observacao && <p>Observação: {efetivo.observacao}</p>}
+                            {statusRow?.status === 'nao_se_aplica' && statusRow.justificativa_nao_aplica && (
+                              <p>Justificativa: {statusRow.justificativa_nao_aplica}</p>
+                            )}
+                            {efetivo.dataValidacaoIso && efetivo.origem !== 'automatico' && (
+                              <p>
+                                Validado em {formatarDataHoraLocal(efetivo.dataValidacaoIso)}
+                                {efetivo.responsavelValidacaoId
+                                  ? ` por ${nomeConsultor(efetivo.responsavelValidacaoId, consultores) ?? '—'}`
+                                  : ''}
+                              </p>
+                            )}
+                            {efetivo.dataValidacaoIso && efetivo.origem === 'automatico' && (
+                              <p>Comprovado em {formatarDataHoraLocal(efetivo.dataValidacaoIso)}</p>
+                            )}
+                          </div>
+                        )}
+
+                        {editando && formCriterio && (
                     <form onSubmit={handleSalvarCriterio} className="card form-card">
                       <div className="form-grid">
                         <label className="field">
@@ -4141,9 +4203,12 @@ export function ImplementacaoDetalhe() {
                 </li>
               );
             })}
-          </ul>
-        </section>
-      )}
+                </ul>
+              </div>
+            ))}
+          </section>
+        );
+      })()}
 
       {aba === 'cronograma' && (
         <section className="card form-card">

@@ -740,15 +740,23 @@ export function construirResumoEntrega(params: {
   resumos: ClienteResumo[];
   criterios: CriterioEntrega[];
   criteriosStatus: CriterioEntregaStatus[];
+  // Opcionais (prompt 64, Bloco 4): quando informados, o resumo reflete a
+  // mesma comprovação automática (checklist/marco) e aplicabilidade
+  // condicional já usadas na aba Prontidão para Entrega — mesma fonte única
+  // de verdade. Sem eles, cai no comportamento anterior (só decisão manual).
+  atividadesTemplate?: AtividadeCronograma[];
+  atividadesStatus?: AtividadeStatusRow[];
 }): ResumoEntrega {
-  const { resumos, criterios, criteriosStatus } = params;
+  const { resumos, criterios, criteriosStatus, atividadesTemplate, atividadesStatus } = params;
   let concluidos = 0;
   let total = 0;
   const comPendencia: Cliente[] = [];
 
   for (const r of resumos) {
     if (!r.implementacao) continue;
-    const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, r.implementacao.id);
+    const contexto =
+      atividadesTemplate && atividadesStatus ? { cliente: r.cliente, atividadesTemplate, atividadesStatus } : undefined;
+    const resumoCriterios = resolverResumoCriteriosEntrega(criterios, criteriosStatus, r.implementacao.id, contexto);
     concluidos += resumoCriterios.concluidos;
     total += resumoCriterios.total;
     if (!resumoCriterios.todosObrigatoriosAtendidos) comPendencia.push(r.cliente);
