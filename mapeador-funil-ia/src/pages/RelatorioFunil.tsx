@@ -21,6 +21,20 @@ const NIVEL_COMPLEXIDADE_LABELS: Record<string, string> = {
   alta: 'Alta',
 };
 
+// O botão "Baixar Kick Off" usa fotos/identidade visual específicas da V4
+// (PR #151) — o nome real cadastrado em Configurações é "V4 Company", não
+// "V4" sozinho, então uma comparação exata (`=== 'V4'`) nunca batia e o
+// botão nunca aparecia em produção. Normaliza (minúsculas, sem acento) e
+// aceita variações como "V4 Company"/"v4 company".
+export function ehOperacaoV4(nomeOperacao: string): boolean {
+  return nomeOperacao
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .trim()
+    .toLowerCase()
+    .startsWith('v4');
+}
+
 function ItemList({ items }: { items: string[] }) {
   if (items.length === 0) return null;
   return (
@@ -408,7 +422,7 @@ export function RelatorioFunil() {
         >
           {exportandoPptx ? 'Gerando…' : 'Baixar PPTX'}
         </button>
-        {marcaOperacao === 'V4' && (
+        {ehOperacaoV4(marcaOperacao) && (
           <button
             type="button"
             className="btn btn-secondary"
